@@ -1,7 +1,14 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPaintEvent, QPen
+from PySide6.QtCore import QRectF, Signal, Qt
+from PySide6.QtGui import (
+    QColor,
+    QFontMetrics,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPen,
+)
 from PySide6.QtWidgets import (
     QFrame,
     QLabel,
@@ -69,14 +76,21 @@ class HistogramWidget(QWidget):
 
 
 class PaletteWidget(QWidget):
+    colour_selected = Signal(int)
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._palette: tuple[PaletteColour, ...] = ()
+        self._selected_index: int | None = None
+        self._hover_index: int | None = None
+        self.setMouseTracking(True)
         self.setMinimumHeight(250)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def set_palette(self, palette: tuple[PaletteColour, ...]) -> None:
         self._palette = palette
+        self._selected_index = None
+        self._hover_index = None
         row_count = max(1, len(palette))
         self.setMinimumHeight(row_count * 31 + 8)
         self.updateGeometry()
@@ -95,6 +109,16 @@ class PaletteWidget(QWidget):
         row_height = 31.0
         for index, item in enumerate(self._palette):
             top = 4.0 + index * row_height
+            if index == self._selected_index:
+                painter.fillRect(
+                    QRectF(1.0, top - 2.0, self.width() - 2.0, 28.0),
+                    QColor("#3C5F8A"),
+                )
+            elif index == self._hover_index:
+                painter.fillRect(
+                    QRectF(1.0, top - 2.0, self.width() - 2.0, 28.0),
+                    QColor("#30343A"),
+                )
             colour_rect = QRectF(4.0, top, 54.0, 24.0)
             painter.fillRect(colour_rect, QColor(*item.rgb))
             painter.setPen(QPen(QColor("#5F6368"), 1.0))
@@ -111,6 +135,37 @@ class PaletteWidget(QWidget):
                     max(20, self.width() - 76),
                 ),
             )
+
+    def set_selected_index(self, index: int | None) -> None:
+        self._selected_index = index
+        self.update()
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        index = self._index_at(event.position().y())
+        if index != self._hover_index:
+            self._hover_index = index
+            self.update()
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self._hover_index = None
+        self.update()
+        super().leaveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            index = self._index_at(event.position().y())
+            if index is not None:
+                self.colour_selected.emit(index)
+                event.accept()
+                return
+        super().mouseReleaseEvent(event)
+
+    def _index_at(self, y: float) -> int | None:
+        index = int((y - 4.0) // 31.0)
+        if 0 <= index < len(self._palette):
+            return index
+        return None
 
 
 class AnalysisSummaryWidget(QWidget):

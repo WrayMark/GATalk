@@ -8,7 +8,7 @@ from typing import Any
 
 MANIFEST_FORMAT = "scenelens.project"
 MANIFEST_FORMAT_VERSION = 1
-DATABASE_SCHEMA_VERSION = 2
+DATABASE_SCHEMA_VERSION = 3
 
 
 class BriefDocumentType(StrEnum):
@@ -127,6 +127,26 @@ class BriefDocumentRecord:
     status: str
     created_at: str
     updated_at: str
+
+
+@dataclass(frozen=True)
+class ComparisonAnalysisRecord:
+    id: str
+    shot_id: str
+    version_id: str
+    module_id: str
+    analyzer_id: str
+    analyzer_version: str
+    reference_asset_id: str
+    current_asset_id: str
+    reference_sha256: str
+    current_sha256: str
+    parameters: dict[str, Any]
+    cache_key: str
+    result: dict[str, Any]
+    evidence_type: str
+    status: str
+    created_at: str
 
 
 @dataclass(frozen=True)

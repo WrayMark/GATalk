@@ -5,6 +5,7 @@ from dataclasses import replace
 from functools import partial
 from pathlib import Path
 
+import numpy as np
 from PySide6.QtCore import QThread, QThreadPool, QTimer, Qt
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
@@ -28,22 +29,46 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from scenelens.analysis.models import ImageMeasurements, RenderSettings
+from scenelens.analysis.luminance import quantize_three_value_with_thresholds
+from scenelens.analysis.models import (
+    ImageMeasurements,
+    LuminanceComparison,
+    RenderSettings,
+    SharedPaletteResult,
+)
 from scenelens.analysis.pipeline import render_image
+from scenelens.analysis.shared_palette import (
+    palette_membership_mask,
+    render_palette_source_mask,
+)
 from scenelens.core.analyzers import AnalyzerRequest
 from scenelens.imaging.loader import LoadedImage, load_image
 from scenelens.imaging.qt import numpy_to_qimage
 from scenelens.modules.visual_review import MODULE_ID
 from scenelens.modules.visual_review.analyzers import (
     BASIC_MEASUREMENTS_ANALYZER_ID,
+    LUMINANCE_COMPARISON_ANALYZER_ID,
+    SHARED_PALETTE_ANALYZER_ID,
 )
+from scenelens.modules.visual_review.brief_measurements import (
+    build_reference_measurement_fields,
+)
+from scenelens.modules.visual_review.comparison_results import (
+    luminance_comparison_from_payload,
+    luminance_comparison_to_payload,
+    shared_palette_from_payload,
+    shared_palette_to_payload,
+)
+from scenelens.modules.visual_review.presets import load_visual_review_presets
 from scenelens.modules.visual_review.registry import (
     create_visual_review_registry,
 )
 from scenelens.storage.errors import ProjectLockedError, StorageError
 from scenelens.storage.models import (
     ArtBrief,
+    BriefFieldValue,
     CanvasState,
+    FieldSource,
     ImageAssetRecord,
     VersionRecord,
     WorkspaceState,
@@ -54,8 +79,14 @@ from scenelens.storage.project_store import (
 )
 from scenelens.storage.recent_projects import RecentProjects
 from scenelens.ui.analysis_widgets import AnalysisSummaryWidget
+from scenelens.ui.brief_widgets import (
+    CREATIVE_INTENT_FIELDS,
+    BriefEditorDialog,
+    ReferenceVisualBriefDialog,
+)
+from scenelens.ui.comparison_widgets import ComparisonPanel
 from scenelens.ui.image_canvas import ImageCanvas
-from scenelens.ui.project_widgets import ArtBriefDialog, ProjectNavigator
+from scenelens.ui.project_widgets import ProjectNavigator
 from scenelens.ui.workers import FunctionWorker
 
 
@@ -84,11 +115,12 @@ class ImagePane(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self, recent_projects: RecentProjects | None = None) -> None:
         super().__init__()
-        self.setWindowTitle("SceneLens — M1B.0")
+        self.setWindowTitle("SceneLens — M1B.1")
         self.resize(1550, 900)
         self.setMinimumSize(1050, 650)
 
         self._images: dict[str, LoadedImage] = {}
+        self._measurements: dict[str, ImageMeasurements] = {}
         self._asset_ids: dict[str, str | None] = {
             "reference": None,
             "current": None,
@@ -97,6 +129,11 @@ class MainWindow(QMainWindow):
         self._render_generation = {"reference": 0, "current": 0}
         self._measure_generation = {"reference": 0, "current": 0}
         self._import_generation = {"reference": 0, "current": 0}
+        self._brief_generation = 0
+        self._comparison_generation = 0
+        self._mask_generation = 0
+        self._active_mask: tuple[str, int] | None = None
+        self._shared_palette_result: SharedPaletteResult | None = None
         self._load_context: dict[
             str, dict[int, tuple[str | None, bool, CanvasState | None]]
         ] = {"reference": {}, "current": {}}
@@ -122,6 +159,15 @@ class MainWindow(QMainWindow):
             MODULE_ID,
             BASIC_MEASUREMENTS_ANALYZER_ID,
         )
+        self._shared_palette_analyzer = self._analyzer_registry.get(
+            MODULE_ID,
+            SHARED_PALETTE_ANALYZER_ID,
+        )
+        self._luminance_comparison_analyzer = self._analyzer_registry.get(
+            MODULE_ID,
+            LUMINANCE_COMPARISON_ANALYZER_ID,
+        )
+        self._presets = load_visual_review_presets()
 
         self._thread_pool = QThreadPool(self)
         ideal = max(2, QThread.idealThreadCount())
@@ -145,10 +191,20 @@ class MainWindow(QMainWindow):
         self._autosave_timer.setInterval(800)
         self._autosave_timer.timeout.connect(self._autosave_workspace)
 
+        self._comparison_timer = QTimer(self)
+        self._comparison_timer.setSingleShot(True)
+        self._comparison_timer.setInterval(180)
+        self._comparison_timer.timeout.connect(self._start_comparison_analysis)
+
         ab_action = QAction("切换 A/B", self)
         ab_action.setShortcut(QKeySequence(Qt.Key.Key_Space))
         ab_action.triggered.connect(self._toggle_ab)
         self.addAction(ab_action)
+
+        escape_action = QAction("退出当前遮罩或工具", self)
+        escape_action.setShortcut(QKeySequence(Qt.Key.Key_Escape))
+        escape_action.triggered.connect(self._clear_palette_mask)
+        self.addAction(escape_action)
 
         self.statusBar().showMessage(
             "可先新建/打开项目，也可直接拖入图片继续使用 M0.5 工作台。"
@@ -269,26 +325,37 @@ class MainWindow(QMainWindow):
         self.image_splitter.setChildrenCollapsible(False)
 
         self.analysis_tabs = QTabWidget()
-        self.analysis_tabs.setMinimumWidth(300)
+        self.analysis_tabs.setMinimumWidth(360)
         self.analysis_widgets = {
             "reference": AnalysisSummaryWidget("尚未导入参考图"),
             "current": AnalysisSummaryWidget("尚未导入当前截图"),
         }
+        for role, widget in self.analysis_widgets.items():
+            widget.palette.colour_selected.connect(
+                partial(self._independent_palette_selected, role)
+            )
         self.analysis_tabs.addTab(self.analysis_widgets["reference"], "参考分析")
         self.analysis_tabs.addTab(self.analysis_widgets["current"], "截图分析")
-        self.analysis_tabs.addTab(
-            self._placeholder_panel("M1B 实现证据化对比后在此显示。"),
-            "对比分析",
+        self.comparison_panel = ComparisonPanel()
+        self.comparison_panel.palette_selected.connect(
+            self._shared_palette_selected
         )
+        self.comparison_panel.thresholds_changed.connect(
+            self._comparison_thresholds_changed
+        )
+        self.analysis_tabs.addTab(self.comparison_panel, "对比分析")
         self.analysis_tabs.addTab(
             self._placeholder_panel("修改任务将在后续纵向功能中实现。"),
             "审阅任务",
+        )
+        self.analysis_tabs.currentChanged.connect(
+            self._analysis_tab_changed
         )
 
         self.root_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.root_splitter.addWidget(self.image_splitter)
         self.root_splitter.addWidget(self.analysis_tabs)
-        self.root_splitter.setSizes([1180, 370])
+        self.root_splitter.setSizes([780, 450])
         self.root_splitter.setStretchFactor(0, 1)
         self.root_splitter.setStretchFactor(1, 0)
         self.root_splitter.setCollapsible(0, False)
@@ -302,6 +369,9 @@ class MainWindow(QMainWindow):
         )
         self.project_navigator.edit_brief_requested.connect(
             self._edit_art_brief
+        )
+        self.project_navigator.edit_reference_brief_requested.connect(
+            self._edit_reference_visual_brief
         )
         self.project_navigator.shot_requested.connect(self._activate_shot)
         self.project_navigator.version_requested.connect(self._activate_version)
@@ -423,7 +493,7 @@ class MainWindow(QMainWindow):
         self.save_project_action.setEnabled(False)
         self.reference_button.setEnabled(True)
         self.current_button.setEnabled(True)
-        self.setWindowTitle("SceneLens — M1B")
+        self.setWindowTitle("SceneLens — M1B.1")
         return True
 
     def _offer_read_only_open(
@@ -495,6 +565,18 @@ class MainWindow(QMainWindow):
                 max(0, min(200, int(round(state.blur_sigma * 10.0))))
             )
             self.sync_checkbox.setChecked(state.sync_views)
+            self.comparison_panel.set_thresholds(
+                state.three_threshold_low,
+                state.three_threshold_high,
+            )
+            tab_names = ("reference", "current", "comparison", "tasks")
+            self.analysis_tabs.setCurrentIndex(
+                (
+                    tab_names.index(state.active_analysis_tab)
+                    if state.active_analysis_tab in tab_names
+                    else 0
+                )
+            )
             self._comparison_mode_changed(self.comparison_combo.currentIndex())
             self._clear_role("reference")
             self._clear_role("current")
@@ -581,9 +663,124 @@ class MainWindow(QMainWindow):
         store = self._project_store
         if store is None:
             return
-        dialog = ArtBriefDialog(store.get_art_brief(), self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.save_art_brief(dialog.art_brief())
+        choices = ["项目级制作意图"]
+        if self._active_shot_id is not None:
+            choices.append("当前 Shot 覆盖")
+        selection = choices[0]
+        if len(choices) > 1:
+            selection, accepted = QInputDialog.getItem(
+                self,
+                "选择制作意图范围",
+                "编辑范围：",
+                choices,
+                0,
+                False,
+            )
+            if not accepted:
+                return
+        shot_id = (
+            self._active_shot_id
+            if selection == "当前 Shot 覆盖"
+            else None
+        )
+        document = store.get_creative_intent_document(shot_id)
+        if document is None and not store.read_only:
+            document = store.ensure_creative_intent_document(shot_id)
+        if document is None:
+            QMessageBox.information(
+                self,
+                "暂无制作意图",
+                "当前只读项目中没有该范围的制作意图。",
+            )
+            return
+        fields = store.list_brief_fields(document.id)
+        dialog = BriefEditorDialog(
+            (
+                "制作意图 · 项目级"
+                if shot_id is None
+                else "制作意图 · 当前 Shot 覆盖"
+            ),
+            CREATIVE_INTENT_FIELDS,
+            fields,
+            self._presets,
+            read_only=store.read_only,
+            parent=self,
+        )
+        if (
+            not store.read_only
+            and dialog.exec() == QDialog.DialogCode.Accepted
+        ):
+            self._save_user_brief_values(
+                document.id,
+                dialog.values(),
+                fields,
+                "制作意图",
+            )
+        elif store.read_only:
+            dialog.exec()
+
+    def _edit_reference_visual_brief(self) -> None:
+        store = self._project_store
+        if store is None or self._active_shot_id is None:
+            return
+        document = store.get_reference_visual_brief(self._active_shot_id)
+        if document is None:
+            QMessageBox.information(
+                self,
+                "暂无参考图视觉简报",
+                "请先为当前 Shot 导入参考图。",
+            )
+            return
+        fields = store.list_brief_fields(document.id)
+        dialog = ReferenceVisualBriefDialog(
+            fields,
+            self._presets,
+            read_only=store.read_only,
+            parent=self,
+        )
+        if (
+            not store.read_only
+            and dialog.exec() == QDialog.DialogCode.Accepted
+        ):
+            self._save_user_brief_values(
+                document.id,
+                dialog.values(),
+                fields,
+                "参考图视觉简报",
+            )
+        elif store.read_only:
+            dialog.exec()
+
+    def _save_user_brief_values(
+        self,
+        document_id: str,
+        values: dict,
+        existing: dict[str, BriefFieldValue],
+        label: str,
+    ) -> bool:
+        store = self._project_store
+        if store is None:
+            return False
+        fields = {
+            key: BriefFieldValue(
+                value=value,
+                source=(
+                    FieldSource.USER_REVISION
+                    if key in existing
+                    else FieldSource.USER_INPUT
+                ),
+                evidence={"edited_in": "scenelens"},
+                user_confirmed=True,
+            )
+            for key, value in values.items()
+        }
+        try:
+            store.save_brief_fields(document_id, fields)
+            self.statusBar().showMessage(f"{label}已保存")
+            return True
+        except StorageError as exc:
+            self._show_storage_error(f"{label}保存失败", exc)
+            return False
 
     def save_art_brief(self, brief: ArtBrief) -> bool:
         store = self._project_store
@@ -591,10 +788,10 @@ class MainWindow(QMainWindow):
             return False
         try:
             store.save_art_brief(brief)
-            self.statusBar().showMessage("Art Brief 已保存")
+            self.statusBar().showMessage("制作意图已保存")
             return True
         except StorageError as exc:
-            self._show_storage_error("Art Brief 保存失败", exc)
+            self._show_storage_error("制作意图保存失败", exc)
             return False
 
     def _activate_shot(self, shot_id: str) -> None:
@@ -814,6 +1011,8 @@ class MainWindow(QMainWindow):
                 (None, True, None),
             )
             self._images[role] = loaded
+            self._measurements.pop(role, None)
+            self._clear_palette_mask()
             self._asset_ids[role] = asset_id
             display_name: str | None = None
             if asset_id is not None and self._project_store is not None:
@@ -839,13 +1038,17 @@ class MainWindow(QMainWindow):
                 )
             cached = self._load_cached_measurements(asset_id)
             if cached is not None:
+                self._measurements[role] = cached
                 self.analysis_widgets[role].set_measurements(cached)
+                if role == "reference":
+                    self._start_reference_brief_fields(cached)
                 self.statusBar().showMessage(
                     f"{ROLE_LABELS[role]}已恢复历史分析结果"
                 )
             else:
                 self._start_measurement(role)
             self._start_render(role)
+            self._schedule_comparison_analysis()
             self.statusBar().showMessage(
                 f"{ROLE_LABELS[role]}已导入：{loaded.working_size[0]} × "
                 f"{loaded.working_size[1]}"
@@ -857,6 +1060,7 @@ class MainWindow(QMainWindow):
                 return
             measurements = result
             if isinstance(measurements, ImageMeasurements):
+                self._measurements[role] = measurements
                 self.analysis_widgets[role].set_measurements(measurements)
                 context = self._measure_context[role].pop(
                     generation,
@@ -876,7 +1080,28 @@ class MainWindow(QMainWindow):
                             f"{ROLE_LABELS[role]}分析完成，但结果保存失败"
                         )
                         return
+                if role == "reference":
+                    self._start_reference_brief_fields(measurements)
+                self._schedule_comparison_analysis()
                 self.statusBar().showMessage(f"{ROLE_LABELS[role]}分析完成")
+            return
+
+        if kind == "reference_brief":
+            if generation != self._brief_generation:
+                return
+            self._persist_reference_brief_fields(result)
+            return
+
+        if kind == "comparison":
+            if generation != self._comparison_generation:
+                return
+            self._apply_comparison_result(result)
+            return
+
+        if kind == "mask":
+            if generation != self._mask_generation:
+                return
+            self._apply_mask_result(result)
             return
 
         if kind == "render":
@@ -900,6 +1125,12 @@ class MainWindow(QMainWindow):
     ) -> None:
         if kind in {"import_reference", "import_version"}:
             expected = self._import_generation[role]
+        elif kind == "reference_brief":
+            expected = self._brief_generation
+        elif kind == "comparison":
+            expected = self._comparison_generation
+        elif kind == "mask":
+            expected = self._mask_generation
         else:
             expected = {
                 "load": self._load_generation,
@@ -915,13 +1146,26 @@ class MainWindow(QMainWindow):
             "render": "显示处理失败",
             "import_reference": "参考图导入失败",
             "import_version": "截图版本导入失败",
+            "reference_brief": "参考图自动测量关联失败",
+            "comparison": "对比分析失败",
+            "mask": "颜色来源遮罩失败",
         }.get(kind, "SceneLens 操作失败")
         QMessageBox.warning(
             self,
             title,
-            f"{ROLE_LABELS[role]}处理失败：\n{message}",
+            (
+                f"{ROLE_LABELS[role]}处理失败：\n{message}"
+                if role in ROLE_LABELS
+                else f"处理失败：\n{message}"
+            ),
         )
-        self.statusBar().showMessage(f"{ROLE_LABELS[role]}处理失败")
+        self.statusBar().showMessage(
+            (
+                f"{ROLE_LABELS[role]}处理失败"
+                if role in ROLE_LABELS
+                else "处理失败"
+            )
+        )
 
     def _on_worker_finished(self, _role: str, _kind: str, _generation: int) -> None:
         self._active_jobs = max(0, self._active_jobs - 1)
@@ -999,10 +1243,453 @@ class MainWindow(QMainWindow):
             LOGGER.exception("Failed to restore cached measurements")
             return None
 
+    def _start_reference_brief_fields(
+        self,
+        measurements: ImageMeasurements,
+    ) -> None:
+        store = self._project_store
+        shot_id = self._active_shot_id
+        asset_id = self._asset_ids.get("reference")
+        image = self._images.get("reference")
+        if (
+            store is None
+            or store.read_only
+            or shot_id is None
+            or asset_id is None
+            or image is None
+        ):
+            return
+        try:
+            asset = store.get_asset(asset_id)
+        except StorageError:
+            LOGGER.exception("Failed to read reference asset for Brief")
+            return
+        descriptor = self._measurement_analyzer.descriptor
+        project_id = store.manifest.project_id
+        thresholds = self.comparison_panel.thresholds()
+        five_thresholds = self._workspace_template.five_thresholds
+        palette_seed = self._workspace_template.palette_seed
+        palette_max_samples = self._workspace_template.palette_max_samples
+        self._brief_generation += 1
+        generation = self._brief_generation
+
+        def build_fields():
+            return {
+                "project_id": project_id,
+                "shot_id": shot_id,
+                "asset_id": asset_id,
+                "fields": build_reference_measurement_fields(
+                    image,
+                    asset,
+                    measurements,
+                    three_thresholds=thresholds,
+                    five_thresholds=five_thresholds,
+                    analyzer_id=descriptor.analyzer_id,
+                    analyzer_version=descriptor.version,
+                    palette_seed=palette_seed,
+                    palette_max_samples=palette_max_samples,
+                ),
+                "analyzer_id": descriptor.analyzer_id,
+                "analyzer_version": descriptor.version,
+                "analyzed_at": utc_now(),
+            }
+
+        self._start_worker(
+            "reference",
+            "reference_brief",
+            generation,
+            build_fields,
+        )
+
+    def _persist_reference_brief_fields(self, result: object) -> None:
+        if not isinstance(result, dict):
+            return
+        store = self._project_store
+        if (
+            store is None
+            or store.read_only
+            or result.get("project_id") != store.manifest.project_id
+            or result.get("shot_id") != self._active_shot_id
+            or result.get("asset_id") != self._asset_ids.get("reference")
+        ):
+            return
+        document = store.get_reference_visual_brief(self._active_shot_id)
+        if (
+            document is None
+            or document.asset_id != result.get("asset_id")
+            or not isinstance(result.get("fields"), dict)
+        ):
+            return
+        try:
+            store.save_brief_fields(document.id, result["fields"])
+            store.mark_reference_brief_analyzed(
+                document.id,
+                analyzer_id=str(result["analyzer_id"]),
+                analyzer_version=str(result["analyzer_version"]),
+                analyzed_at=str(result["analyzed_at"]),
+            )
+        except StorageError:
+            LOGGER.exception("Failed to persist reference visual measurements")
+
+    def _schedule_comparison_analysis(self) -> None:
+        self._clear_palette_mask()
+        if set(self._images) >= {"reference", "current"}:
+            self._comparison_timer.start()
+        else:
+            self._comparison_timer.stop()
+            self._comparison_generation += 1
+            self._shared_palette_result = None
+            self.comparison_panel.clear()
+
+    def _start_comparison_analysis(self) -> None:
+        reference = self._images.get("reference")
+        current = self._images.get("current")
+        if reference is None or current is None:
+            return
+        shared_parameters = self._shared_palette_analyzer.default_parameters(
+            self._workspace_template.palette_colours,
+            self._workspace_template.palette_seed,
+            self._workspace_template.palette_max_samples,
+        )
+        low, high = self.comparison_panel.thresholds()
+        luminance_parameters = (
+            self._luminance_comparison_analyzer.default_parameters(low, high)
+        )
+        input_hashes = {
+            "reference": self._role_input_hash("reference"),
+            "current": self._role_input_hash("current"),
+        }
+        selection = {
+            "project_id": (
+                None
+                if self._project_store is None
+                else self._project_store.manifest.project_id
+            ),
+            "shot_id": self._active_shot_id,
+            "version_id": self._active_version_id,
+            "reference_asset_id": self._asset_ids.get("reference"),
+            "current_asset_id": self._asset_ids.get("current"),
+        }
+        cached_shared: SharedPaletteResult | None = None
+        cached_luminance: LuminanceComparison | None = None
+        store = self._project_store
+        if (
+            store is not None
+            and self._active_shot_id is not None
+            and self._active_version_id is not None
+        ):
+            try:
+                shared_record = store.load_comparison_analysis(
+                    self._active_shot_id,
+                    self._active_version_id,
+                    module_id=MODULE_ID,
+                    analyzer_id=SHARED_PALETTE_ANALYZER_ID,
+                    analyzer_version=self._shared_palette_analyzer.descriptor.version,
+                    parameters=shared_parameters,
+                )
+                luminance_record = store.load_comparison_analysis(
+                    self._active_shot_id,
+                    self._active_version_id,
+                    module_id=MODULE_ID,
+                    analyzer_id=LUMINANCE_COMPARISON_ANALYZER_ID,
+                    analyzer_version=(
+                        self._luminance_comparison_analyzer.descriptor.version
+                    ),
+                    parameters=luminance_parameters,
+                )
+                if shared_record is not None:
+                    cached_shared = shared_palette_from_payload(
+                        shared_record.result
+                    )
+                if luminance_record is not None:
+                    cached_luminance = luminance_comparison_from_payload(
+                        luminance_record.result
+                    )
+            except (StorageError, KeyError, TypeError, ValueError):
+                LOGGER.exception("Failed to restore comparison analysis")
+
+        self._comparison_generation += 1
+        generation = self._comparison_generation
+        shared_request = AnalyzerRequest(
+            inputs={
+                "reference_rgb": reference.rgb,
+                "current_rgb": current.rgb,
+            },
+            input_hashes=input_hashes,
+            parameters=shared_parameters,
+        )
+        luminance_request = AnalyzerRequest(
+            inputs={
+                "reference_rgb": reference.rgb,
+                "current_rgb": current.rgb,
+            },
+            input_hashes=input_hashes,
+            parameters=luminance_parameters,
+        )
+
+        def analyze():
+            shared = (
+                cached_shared
+                if cached_shared is not None
+                else self._shared_palette_analyzer.run(shared_request)
+            )
+            luminance = (
+                cached_luminance
+                if cached_luminance is not None
+                else self._luminance_comparison_analyzer.run(
+                    luminance_request
+                )
+            )
+            return {
+                "selection": selection,
+                "shared": shared,
+                "luminance": luminance,
+                "shared_parameters": shared_parameters,
+                "luminance_parameters": luminance_parameters,
+                "reference_thumbnail": quantize_three_value_with_thresholds(
+                    reference.rgb,
+                    low,
+                    high,
+                ),
+                "current_thumbnail": quantize_three_value_with_thresholds(
+                    current.rgb,
+                    low,
+                    high,
+                ),
+            }
+
+        self.statusBar().showMessage("正在计算共享色板与三阶明度比较…")
+        self._start_worker("comparison", "comparison", generation, analyze)
+
+    def _apply_comparison_result(self, result: object) -> None:
+        if not isinstance(result, dict):
+            return
+        selection = result.get("selection")
+        if not isinstance(selection, dict):
+            return
+        current_selection = {
+            "project_id": (
+                None
+                if self._project_store is None
+                else self._project_store.manifest.project_id
+            ),
+            "shot_id": self._active_shot_id,
+            "version_id": self._active_version_id,
+            "reference_asset_id": self._asset_ids.get("reference"),
+            "current_asset_id": self._asset_ids.get("current"),
+        }
+        if selection != current_selection:
+            return
+        shared = result.get("shared")
+        luminance = result.get("luminance")
+        if not isinstance(shared, SharedPaletteResult) or not isinstance(
+            luminance,
+            LuminanceComparison,
+        ):
+            return
+        self._shared_palette_result = shared
+        self.comparison_panel.set_shared_palette(shared)
+        reference = self._images.get("reference")
+        current = self._images.get("current")
+        if reference is None or current is None:
+            return
+        self.comparison_panel.set_luminance(
+            luminance,
+            numpy_to_qimage(result["reference_thumbnail"]),
+            numpy_to_qimage(result["current_thumbnail"]),
+        )
+        store = self._project_store
+        if (
+            store is not None
+            and not store.read_only
+            and self._active_shot_id is not None
+            and self._active_version_id is not None
+        ):
+            try:
+                store.save_comparison_analysis(
+                    self._active_shot_id,
+                    self._active_version_id,
+                    module_id=MODULE_ID,
+                    analyzer_id=SHARED_PALETTE_ANALYZER_ID,
+                    analyzer_version=(
+                        self._shared_palette_analyzer.descriptor.version
+                    ),
+                    parameters=result["shared_parameters"],
+                    result=shared_palette_to_payload(shared),
+                    evidence_type="algorithm_inference",
+                )
+                store.save_comparison_analysis(
+                    self._active_shot_id,
+                    self._active_version_id,
+                    module_id=MODULE_ID,
+                    analyzer_id=LUMINANCE_COMPARISON_ANALYZER_ID,
+                    analyzer_version=(
+                        self._luminance_comparison_analyzer.descriptor.version
+                    ),
+                    parameters=result["luminance_parameters"],
+                    result=luminance_comparison_to_payload(luminance),
+                    evidence_type="measurement",
+                )
+            except StorageError:
+                LOGGER.exception("Failed to persist comparison analysis")
+                self.statusBar().showMessage(
+                    "对比分析完成，但结果保存失败"
+                )
+                return
+        self.statusBar().showMessage("共享色板与三阶明度比较完成")
+
+    def _role_input_hash(self, role: str) -> str:
+        store = self._project_store
+        asset_id = self._asset_ids.get(role)
+        if store is not None and asset_id is not None:
+            try:
+                return store.get_asset(asset_id).sha256
+            except StorageError:
+                LOGGER.exception("Failed to read comparison input hash")
+        image = self._images.get(role)
+        if image is None:
+            return f"session:{role}:empty"
+        return (
+            f"session:{role}:{image.working_size[0]}x{image.working_size[1]}:"
+            f"{int(image.rgb[0, 0, 0])}"
+        )
+
+    def _comparison_thresholds_changed(self, low: float, high: float) -> None:
+        if low >= high:
+            return
+        self._workspace_template = replace(
+            self._workspace_template,
+            three_threshold_low=low,
+            three_threshold_high=high,
+        )
+        self._mark_workspace_dirty()
+        self._schedule_comparison_analysis()
+        if self.mode_combo.currentData() == "three_value":
+            self._schedule_render()
+        measurements = self._measurements.get("reference")
+        if measurements is not None:
+            self._start_reference_brief_fields(measurements)
+
+    def _analysis_tab_changed(self, _index: int) -> None:
+        self._mark_workspace_dirty()
+
+    def _independent_palette_selected(self, role: str, index: int) -> None:
+        if self._active_mask == (role, index):
+            self._clear_palette_mask()
+            return
+        image = self._images.get(role)
+        measurements = self._measurements.get(role)
+        if (
+            image is None
+            or measurements is None
+            or not 0 <= index < len(measurements.palette)
+        ):
+            return
+        centres = np.asarray(
+            [item.oklab for item in measurements.palette],
+            dtype=np.float64,
+        )
+        self._start_palette_mask(
+            (role, index),
+            {role: (image.rgb, centres, index)},
+        )
+
+    def _shared_palette_selected(self, index: int) -> None:
+        shared = self._shared_palette_result
+        if self._active_mask == ("shared", index):
+            self._clear_palette_mask()
+            return
+        if (
+            shared is None
+            or not 0 <= index < len(shared.colours)
+            or "reference" not in self._images
+            or "current" not in self._images
+        ):
+            return
+        centres = np.asarray(
+            [item.oklab for item in shared.colours],
+            dtype=np.float64,
+        )
+        self._start_palette_mask(
+            ("shared", index),
+            {
+                role: (self._images[role].rgb, centres, index)
+                for role in ("reference", "current")
+            },
+        )
+
+    def _start_palette_mask(
+        self,
+        key: tuple[str, int],
+        inputs: dict[str, tuple[np.ndarray, np.ndarray, int]],
+    ) -> None:
+        self._clear_palette_mask()
+        self._active_mask = key
+        if key[0] in self.analysis_widgets:
+            self.analysis_widgets[key[0]].palette.set_selected_index(key[1])
+        self._mask_generation += 1
+        generation = self._mask_generation
+
+        def build_mask():
+            previews = {}
+            for role, (rgb, centres, index) in inputs.items():
+                mask = palette_membership_mask(rgb, centres, index)
+                previews[role] = render_palette_source_mask(rgb, mask)
+            return {"key": key, "previews": previews}
+
+        self.statusBar().showMessage("正在定位颜色来源区域…")
+        self._start_worker("comparison", "mask", generation, build_mask)
+
+    def _apply_mask_result(self, result: object) -> None:
+        if (
+            not isinstance(result, dict)
+            or result.get("key") != self._active_mask
+            or not isinstance(result.get("previews"), dict)
+        ):
+            return
+        for role, preview in result["previews"].items():
+            image = self._images.get(role)
+            if image is not None:
+                self._canvas_for(role).set_overlay(
+                    numpy_to_qimage(preview, image.alpha)
+                )
+        if self._active_mask is None:
+            return
+        scope, index = self._active_mask
+        if scope == "shared" and self._shared_palette_result is not None:
+            item = self._shared_palette_result.colours[index]
+            self.statusBar().showMessage(
+                f"{item.hex_colour} · 参考 {item.reference_proportion * 100:.1f}% "
+                f"· 当前 {item.current_proportion * 100:.1f}% · Esc 退出遮罩"
+            )
+        else:
+            measurements = self._measurements.get(scope)
+            if measurements is not None and index < len(measurements.palette):
+                item = measurements.palette[index]
+                self.statusBar().showMessage(
+                    f"{ROLE_LABELS[scope]} {item.hex_colour} · "
+                    f"{item.proportion * 100:.1f}% · Esc 退出遮罩"
+                )
+
+    def _clear_palette_mask(self) -> None:
+        was_active = self._active_mask is not None
+        self._active_mask = None
+        self._mask_generation += 1
+        for pane in (self.reference_pane, self.current_pane):
+            pane.canvas.clear_overlay()
+        for widget in self.analysis_widgets.values():
+            widget.palette.set_selected_index(None)
+        if hasattr(self, "comparison_panel"):
+            self.comparison_panel.clear_palette_selection()
+        if was_active:
+            self.statusBar().showMessage("已退出颜色来源遮罩")
+
     def _current_render_settings(self) -> RenderSettings:
         return RenderSettings(
             mode=str(self.mode_combo.currentData()),
             blur_sigma=self.blur_slider.value() / 10.0,
+            three_thresholds=self.comparison_panel.thresholds(),
+            five_thresholds=self._workspace_template.five_thresholds,
         )
 
     def _start_render(self, role: str) -> None:
@@ -1120,6 +1807,15 @@ class MainWindow(QMainWindow):
             ab_role=self._ab_role,
             sync_views=self.sync_checkbox.isChecked(),
             blur_sigma=self.blur_slider.value() / 10.0,
+            three_threshold_low=self.comparison_panel.thresholds()[0],
+            three_threshold_high=self.comparison_panel.thresholds()[1],
+            active_analysis_tab=(
+                ("reference", "current", "comparison", "tasks")[
+                    self.analysis_tabs.currentIndex()
+                ]
+                if 0 <= self.analysis_tabs.currentIndex() < 4
+                else "reference"
+            ),
         )
         try:
             if self._active_shot_id is not None:
@@ -1174,7 +1870,12 @@ class MainWindow(QMainWindow):
 
     def _clear_role(self, role: str) -> None:
         self._images.pop(role, None)
+        self._measurements.pop(role, None)
         self._asset_ids[role] = None
+        self._clear_palette_mask()
+        self._shared_palette_result = None
+        if hasattr(self, "comparison_panel"):
+            self.comparison_panel.clear()
         self._canvas_for(role).clear_image()
         self.analysis_widgets[role].clear(
             "尚未导入参考图"
@@ -1183,6 +1884,11 @@ class MainWindow(QMainWindow):
         )
 
     def _invalidate_image_jobs(self) -> None:
+        self._brief_generation += 1
+        self._comparison_generation += 1
+        self._mask_generation += 1
+        if hasattr(self, "_comparison_timer"):
+            self._comparison_timer.stop()
         for role in ("reference", "current"):
             self._load_generation[role] += 1
             self._render_generation[role] += 1

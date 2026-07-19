@@ -31,6 +31,7 @@ ITEM_PARENT_ID_ROLE = Qt.ItemDataRole.UserRole + 2
 class ProjectNavigator(QWidget):
     new_shot_requested = Signal()
     edit_brief_requested = Signal()
+    edit_reference_brief_requested = Signal()
     shot_requested = Signal(str)
     version_requested = Signal(str, str)
 
@@ -50,11 +51,17 @@ class ProjectNavigator(QWidget):
         self.new_shot_button.setEnabled(False)
         self.new_shot_button.clicked.connect(self.new_shot_requested.emit)
         button_row.addWidget(self.new_shot_button)
-        self.brief_button = QPushButton("Art Brief")
+        self.brief_button = QPushButton("制作意图")
         self.brief_button.setEnabled(False)
         self.brief_button.clicked.connect(self.edit_brief_requested.emit)
         button_row.addWidget(self.brief_button)
         layout.addLayout(button_row)
+        self.reference_brief_button = QPushButton("参考图视觉简报")
+        self.reference_brief_button.setEnabled(False)
+        self.reference_brief_button.clicked.connect(
+            self.edit_reference_brief_requested.emit
+        )
+        layout.addWidget(self.reference_brief_button)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
@@ -65,6 +72,7 @@ class ProjectNavigator(QWidget):
         self.project_label.setText("尚未打开项目")
         self.new_shot_button.setEnabled(False)
         self.brief_button.setEnabled(False)
+        self.reference_brief_button.setEnabled(False)
         self.tree.clear()
 
     def refresh(
@@ -78,7 +86,23 @@ class ProjectNavigator(QWidget):
             self.tree.clear()
             self.project_label.setText(store.manifest.name)
             self.new_shot_button.setEnabled(not store.read_only)
-            self.brief_button.setEnabled(not store.read_only)
+            self.brief_button.setEnabled(True)
+            active_shot = (
+                None
+                if active_shot_id is None
+                else next(
+                    (
+                        shot
+                        for shot in store.list_shots()
+                        if shot.id == active_shot_id
+                    ),
+                    None,
+                )
+            )
+            self.reference_brief_button.setEnabled(
+                active_shot is not None
+                and active_shot.reference_asset_id is not None
+            )
             root = QTreeWidgetItem([store.manifest.name])
             root.setData(0, ITEM_KIND_ROLE, "project")
             root.setData(0, ITEM_ID_ROLE, store.manifest.project_id)

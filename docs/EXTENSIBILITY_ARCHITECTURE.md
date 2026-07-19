@@ -73,10 +73,12 @@ analysis + storage public APIs
 缓存键至少由模块 ID、分析器 ID、分析器版本、规范化参数和所有输入哈希构成。
 随机算法的随机种子属于参数。`run()` 不产生 UI 或存储副作用。
 
-M1B.0 的首个注册分析器为：
+当前注册分析器为：
 
 ```text
 scenelens.visual_review/basic_image_measurements@1
+scenelens.visual_review/shared_oklab_palette@1
+scenelens.visual_review/three_value_luminance_comparison@1
 ```
 
 ## 5. 模块数据与迁移

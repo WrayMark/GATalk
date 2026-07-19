@@ -1,4 +1,4 @@
-"""Render a deterministic offscreen M1A project screenshot for visual QA."""
+"""Render a deterministic offscreen M1B.1 comparison screenshot for visual QA."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def _create_test_images(folder: Path) -> tuple[Path, Path]:
 
 
 def main() -> int:
-    output_path = Path(sys.argv[1] if len(sys.argv) > 1 else "m1a-smoke.png")
+    output_path = Path(sys.argv[1] if len(sys.argv) > 1 else "m1b1-smoke.png")
     app = create_application([])
     temp_folder = Path(tempfile.mkdtemp(prefix="scenelens-中文-"))
     reference_path, current_path = _create_test_images(temp_folder)
@@ -86,10 +86,11 @@ def main() -> int:
         ready = all(
             "色板采样" in window.analysis_widgets[role].sample_label.text()
             for role in ("reference", "current")
-        )
+        ) and window._shared_palette_result is not None
         if not ready:
             QTimer.singleShot(100, capture_when_ready)
             return
+        window.analysis_tabs.setCurrentIndex(2)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         window.grab().save(str(output_path))
         app.quit()

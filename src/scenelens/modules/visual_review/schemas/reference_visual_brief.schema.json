@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scenelens.local/schemas/reference-visual-brief-v1.json",
+  "title": "SceneLens Reference Visual Brief",
+  "type": "object",
+  "required": [
+    "format",
+    "format_version",
+    "module_id",
+    "asset_sha256",
+    "fields"
+  ],
+  "properties": {
+    "format": {
+      "const": "scenelens.reference_visual_brief"
+    },
+    "format_version": {
+      "const": 1
+    },
+    "module_id": {
+      "const": "scenelens.visual_review"
+    },
+    "asset_sha256": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$"
+    },
+    "analyzer_id": {
+      "type": ["string", "null"]
+    },
+    "analyzer_version": {
+      "type": ["string", "null"]
+    },
+    "analyzed_at": {
+      "type": ["string", "null"]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/field"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "field": {
+      "type": "object",
+      "required": [
+        "value",
+        "source",
+        "user_confirmed",
+        "updated_at"
+      ],
+      "properties": {
+        "value": true,
+        "source": {
+          "enum": [
+            "automatic_measurement",
+            "algorithm_inference",
+            "ai_analysis",
+            "user_input",
+            "user_revision"
+          ]
+        },
+        "confidence": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence": true,
+        "user_confirmed": {
+          "type": "boolean"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

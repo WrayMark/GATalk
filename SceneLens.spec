@@ -20,6 +20,18 @@ a = Analysis(
             ),
             'scenelens/modules/visual_review/config',
         ),
+        (
+            str(
+                project_root
+                / 'src'
+                / 'scenelens'
+                / 'modules'
+                / 'visual_review'
+                / 'schemas'
+                / 'reference_visual_brief.schema.json'
+            ),
+            'scenelens/modules/visual_review/schemas',
+        ),
     ],
     hiddenimports=[],
     hookspath=[],

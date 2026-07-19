@@ -475,9 +475,57 @@ def _insert_brief_field(
     )
 
 
+def _migration_3(connection: sqlite3.Connection, project_id: str, now: str) -> None:
+    del project_id
+    connection.execute(
+        """
+        CREATE TABLE visual_review_comparison_analyses (
+            id TEXT PRIMARY KEY,
+            shot_id TEXT NOT NULL REFERENCES shots(id) ON DELETE CASCADE,
+            version_id TEXT NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+            module_id TEXT NOT NULL,
+            analyzer_id TEXT NOT NULL,
+            analyzer_version TEXT NOT NULL,
+            reference_asset_id TEXT NOT NULL REFERENCES image_assets(id),
+            current_asset_id TEXT NOT NULL REFERENCES image_assets(id),
+            reference_sha256 TEXT NOT NULL,
+            current_sha256 TEXT NOT NULL,
+            parameters_json TEXT NOT NULL,
+            input_hashes_json TEXT NOT NULL,
+            cache_key TEXT NOT NULL UNIQUE,
+            result_json TEXT NOT NULL,
+            evidence_type TEXT NOT NULL CHECK (
+                evidence_type IN ('measurement', 'algorithm_inference')
+            ),
+            status TEXT NOT NULL DEFAULT 'complete' CHECK (
+                status IN ('complete', 'stale')
+            ),
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX visual_review_comparison_selection
+        ON visual_review_comparison_analyses(
+            shot_id, version_id, analyzer_id, status
+        )
+        """
+    )
+    connection.execute(
+        """
+        UPDATE module_schema_versions
+        SET schema_version = 2, updated_at = ?
+        WHERE module_id = 'scenelens.visual_review'
+        """,
+        (now,),
+    )
+
+
 MIGRATIONS: dict[int, tuple[str, Migration]] = {
     1: ("initial_m1a_schema", _migration_1),
     2: ("m1b_visual_review_module_schema", _migration_2),
+    3: ("m1b_comparison_analysis_cache", _migration_3),
 }
 
 

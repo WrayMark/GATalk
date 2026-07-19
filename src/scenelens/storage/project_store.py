@@ -54,6 +54,7 @@ from scenelens.storage.models import (
     BriefDocumentType,
     BriefFieldValue,
     CanvasState,
+    ComparisonAnalysisRecord,
     FieldSource,
     ImageAssetRecord,
     ProjectManifest,
@@ -516,6 +517,65 @@ class ProjectStore:
             self._touch_manifest()
         return changed
 
+    def save_brief_fields(
+        self,
+        document_id: str,
+        fields: dict[str, BriefFieldValue],
+    ) -> dict[str, bool]:
+        self._ensure_writable()
+        if any(not key.strip() for key in fields):
+            raise ProjectSaveError("Brief 字段键不能为空。")
+        for field in fields.values():
+            if field.confidence is not None and not 0.0 <= field.confidence <= 1.0:
+                raise ProjectSaveError("Brief 字段可信度必须在 0 到 1 之间。")
+        now = utc_now()
+        changes: dict[str, bool] = {}
+        with self._write_connection() as connection:
+            exists = connection.execute(
+                "SELECT id FROM visual_review_brief_documents WHERE id = ?",
+                (document_id,),
+            ).fetchone()
+            if exists is None:
+                raise ProjectSaveError("找不到要更新的 Brief 文档。")
+            for field_key, field in fields.items():
+                changes[field_key] = self._upsert_brief_field(
+                    connection,
+                    document_id,
+                    field_key.strip(),
+                    replace(field, updated_at=now),
+                )
+        if any(changes.values()):
+            self._touch_manifest()
+        return changes
+
+    def mark_reference_brief_analyzed(
+        self,
+        document_id: str,
+        *,
+        analyzer_id: str,
+        analyzer_version: str,
+        analyzed_at: str,
+    ) -> None:
+        self._ensure_writable()
+        with self._write_connection() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE visual_review_brief_documents
+                SET analyzer_id = ?, analyzer_version = ?, analyzed_at = ?,
+                    status = 'current', updated_at = ?
+                WHERE id = ? AND document_type = 'reference_visual'
+                """,
+                (
+                    analyzer_id,
+                    analyzer_version,
+                    analyzed_at,
+                    analyzed_at,
+                    document_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ProjectSaveError("找不到参考图视觉简报。")
+
     def create_shot(self, name: str) -> ShotRecord:
         self._ensure_writable()
         cleaned = name.strip()
@@ -633,6 +693,15 @@ class ProjectStore:
                     """,
                     (now, shot_id, asset.id),
                 )
+                connection.execute(
+                    """
+                    UPDATE visual_review_comparison_analyses
+                    SET status = 'stale'
+                    WHERE shot_id = ? AND reference_asset_id <> ?
+                      AND status = 'complete'
+                    """,
+                    (shot_id, asset.id),
+                )
                 self._ensure_brief_document(
                     connection,
                     BriefDocumentType.REFERENCE_VISUAL,
@@ -731,6 +800,162 @@ class ProjectStore:
         if not path.is_file():
             raise ProjectFormatError(f"项目资源缺失：{asset.original_filename}")
         return path
+
+    def save_comparison_analysis(
+        self,
+        shot_id: str,
+        version_id: str,
+        *,
+        module_id: str,
+        analyzer_id: str,
+        analyzer_version: str,
+        parameters: dict[str, Any],
+        result: dict[str, Any],
+        evidence_type: str,
+    ) -> ComparisonAnalysisRecord:
+        self._ensure_writable()
+        if evidence_type not in {"measurement", "algorithm_inference"}:
+            raise ProjectSaveError("对比分析来源类型无效。")
+        shot = self.get_shot(shot_id)
+        version = self.get_version(version_id)
+        if version.shot_id != shot_id or shot.reference_asset_id is None:
+            raise ProjectSaveError("对比分析需要同一 Shot 的参考图和截图版本。")
+        reference_asset = self.get_asset(shot.reference_asset_id)
+        current_asset = self.get_asset(version.asset_id)
+        input_hashes = {
+            "reference": reference_asset.sha256,
+            "current": current_asset.sha256,
+        }
+        key = cache_key_for(
+            {
+                "module_id": module_id,
+                "analyzer_id": analyzer_id,
+                "analyzer_version": analyzer_version,
+                "input_hashes": input_hashes,
+                "parameters": parameters,
+            }
+        )
+        existing = self.load_comparison_analysis(
+            shot_id,
+            version_id,
+            module_id=module_id,
+            analyzer_id=analyzer_id,
+            analyzer_version=analyzer_version,
+            parameters=parameters,
+        )
+        if existing is not None:
+            return existing
+        now = utc_now()
+        record_id = str(uuid.uuid4())
+        with self._write_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO visual_review_comparison_analyses(
+                    id, shot_id, version_id, module_id, analyzer_id,
+                    analyzer_version, reference_asset_id, current_asset_id,
+                    reference_sha256, current_sha256, parameters_json,
+                    input_hashes_json, cache_key, result_json, evidence_type,
+                    status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          'complete', ?)
+                """,
+                (
+                    record_id,
+                    shot_id,
+                    version_id,
+                    module_id,
+                    analyzer_id,
+                    analyzer_version,
+                    reference_asset.id,
+                    current_asset.id,
+                    reference_asset.sha256,
+                    current_asset.sha256,
+                    canonical_json(parameters),
+                    canonical_json(input_hashes),
+                    key,
+                    canonical_json(result),
+                    evidence_type,
+                    now,
+                ),
+            )
+        return ComparisonAnalysisRecord(
+            id=record_id,
+            shot_id=shot_id,
+            version_id=version_id,
+            module_id=module_id,
+            analyzer_id=analyzer_id,
+            analyzer_version=analyzer_version,
+            reference_asset_id=reference_asset.id,
+            current_asset_id=current_asset.id,
+            reference_sha256=reference_asset.sha256,
+            current_sha256=current_asset.sha256,
+            parameters=dict(parameters),
+            cache_key=key,
+            result=dict(result),
+            evidence_type=evidence_type,
+            status="complete",
+            created_at=now,
+        )
+
+    def load_comparison_analysis(
+        self,
+        shot_id: str,
+        version_id: str,
+        *,
+        module_id: str,
+        analyzer_id: str,
+        analyzer_version: str,
+        parameters: dict[str, Any],
+    ) -> ComparisonAnalysisRecord | None:
+        shot = self.get_shot(shot_id)
+        version = self.get_version(version_id)
+        if version.shot_id != shot_id or shot.reference_asset_id is None:
+            return None
+        reference_asset = self.get_asset(shot.reference_asset_id)
+        current_asset = self.get_asset(version.asset_id)
+        key = cache_key_for(
+            {
+                "module_id": module_id,
+                "analyzer_id": analyzer_id,
+                "analyzer_version": analyzer_version,
+                "input_hashes": {
+                    "reference": reference_asset.sha256,
+                    "current": current_asset.sha256,
+                },
+                "parameters": parameters,
+            }
+        )
+        with self._read_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM visual_review_comparison_analyses
+                WHERE cache_key = ? AND status = 'complete'
+                """,
+                (key,),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            return ComparisonAnalysisRecord(
+                id=str(row["id"]),
+                shot_id=str(row["shot_id"]),
+                version_id=str(row["version_id"]),
+                module_id=str(row["module_id"]),
+                analyzer_id=str(row["analyzer_id"]),
+                analyzer_version=str(row["analyzer_version"]),
+                reference_asset_id=str(row["reference_asset_id"]),
+                current_asset_id=str(row["current_asset_id"]),
+                reference_sha256=str(row["reference_sha256"]),
+                current_sha256=str(row["current_sha256"]),
+                parameters=json.loads(row["parameters_json"]),
+                cache_key=str(row["cache_key"]),
+                result=json.loads(row["result_json"]),
+                evidence_type=str(row["evidence_type"]),
+                status=str(row["status"]),
+                created_at=str(row["created_at"]),
+            )
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
 
     def get_workspace_state(self) -> WorkspaceState:
         with self._read_connection() as connection:

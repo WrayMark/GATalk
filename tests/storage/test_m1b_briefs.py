@@ -6,6 +6,7 @@ from pathlib import Path
 from PIL import Image
 
 from scenelens.storage.atomic import atomic_write_json
+from scenelens.storage.atomic import load_json
 from scenelens.storage.migrations import configure_connection
 from scenelens.storage.models import (
     MANIFEST_FORMAT,
@@ -144,4 +145,94 @@ def test_schema_one_migration_preserves_legacy_brief_without_guessing(
         "M1A 时间与天气（未拆分）：清晨薄雾"
     )
     assert fields["additional_notes"].evidence["original_value"] == "清晨薄雾"
-    assert len(list((root / "backups").glob("pre-migration_0001_to_0002_*"))) == 1
+    assert len(list((root / "backups").glob("pre-migration_0001_to_*"))) == 1
+
+
+def test_comparison_analysis_persists_identity_parameters_and_input_hashes(
+    tmp_path: Path,
+):
+    store = ProjectStore.create(tmp_path / "comparison.scenelens", "Comparison")
+    shot = store.create_shot("Shot")
+    reference_path = tmp_path / "reference.png"
+    current_path = tmp_path / "current.png"
+    _make_image(reference_path, (30, 50, 70))
+    _make_image(current_path, (90, 110, 130))
+    reference = store.import_reference(shot.id, reference_path)
+    version = store.add_version(shot.id, current_path)
+    parameters = {
+        "colour_count": 8,
+        "random_seed": 13579,
+        "max_samples_per_image": 60000,
+    }
+    result = {"colours": [{"hex": "#123456"}]}
+
+    stored = store.save_comparison_analysis(
+        shot.id,
+        version.id,
+        module_id="scenelens.visual_review",
+        analyzer_id="shared_oklab_palette",
+        analyzer_version="1",
+        parameters=parameters,
+        result=result,
+        evidence_type="algorithm_inference",
+    )
+    store.close()
+    reopened = ProjectStore.open(store.root)
+    restored = reopened.load_comparison_analysis(
+        shot.id,
+        version.id,
+        module_id="scenelens.visual_review",
+        analyzer_id="shared_oklab_palette",
+        analyzer_version="1",
+        parameters=parameters,
+    )
+
+    assert restored is not None
+    assert restored.id == stored.id
+    assert restored.reference_sha256 == reference.sha256
+    assert restored.current_sha256 == reopened.get_asset(version.asset_id).sha256
+    assert restored.parameters == parameters
+    assert restored.result == result
+
+
+def test_schema_two_project_migrates_to_comparison_cache_with_backup(
+    tmp_path: Path,
+):
+    store = ProjectStore.create(tmp_path / "m1b0.scenelens", "M1B.0")
+    root = store.root
+    store.close()
+    with sqlite3.connect(root / "project.db") as connection:
+        connection.execute("DROP INDEX visual_review_comparison_selection")
+        connection.execute("DROP TABLE visual_review_comparison_analyses")
+        connection.execute(
+            """
+            UPDATE module_schema_versions SET schema_version = 1
+            WHERE module_id = 'scenelens.visual_review'
+            """
+        )
+        connection.execute("DELETE FROM schema_migrations WHERE version = 3")
+        connection.execute("PRAGMA user_version = 2")
+        connection.commit()
+    manifest_data = load_json(root / "project.json")
+    manifest_data["database"]["schema_version"] = 2
+    atomic_write_json(root / "project.json", manifest_data)
+
+    migrated = ProjectStore.open(root)
+
+    with sqlite3.connect(migrated.database_path) as connection:
+        table = connection.execute(
+            """
+            SELECT name FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'visual_review_comparison_analyses'
+            """
+        ).fetchone()
+        module_version = connection.execute(
+            """
+            SELECT schema_version FROM module_schema_versions
+            WHERE module_id = 'scenelens.visual_review'
+            """
+        ).fetchone()[0]
+    assert table is not None
+    assert module_version == 2
+    assert len(list((root / "backups").glob("pre-migration_0002_to_0003_*"))) == 1

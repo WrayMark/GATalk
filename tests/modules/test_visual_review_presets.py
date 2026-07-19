@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from importlib.resources import files
+
 from scenelens.modules.visual_review.presets import load_visual_review_presets
 
 
@@ -27,3 +30,17 @@ def test_preset_catalog_does_not_translate_or_reject_unknown_user_values():
 
     assert user_value not in known_labels
     assert catalog.field("weather").allow_custom is True
+
+
+def test_reference_visual_brief_exchange_schema_is_packaged():
+    resource = files(
+        "scenelens.modules.visual_review.schemas"
+    ).joinpath("reference_visual_brief.schema.json")
+    schema = json.loads(resource.read_text(encoding="utf-8"))
+
+    assert schema["properties"]["format"]["const"] == (
+        "scenelens.reference_visual_brief"
+    )
+    assert "ai_analysis" in schema["$defs"]["field"]["properties"]["source"][
+        "enum"
+    ]

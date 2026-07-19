@@ -4,12 +4,18 @@ from typing import Any
 
 import numpy as np
 
-from scenelens.analysis.models import ImageMeasurements
+from scenelens.analysis.luminance import three_value_ratios
+from scenelens.analysis.models import (
+    ImageMeasurements,
+    LuminanceComparison,
+    SharedPaletteResult,
+)
 from scenelens.analysis.palette import (
     DEFAULT_MAX_SAMPLE_PIXELS,
     DEFAULT_RANDOM_SEED,
 )
 from scenelens.analysis.pipeline import measure_image
+from scenelens.analysis.shared_palette import extract_shared_oklab_palette
 from scenelens.core.analyzers import (
     AnalyzerDescriptor,
     AnalyzerRequest,
@@ -19,6 +25,8 @@ from scenelens.modules.visual_review import MODULE_ID
 
 
 BASIC_MEASUREMENTS_ANALYZER_ID = "basic_image_measurements"
+SHARED_PALETTE_ANALYZER_ID = "shared_oklab_palette"
+LUMINANCE_COMPARISON_ANALYZER_ID = "three_value_luminance_comparison"
 
 
 class BasicImageMeasurementsAnalyzer:
@@ -91,6 +99,146 @@ class BasicImageMeasurementsAnalyzer:
             palette_colours=int(parameters["palette_colours"]),
             palette_seed=int(parameters["palette_seed"]),
             palette_max_samples=int(parameters["palette_max_samples"]),
+        )
+
+    def cache_key(self, request: AnalyzerRequest) -> str:
+        return deterministic_analyzer_cache_key(self.descriptor, request)
+
+
+class SharedPaletteAnalyzer:
+    descriptor = AnalyzerDescriptor(
+        module_id=MODULE_ID,
+        analyzer_id=SHARED_PALETTE_ANALYZER_ID,
+        display_name="共享 Oklab 色板",
+        version="1",
+        supported_inputs=(
+            "reference.numpy.rgb.uint8",
+            "current.numpy.rgb.uint8",
+        ),
+        parameter_schema={
+            "type": "object",
+            "required": [
+                "colour_count",
+                "random_seed",
+                "max_samples_per_image",
+                "colour_space",
+                "sampling",
+            ],
+            "properties": {
+                "colour_count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 32,
+                },
+                "random_seed": {"type": "integer"},
+                "max_samples_per_image": {"type": "integer", "minimum": 1},
+                "colour_space": {"const": "Oklab"},
+                "sampling": {"const": "equal-bounded-spatial-v1"},
+            },
+        },
+        output_schema={
+            "type": "object",
+            "required": [
+                "colours",
+                "reference_sample_count",
+                "current_sample_count",
+            ],
+        },
+    )
+
+    @staticmethod
+    def default_parameters(
+        colour_count: int = 8,
+        random_seed: int = DEFAULT_RANDOM_SEED,
+        max_samples_per_image: int = DEFAULT_MAX_SAMPLE_PIXELS,
+    ) -> dict[str, Any]:
+        return {
+            "colour_count": int(colour_count),
+            "random_seed": int(random_seed),
+            "max_samples_per_image": int(max_samples_per_image),
+            "colour_space": "Oklab",
+            "sampling": "equal-bounded-spatial-v1",
+        }
+
+    def run(self, request: AnalyzerRequest) -> SharedPaletteResult:
+        parameters = request.parameters
+        return extract_shared_oklab_palette(
+            np.asarray(request.inputs["reference_rgb"], dtype=np.uint8),
+            np.asarray(request.inputs["current_rgb"], dtype=np.uint8),
+            colour_count=int(parameters["colour_count"]),
+            random_seed=int(parameters["random_seed"]),
+            max_samples_per_image=int(parameters["max_samples_per_image"]),
+        )
+
+    def cache_key(self, request: AnalyzerRequest) -> str:
+        return deterministic_analyzer_cache_key(self.descriptor, request)
+
+
+class LuminanceComparisonAnalyzer:
+    descriptor = AnalyzerDescriptor(
+        module_id=MODULE_ID,
+        analyzer_id=LUMINANCE_COMPARISON_ANALYZER_ID,
+        display_name="三阶明度比例比较",
+        version="1",
+        supported_inputs=(
+            "reference.numpy.rgb.uint8",
+            "current.numpy.rgb.uint8",
+        ),
+        parameter_schema={
+            "type": "object",
+            "required": ["low_threshold", "high_threshold", "luminance"],
+            "properties": {
+                "low_threshold": {
+                    "type": "number",
+                    "exclusiveMinimum": 0.0,
+                },
+                "high_threshold": {
+                    "type": "number",
+                    "exclusiveMaximum": 1.0,
+                },
+                "luminance": {
+                    "const": "linear-srgb-rec709-to-display-srgb-v1"
+                },
+            },
+        },
+        output_schema={
+            "type": "object",
+            "required": [
+                "low_threshold",
+                "high_threshold",
+                "reference_ratios",
+                "current_ratios",
+            ],
+        },
+    )
+
+    @staticmethod
+    def default_parameters(
+        low_threshold: float = 1.0 / 3.0,
+        high_threshold: float = 2.0 / 3.0,
+    ) -> dict[str, Any]:
+        return {
+            "low_threshold": float(low_threshold),
+            "high_threshold": float(high_threshold),
+            "luminance": "linear-srgb-rec709-to-display-srgb-v1",
+        }
+
+    def run(self, request: AnalyzerRequest) -> LuminanceComparison:
+        low = float(request.parameters["low_threshold"])
+        high = float(request.parameters["high_threshold"])
+        return LuminanceComparison(
+            low_threshold=low,
+            high_threshold=high,
+            reference_ratios=three_value_ratios(
+                np.asarray(request.inputs["reference_rgb"], dtype=np.uint8),
+                low,
+                high,
+            ),
+            current_ratios=three_value_ratios(
+                np.asarray(request.inputs["current_rgb"], dtype=np.uint8),
+                low,
+                high,
+            ),
         )
 
     def cache_key(self, request: AnalyzerRequest) -> str:

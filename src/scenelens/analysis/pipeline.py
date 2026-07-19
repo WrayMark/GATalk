@@ -6,7 +6,7 @@ from scenelens.analysis.luminance import (
     gaussian_blur,
     grayscale_rgb,
     luminance_histogram,
-    quantize_luminance,
+    quantize_luminance_with_thresholds,
 )
 from scenelens.analysis.models import ImageMeasurements, RenderSettings, UInt8Image
 from scenelens.analysis.palette import extract_oklab_palette
@@ -46,9 +46,15 @@ def render_image(rgb: UInt8Image, settings: RenderSettings) -> UInt8Image:
     elif settings.mode == "grayscale":
         result = grayscale_rgb(working)
     elif settings.mode == "three_value":
-        result = quantize_luminance(working, 3)
+        result = quantize_luminance_with_thresholds(
+            working,
+            settings.three_thresholds,
+        )
     elif settings.mode == "five_value":
-        result = quantize_luminance(working, 5)
+        result = quantize_luminance_with_thresholds(
+            working,
+            settings.five_thresholds,
+        )
     else:
         raise ValueError(f"Unsupported render mode: {settings.mode}")
     return np.ascontiguousarray(result)

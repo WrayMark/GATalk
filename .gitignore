@@ -6,6 +6,7 @@ __pycache__/
 htmlcov/
 build/
 dist/
+*-smoke.png
 *.egg-info/
 *.log
 .dependencies-ok

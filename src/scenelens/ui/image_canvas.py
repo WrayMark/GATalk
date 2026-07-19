@@ -40,6 +40,13 @@ class ImageCanvas(QGraphicsView):
             Qt.TransformationMode.SmoothTransformation
         )
         self._scene.addItem(self._pixmap_item)
+        self._overlay_item = QGraphicsPixmapItem()
+        self._overlay_item.setTransformationMode(
+            Qt.TransformationMode.SmoothTransformation
+        )
+        self._overlay_item.setZValue(1.0)
+        self._overlay_item.setVisible(False)
+        self._scene.addItem(self._overlay_item)
 
         self._placeholder = QGraphicsTextItem(placeholder)
         self._placeholder.setDefaultTextColor(QColor("#9AA0A6"))
@@ -70,6 +77,10 @@ class ImageCanvas(QGraphicsView):
     def has_image(self) -> bool:
         return self._has_image
 
+    @property
+    def has_overlay(self) -> bool:
+        return self._overlay_item.isVisible()
+
     def set_image(self, image: QImage, reset_view: bool = False) -> None:
         previous_size = self._pixmap_item.pixmap().size()
         pixmap = QPixmap.fromImage(image)
@@ -87,6 +98,7 @@ class ImageCanvas(QGraphicsView):
     def clear_image(self) -> None:
         self._pixmap_item.setPixmap(QPixmap())
         self._pixmap_item.setVisible(False)
+        self.clear_overlay()
         self._placeholder.setVisible(True)
         self._scene.setSceneRect(QRectF(0.0, 0.0, 640.0, 480.0))
         self._has_image = False
@@ -94,6 +106,19 @@ class ImageCanvas(QGraphicsView):
         self._center_normalized = QPointF(0.5, 0.5)
         self.resetTransform()
         self._layout_placeholder()
+
+    def set_overlay(self, image: QImage) -> None:
+        if not self._has_image:
+            return
+        pixmap = QPixmap.fromImage(image)
+        if pixmap.size() != self._pixmap_item.pixmap().size():
+            raise ValueError("overlay size must match the current image")
+        self._overlay_item.setPixmap(pixmap)
+        self._overlay_item.setVisible(True)
+
+    def clear_overlay(self) -> None:
+        self._overlay_item.setPixmap(QPixmap())
+        self._overlay_item.setVisible(False)
 
     def reset_view(self) -> None:
         if not self._has_image:
@@ -250,4 +275,3 @@ class ImageCanvas(QGraphicsView):
             (scene_width - bounds.width()) / 2.0,
             (scene_height - bounds.height()) / 2.0,
         )
-
