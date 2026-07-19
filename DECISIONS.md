@@ -322,3 +322,17 @@
   为真实灰模。
 - 后果：SceneLens 使用严格 Schema、用户确认任务、证据校验、质量门禁和
   `AIConceptPreview` 隔离实现同类能力。
+
+## D-037 schema v5 共享工作台实体
+
+- 状态：Accepted
+- 日期：2026-07-19
+- 决策：共享核心表示 Project、Asset、Shot、Version、Region、Evidence、
+  Annotation、Task、DerivedArtifact、AIRun、SourceDocument、ReviewProfile
+  和 QualityGate。schema v5 新增对应的 `workbench_*` 持久化表。
+- 决策：模块私有表继续使用模块前缀；共享实体保留 `module_id`。项目存储通过
+  `module_schema_versions` 判断模块是否已安装，不在外壳中硬编码业务模块列表。
+- 决策：`AIRun` 只记录 provider/model ID、请求哈希、数据清单、状态和脱敏
+  结果；输入清单拒绝 API Key、Authorization 和访问令牌字段。
+- 后果：v4 → v5 迁移前自动备份。M2 后续能力优先复用共享实体，只有出现真实
+  模块私有关系时才提升 `scenelens.visual_review` 模块 schema。

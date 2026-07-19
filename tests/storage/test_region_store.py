@@ -300,6 +300,17 @@ def test_schema_three_migrates_to_four_with_pre_migration_backup(tmp_path: Path)
     root = project.root
     project.close()
     with sqlite3.connect(root / "project.db") as connection:
+        for table in (
+            "workbench_quality_gates",
+            "workbench_review_profiles",
+            "workbench_source_documents",
+            "workbench_ai_runs",
+            "workbench_derived_artifacts",
+            "workbench_tasks",
+            "workbench_annotations",
+            "workbench_evidence",
+        ):
+            connection.execute(f"DROP TABLE {table}")
         connection.execute("DROP INDEX visual_review_region_analysis_pair")
         connection.execute("DROP TABLE visual_review_region_analyses")
         connection.execute("DROP INDEX visual_review_region_pairs_shot")
@@ -313,7 +324,9 @@ def test_schema_three_migrates_to_four_with_pre_migration_backup(tmp_path: Path)
             """,
             (MODULE_ID,),
         )
-        connection.execute("DELETE FROM schema_migrations WHERE version = 4")
+        connection.execute(
+            "DELETE FROM schema_migrations WHERE version IN (4, 5)"
+        )
         connection.execute("PRAGMA user_version = 3")
         connection.commit()
     manifest = load_json(root / "project.json")
@@ -345,5 +358,5 @@ def test_schema_three_migrates_to_four_with_pre_migration_backup(tmp_path: Path)
         "visual_review_region_analyses",
     }
     assert module_version == 3
-    assert len(list((root / "backups").glob("pre-migration_0003_to_0004_*"))) == 1
+    assert len(list((root / "backups").glob("pre-migration_0003_to_0005_*"))) == 1
     migrated.close()

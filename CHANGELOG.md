@@ -5,6 +5,10 @@
 ### Added
 
 - 增加 AI 主美 Pro 与游戏场景灯光分析竞品审查，明确许可证和独立实现边界。
+- 增加 schema v5 的 Evidence、Annotation、Task、DerivedArtifact、AIRun、
+  SourceDocument、ReviewProfile 和 QualityGate 共享持久化。
+- 增加受信任内置 Workspace、Reviewer 和 Provider 的显式注册机制及示例模块
+  契约测试。
 - 增加同项目跨进程单写者锁、只读打开和异常退出陈旧锁恢复。
 - 增加模块化分析器契约、注册表和 `scenelens.visual_review` 模块边界。
 - 增加制作意图与参考图视觉简报的字段来源、可信度、依据和用户确认数据模型。
@@ -26,6 +30,7 @@
 ### Changed
 
 - M1B.2 已通过用户真实项目人工试用并冻结。
+- 项目版本进入 `0.3.0a0`；模块连接改由数据库模块注册记录校验。
 - 分析记录开始保存 `module_id`、`analyzer_id` 和分析器版本。
 - M1A 的 Art Brief 在 M1B 中文产品语义中更名为“制作意图”。
 - 项目数据库升级为 schema v3，模块数据版本升级为 2。
@@ -47,6 +52,8 @@
 - M1B.2 候选版完整回归 70 项通过；4K 双区域基准约 0.98 秒。
 - Windows `onedir` 约 253.9 MiB，打包烟测退出码为 0，并实际覆盖区域
   创建、配对、分析保存和恢复。
+- M2 schema v5 基础切片完整回归 75 项通过，包含 v2/v3/v4 迁移备份和共享
+  实体离线往返。
 
 ## 0.1.0 — 2026-07-19
 

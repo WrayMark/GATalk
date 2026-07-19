@@ -1707,9 +1707,8 @@ class ProjectStore:
         self,
         module_id: str,
     ) -> Iterator[sqlite3.Connection]:
-        if module_id != VISUAL_REVIEW_MODULE_ID:
-            raise ProjectFormatError(f"未知项目模块：{module_id}")
         with self._read_connection() as connection:
+            self._require_registered_module(connection, module_id)
             yield connection
 
     @contextmanager
@@ -1717,10 +1716,36 @@ class ProjectStore:
         self,
         module_id: str,
     ) -> Iterator[sqlite3.Connection]:
-        if module_id != VISUAL_REVIEW_MODULE_ID:
-            raise ProjectSaveError(f"未知项目模块：{module_id}")
+        with self._write_connection() as connection:
+            try:
+                self._require_registered_module(connection, module_id)
+            except ProjectFormatError as exc:
+                raise ProjectSaveError(str(exc)) from exc
+            yield connection
+
+    @contextmanager
+    def workspace_read_connection(self) -> Iterator[sqlite3.Connection]:
+        with self._read_connection() as connection:
+            yield connection
+
+    @contextmanager
+    def workspace_write_connection(self) -> Iterator[sqlite3.Connection]:
         with self._write_connection() as connection:
             yield connection
+
+    @staticmethod
+    def _require_registered_module(
+        connection: sqlite3.Connection,
+        module_id: str,
+    ) -> None:
+        row = connection.execute(
+            """
+            SELECT 1 FROM module_schema_versions WHERE module_id = ?
+            """,
+            (module_id,),
+        ).fetchone()
+        if row is None:
+            raise ProjectFormatError(f"项目未注册模块：{module_id}")
 
     @contextmanager
     def _write_connection(self) -> Iterator[sqlite3.Connection]:

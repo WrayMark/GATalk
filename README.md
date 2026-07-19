@@ -1,11 +1,11 @@
 # SceneLens
 
 SceneLens 是一款面向游戏场景美术、UE 地编和环境艺术作品的 Windows
-本地视觉审阅工具。它将参考目标、当前截图、可复现分析、诊断、修改任务和
-版本复查串成一条可追踪的工作流。
+本地游戏场景美术控制工作台。它将制作目标、参考图、当前截图、证据测量、
+AI 专项审阅、修改任务、优化预演、新版本复查和质量门禁串成可追踪的工作流。
 
-M0.5、M1A 和 M1B.1 已于 2026-07-19 通过真实项目人工验收并冻结。当前
-`0.2.0a2` 是 **M1B.2 成对区域分析候选版**，等待真实项目人工试用。
+M0.5、M1A、M1B.1 和 M1B.2 已于 2026-07-19 通过真实项目人工验收并冻结。
+当前 `0.3.0a0` 开始开发 **M2 AI 主美控制台与灯光审片台**。
 
 ## 环境要求
 
@@ -78,4 +78,6 @@ M0.5、M1A 和 M1B.1 已于 2026-07-19 通过真实项目人工验收并冻结�
 - [M1A_VALIDATION.md](M1A_VALIDATION.md)：M1A 工程验证与人工试用步骤
 - [M1B.2_VALIDATION.md](M1B.2_VALIDATION.md)：M1B.2 自动验证与人工试用步骤
 - [docs/M1_DATA_MODEL.md](docs/M1_DATA_MODEL.md)：M1 数据结构与迁移方案
+- [docs/M2_DATA_MODEL.md](docs/M2_DATA_MODEL.md)：M2 共享核心与 schema v5
+- [docs/COMPETITOR_REVIEW_M2.md](docs/COMPETITOR_REVIEW_M2.md)：M2 竞品审查
 - [docs/M1B2_REGION_DATA_MODEL.md](docs/M1B2_REGION_DATA_MODEL.md)：区域 schema 与 Version 语义

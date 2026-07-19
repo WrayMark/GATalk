@@ -617,11 +617,200 @@ def _migration_4(connection: sqlite3.Connection, project_id: str, now: str) -> N
     )
 
 
+def _migration_5(connection: sqlite3.Connection, project_id: str, now: str) -> None:
+    del project_id, now
+    statements = (
+        """
+        CREATE TABLE workbench_evidence (
+            id TEXT PRIMARY KEY,
+            module_id TEXT NOT NULL,
+            shot_id TEXT REFERENCES shots(id) ON DELETE CASCADE,
+            version_id TEXT REFERENCES versions(id) ON DELETE CASCADE,
+            evidence_type TEXT NOT NULL CHECK (
+                evidence_type IN (
+                    'measurement',
+                    'algorithm_inference',
+                    'art_judgment'
+                )
+            ),
+            source TEXT NOT NULL CHECK (
+                source IN (
+                    'local_analyzer',
+                    'ai_provider',
+                    'user',
+                    'import'
+                )
+            ),
+            subject_type TEXT NOT NULL,
+            subject_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (
+                status IN ('current', 'stale', 'deleted')
+            ),
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX workbench_evidence_subject
+        ON workbench_evidence(
+            module_id, subject_type, subject_id, status, created_at
+        )
+        """,
+        """
+        CREATE TABLE workbench_annotations (
+            id TEXT PRIMARY KEY,
+            module_id TEXT NOT NULL,
+            shot_id TEXT REFERENCES shots(id) ON DELETE CASCADE,
+            version_id TEXT REFERENCES versions(id) ON DELETE CASCADE,
+            evidence_id TEXT REFERENCES workbench_evidence(id)
+                ON DELETE SET NULL,
+            annotation_type TEXT NOT NULL,
+            geometry_json TEXT NOT NULL,
+            label TEXT NOT NULL,
+            style_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX workbench_annotations_selection
+        ON workbench_annotations(module_id, shot_id, version_id, created_at)
+        """,
+        """
+        CREATE TABLE workbench_tasks (
+            id TEXT PRIMARY KEY,
+            module_id TEXT NOT NULL,
+            shot_id TEXT REFERENCES shots(id) ON DELETE CASCADE,
+            version_id TEXT REFERENCES versions(id) ON DELETE SET NULL,
+            source_evidence_id TEXT REFERENCES workbench_evidence(id)
+                ON DELETE SET NULL,
+            source_annotation_id TEXT REFERENCES workbench_annotations(id)
+                ON DELETE SET NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            priority TEXT NOT NULL CHECK (
+                priority IN ('critical', 'high', 'medium', 'low')
+            ),
+            status TEXT NOT NULL CHECK (
+                status IN ('open', 'in_progress', 'done', 'dismissed')
+            ),
+            verification_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX workbench_tasks_selection
+        ON workbench_tasks(module_id, shot_id, version_id, status, priority)
+        """,
+        """
+        CREATE TABLE workbench_derived_artifacts (
+            id TEXT PRIMARY KEY,
+            module_id TEXT NOT NULL,
+            shot_id TEXT REFERENCES shots(id) ON DELETE CASCADE,
+            version_id TEXT REFERENCES versions(id) ON DELETE CASCADE,
+            artifact_type TEXT NOT NULL,
+            relative_path TEXT NOT NULL,
+            input_hashes_json TEXT NOT NULL,
+            parameters_json TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (
+                status IN ('current', 'stale', 'deleted')
+            ),
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX workbench_artifacts_selection
+        ON workbench_derived_artifacts(
+            module_id, shot_id, version_id, artifact_type, status
+        )
+        """,
+        """
+        CREATE TABLE workbench_ai_runs (
+            id TEXT PRIMARY KEY,
+            module_id TEXT NOT NULL,
+            reviewer_id TEXT NOT NULL,
+            provider_id TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            capability TEXT NOT NULL,
+            request_hash TEXT NOT NULL,
+            input_manifest_json TEXT NOT NULL,
+            output_json TEXT,
+            status TEXT NOT NULL CHECK (
+                status IN (
+                    'pending', 'running', 'complete', 'failed', 'cancelled'
+                )
+            ),
+            error_code TEXT,
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT
+        )
+        """,
+        """
+        CREATE INDEX workbench_ai_runs_selection
+        ON workbench_ai_runs(
+            module_id, reviewer_id, provider_id, status, created_at
+        )
+        """,
+        """
+        CREATE TABLE workbench_source_documents (
+            id TEXT PRIMARY KEY,
+            module_id TEXT NOT NULL,
+            document_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            source_uri TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            metadata_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE workbench_review_profiles (
+            id TEXT PRIMARY KEY,
+            module_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            reviewer_ids_json TEXT NOT NULL,
+            settings_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE workbench_quality_gates (
+            id TEXT PRIMARY KEY,
+            profile_id TEXT NOT NULL
+                REFERENCES workbench_review_profiles(id) ON DELETE CASCADE,
+            dimension_id TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            metric_key TEXT NOT NULL,
+            operator TEXT NOT NULL,
+            threshold_json TEXT NOT NULL,
+            weight REAL NOT NULL CHECK (weight >= 0.0),
+            state TEXT NOT NULL CHECK (
+                state IN (
+                    'not_evaluated',
+                    'pass',
+                    'warning',
+                    'fail',
+                    'insufficient_evidence'
+                )
+            ),
+            updated_at TEXT NOT NULL,
+            UNIQUE (profile_id, dimension_id)
+        )
+        """,
+    )
+    for statement in statements:
+        connection.execute(statement)
+
+
 MIGRATIONS: dict[int, tuple[str, Migration]] = {
     1: ("initial_m1a_schema", _migration_1),
     2: ("m1b_visual_review_module_schema", _migration_2),
     3: ("m1b_comparison_analysis_cache", _migration_3),
     4: ("m1b_paired_regions", _migration_4),
+    5: ("m2_workbench_core_entities", _migration_5),
 }
 
 

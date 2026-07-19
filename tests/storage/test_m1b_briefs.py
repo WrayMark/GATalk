@@ -202,6 +202,17 @@ def test_schema_two_project_migrates_to_comparison_cache_with_backup(
     root = store.root
     store.close()
     with sqlite3.connect(root / "project.db") as connection:
+        for table in (
+            "workbench_quality_gates",
+            "workbench_review_profiles",
+            "workbench_source_documents",
+            "workbench_ai_runs",
+            "workbench_derived_artifacts",
+            "workbench_tasks",
+            "workbench_annotations",
+            "workbench_evidence",
+        ):
+            connection.execute(f"DROP TABLE {table}")
         connection.execute("DROP INDEX visual_review_region_analysis_pair")
         connection.execute("DROP TABLE visual_review_region_analyses")
         connection.execute("DROP INDEX visual_review_region_pairs_shot")
@@ -217,7 +228,7 @@ def test_schema_two_project_migrates_to_comparison_cache_with_backup(
             """
         )
         connection.execute(
-            "DELETE FROM schema_migrations WHERE version IN (3, 4)"
+            "DELETE FROM schema_migrations WHERE version IN (3, 4, 5)"
         )
         connection.execute("PRAGMA user_version = 2")
         connection.commit()
@@ -243,4 +254,4 @@ def test_schema_two_project_migrates_to_comparison_cache_with_backup(
         ).fetchone()[0]
     assert table is not None
     assert module_version == 3
-    assert len(list((root / "backups").glob("pre-migration_0002_to_0004_*"))) == 1
+    assert len(list((root / "backups").glob("pre-migration_0002_to_0005_*"))) == 1
