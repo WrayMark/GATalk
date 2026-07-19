@@ -1617,11 +1617,26 @@ class MainWindow(QMainWindow):
             if isinstance(raw_weights, dict)
             else self.optimization_panel.match_weights()
         )
-        paired = (
-            (self._active_region_analysis[1],)
-            if self._active_region_analysis is not None
-            else ()
-        )
+        paired_values: list[PairedRegionAnalysis] = []
+        region_store = self.region_controller.store
+        if region_store is not None:
+            for view in self.region_controller.pair_views():
+                try:
+                    record = region_store.latest_analysis(view.pair.id)
+                    if record is not None:
+                        paired_values.append(
+                            paired_region_from_payload(record.result)
+                        )
+                except (StorageError, KeyError, TypeError, ValueError):
+                    LOGGER.exception(
+                        "Failed to read paired analysis for match profile"
+                    )
+        if (
+            not paired_values
+            and self._active_region_analysis is not None
+        ):
+            paired_values.append(self._active_region_analysis[1])
+        paired = tuple(paired_values)
         reference = self._images["reference"].rgb
         current = self._images["current"].rgb
         shared = self._shared_palette_result

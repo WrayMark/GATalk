@@ -6,6 +6,7 @@ from PIL import Image
 from PySide6.QtWidgets import QDialog, QMessageBox
 
 from scenelens.modules.visual_review import MODULE_ID
+from scenelens.storage.project_store import ProjectStore
 from scenelens.storage.recent_projects import RecentProjects
 from scenelens.storage.workbench_store import WorkbenchStore
 from scenelens.ui.main_window import MainWindow
@@ -100,3 +101,20 @@ def test_mock_concept_preview_is_saved_without_creating_version(
     )
     assert len(tasks) == 1
     assert tasks[0].verification["requires_real_ue_version"] is True
+    assert window.close()
+
+    reopened = ProjectStore.open(root)
+    try:
+        restored = WorkbenchStore(
+            reopened
+        ).list_ai_concept_previews(
+            MODULE_ID,
+            shot_id=previews[0].shot_id,
+            source_version_id=previews[0].source_version_id,
+        )
+        assert restored == previews
+        assert len(
+            reopened.list_versions(previews[0].shot_id)
+        ) == len(versions_before)
+    finally:
+        reopened.close()
