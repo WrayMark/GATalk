@@ -10,8 +10,11 @@
 - 完整自动化测试共 145 项，全部通过；默认测试没有发起网络请求，也未消耗
   API 额度。
 - 源码 `--smoke-test` 退出码为 0。
-- PyInstaller `onedir` 构建和打包内 `SceneLens.exe --smoke-test` 结果在最终
-  构建后补记。
+- PyInstaller `onedir` 构建成功；打包内 `SceneLens.exe --smoke-test`
+  退出码为 0。
+- 包内烟测实际覆盖 M3 匹配画像、安全调色、结构漂移、图像编辑 Mock、
+  `AIConceptPreview` 持久化以及真实 Version 数量不变。
+- 候选目录总大小为 266,472,228 bytes（约 254.1 MiB），共 222 个文件。
 - 候选程序入口：`dist/SceneLens/SceneLens.exe`。
 
 ## M3 能力覆盖
