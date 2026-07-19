@@ -20,7 +20,7 @@ class MockProvider:
     def __init__(
         self,
         output: Mapping[str, Any] | None = None,
-        image_bytes: bytes = b"mock-image",
+        image_bytes: bytes | None = None,
     ) -> None:
         self.manifest = ProviderManifest(
             provider_id="mock",
@@ -42,7 +42,9 @@ class MockProvider:
             mainland_priority=0,
         )
         self.output = None if output is None else dict(output)
-        self.image_bytes = bytes(image_bytes)
+        self.image_bytes = (
+            None if image_bytes is None else bytes(image_bytes)
+        )
 
     def review(
         self,
@@ -108,7 +110,11 @@ class MockProvider:
                 request.model_id,
             ),
             media_type="image/png",
-            image_bytes=self.image_bytes,
+            image_bytes=(
+                self.image_bytes
+                if self.image_bytes is not None
+                else request.images[-1].data
+            ),
             metadata={"change_budget": request.change_budget},
         )
 

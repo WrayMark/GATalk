@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
+from io import BytesIO
 import logging
 import hashlib
 import uuid
-from dataclasses import replace
 from functools import partial
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
 from PySide6.QtCore import QThread, QThreadPool, QTimer, Qt
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
@@ -32,6 +34,8 @@ from PySide6.QtWidgets import (
 )
 
 from scenelens.analysis.luminance import quantize_three_value_with_thresholds
+from scenelens.analysis.grading import SafeGradeRecipe, apply_safe_grade
+from scenelens.analysis.match_profile import MatchProfile, build_match_profile
 from scenelens.analysis.models import (
     ImageMeasurements,
     LuminanceComparison,
@@ -43,12 +47,17 @@ from scenelens.analysis.region_analysis import (
     PairedRegionAnalysis,
     render_region_palette_source_mask,
 )
+from scenelens.analysis.preview_validation import (
+    PreviewValidation,
+    validate_concept_preview,
+)
 from scenelens.analysis.shared_palette import (
     palette_membership_mask,
     render_palette_source_mask,
 )
 from scenelens.core.analyzers import AnalyzerRequest
 from scenelens.core.domain import (
+    AIConceptPreview,
     AIRun,
     AIRunStatus,
     Annotation,
@@ -82,6 +91,15 @@ from scenelens.modules.visual_review.comparison_results import (
     shared_palette_to_payload,
 )
 from scenelens.modules.visual_review.presets import load_visual_review_presets
+from scenelens.modules.visual_review.grading_io import (
+    write_cube_lut,
+    write_grade_png,
+    write_grade_recipe,
+)
+from scenelens.modules.visual_review.preview_instructions import (
+    PreviewProtectionControls,
+    build_structured_preview_instruction,
+)
 from scenelens.modules.visual_review.region_results import (
     paired_region_from_payload,
     paired_region_to_payload,
@@ -112,6 +130,10 @@ from scenelens.modules.visual_review.ui.ai_review_panel import (
 from scenelens.modules.visual_review.ui.region_controller import (
     RegionController,
 )
+from scenelens.modules.visual_review.ui.optimization_lab import (
+    ConceptPreviewOptions,
+    OptimizationLabPanel,
+)
 from scenelens.modules.visual_review.ui.region_widgets import RegionPairPanel
 from scenelens.storage.errors import ProjectLockedError, StorageError
 from scenelens.storage.atomic import canonical_json
@@ -132,6 +154,8 @@ from scenelens.storage.recent_projects import RecentProjects
 from scenelens.storage.workbench_store import WorkbenchStore
 from scenelens.providers.contracts import (
     CancellationToken,
+    ImageEditRequest,
+    ImageEditResponse,
     ProviderCapability,
     disclosure_preview,
 )
@@ -160,6 +184,13 @@ ROLE_LABELS = {"reference": "参考图", "current": "当前截图"}
 INVALID_WINDOWS_NAME_CHARS = set('<>:"/\\|?*')
 
 
+@dataclass(frozen=True)
+class ConceptPreviewOutcome:
+    entity: AIConceptPreview
+    rgb: np.ndarray
+    validation: PreviewValidation
+
+
 class ImagePane(QWidget):
     def __init__(self, title: str, placeholder: str, parent=None) -> None:
         super().__init__(parent)
@@ -180,7 +211,7 @@ class ImagePane(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self, recent_projects: RecentProjects | None = None) -> None:
         super().__init__()
-        self.setWindowTitle("SceneLens — M2 AI 主美控制台")
+        self.setWindowTitle("SceneLens — 游戏场景美术控制工作台")
         self.resize(1550, 900)
         self.setMinimumSize(1050, 650)
 
@@ -199,9 +230,20 @@ class MainWindow(QMainWindow):
         self._region_analysis_generation = 0
         self._mask_generation = 0
         self._ai_review_generation = 0
+        self._match_generation = 0
+        self._grade_generation = 0
+        self._concept_generation = 0
         self._ai_cancellation: CancellationToken | None = None
+        self._concept_cancellation: CancellationToken | None = None
         self._active_ai_run: AIRun | None = None
+        self._active_concept_run: AIRun | None = None
         self._last_review_outcome: ReviewRunOutcome | None = None
+        self._safe_grade_preview: np.ndarray | None = None
+        self._safe_grade_recipe: SafeGradeRecipe | None = None
+        self._concept_preview_rgb: np.ndarray | None = None
+        self._last_concept_preview: AIConceptPreview | None = None
+        self._last_preview_validation: PreviewValidation | None = None
+        self._optimization_preview_visible = False
         self._active_mask: tuple[str, int] | None = None
         self._shared_palette_result: SharedPaletteResult | None = None
         self._active_region_analysis: (
@@ -494,6 +536,37 @@ class MainWindow(QMainWindow):
             self._export_offline_review_pack
         )
         self.analysis_tabs.addTab(self.ai_review_panel, "AI 审阅与任务")
+        self.optimization_panel = OptimizationLabPanel(
+            self._provider_registry.manifests()
+        )
+        self.optimization_panel.match_requested.connect(
+            self._start_match_profile
+        )
+        self.optimization_panel.safe_preview_requested.connect(
+            self._start_safe_grade_preview
+        )
+        self.optimization_panel.show_original_requested.connect(
+            self._show_safe_grade_original
+        )
+        self.optimization_panel.grade_export_requested.connect(
+            self._export_safe_grade
+        )
+        self.optimization_panel.concept_requested.connect(
+            self._start_concept_preview
+        )
+        self.optimization_panel.concept_cancel_requested.connect(
+            self._cancel_concept_preview
+        )
+        self.optimization_panel.concept_tasks_requested.connect(
+            self._confirm_concept_preview_tasks
+        )
+        self.optimization_panel.credential_save_requested.connect(
+            self._save_provider_credential
+        )
+        self.optimization_panel.credential_delete_requested.connect(
+            self._delete_provider_credential
+        )
+        self.analysis_tabs.addTab(self.optimization_panel, "优化实验室")
         self.analysis_tabs.currentChanged.connect(
             self._analysis_tab_changed
         )
@@ -748,7 +821,13 @@ class MainWindow(QMainWindow):
                 state.three_threshold_low,
                 state.three_threshold_high,
             )
-            tab_names = ("reference", "current", "comparison", "tasks")
+            tab_names = (
+                "reference",
+                "current",
+                "comparison",
+                "tasks",
+                "optimization",
+            )
             self.analysis_tabs.setCurrentIndex(
                 (
                     tab_names.index(state.active_analysis_tab)
@@ -1162,6 +1241,77 @@ class MainWindow(QMainWindow):
         generation: int,
         result: object,
     ) -> None:
+        if kind == "m3_match":
+            if generation != self._match_generation:
+                return
+            if isinstance(result, MatchProfile):
+                self.optimization_panel.show_match_profile(result)
+                self.statusBar().showMessage(
+                    "目标匹配画像已更新；结果仅代表当前算法与权重"
+                )
+            return
+
+        if kind == "m3_grade":
+            if generation != self._grade_generation:
+                return
+            if (
+                isinstance(result, tuple)
+                and len(result) == 2
+                and isinstance(result[0], SafeGradeRecipe)
+                and isinstance(result[1], np.ndarray)
+            ):
+                recipe, preview = result
+                self._safe_grade_recipe = recipe
+                self._safe_grade_preview = preview
+                image = self._images.get("current")
+                if image is not None:
+                    self.current_pane.canvas.set_image(
+                        numpy_to_qimage(preview, image.alpha),
+                        reset_view=False,
+                    )
+                self._optimization_preview_visible = True
+                self.optimization_panel.show_grade_preview(recipe)
+                self.statusBar().showMessage(
+                    "安全调色预览已生成；原始截图未被修改"
+                )
+            return
+
+        if kind == "m3_concept":
+            if generation != self._concept_generation:
+                return
+            self._concept_cancellation = None
+            if isinstance(result, ConceptPreviewOutcome):
+                self._last_concept_preview = result.entity
+                self._concept_preview_rgb = result.rgb
+                self._last_preview_validation = result.validation
+                image = self._images.get("current")
+                if image is not None:
+                    self.current_pane.canvas.set_image(
+                        numpy_to_qimage(result.rgb, None),
+                        reset_view=False,
+                    )
+                self._optimization_preview_visible = True
+                self.optimization_panel.show_concept_validation(
+                    result.validation,
+                    provider_id=result.entity.provider_id,
+                    model_id=result.entity.model_id,
+                )
+                self._finish_concept_ai_run(
+                    status=AIRunStatus.COMPLETE,
+                    output={
+                        "preview_id": result.entity.id,
+                        "relative_path": result.entity.relative_path,
+                        "preview_status": (
+                            result.entity.preview_status.value
+                        ),
+                        "validation": result.validation.to_dict(),
+                    },
+                )
+                self.statusBar().showMessage(
+                    "AIConceptPreview 已保存；真实 Version 未发生变化"
+                )
+            return
+
         if kind == "ai_review":
             if generation != self._ai_review_generation:
                 return
@@ -1342,7 +1492,13 @@ class MainWindow(QMainWindow):
         message: str,
         details: str,
     ) -> None:
-        if kind == "ai_review":
+        if kind == "m3_match":
+            expected = self._match_generation
+        elif kind == "m3_grade":
+            expected = self._grade_generation
+        elif kind == "m3_concept":
+            expected = self._concept_generation
+        elif kind == "ai_review":
             expected = self._ai_review_generation
         elif kind in {"import_reference", "import_version"}:
             expected = self._import_generation[role]
@@ -1362,7 +1518,24 @@ class MainWindow(QMainWindow):
             }[kind][role]
         if generation != expected:
             return
-        if kind == "ai_review":
+        if kind == "m3_concept":
+            self._concept_cancellation = None
+            self.optimization_panel.show_concept_error(message)
+            status = (
+                AIRunStatus.CANCELLED
+                if "取消" in message or "cancel" in message.lower()
+                else AIRunStatus.FAILED
+            )
+            self._finish_concept_ai_run(
+                status=status,
+                error_code=(
+                    "cancelled"
+                    if status == AIRunStatus.CANCELLED
+                    else "provider_error"
+                ),
+                error_message=message,
+            )
+        elif kind == "ai_review":
             self._ai_cancellation = None
             self.ai_review_panel.show_error(message)
             status = (
@@ -1391,6 +1564,9 @@ class MainWindow(QMainWindow):
             "region_analysis": "成对区域分析失败",
             "mask": "颜色来源遮罩失败",
             "ai_review": "AI 专项审阅失败",
+            "m3_match": "目标匹配画像失败",
+            "m3_grade": "安全调色预览失败",
+            "m3_concept": "AI 优化预演失败",
         }.get(kind, "SceneLens 操作失败")
         QMessageBox.warning(
             self,
@@ -1427,6 +1603,558 @@ class MainWindow(QMainWindow):
         self._active_jobs += 1
         self.progress.setVisible(True)
         self._thread_pool.start(worker)
+
+    def _start_match_profile(self, raw_weights: object) -> None:
+        if not {"reference", "current"}.issubset(self._images):
+            QMessageBox.information(
+                self,
+                "目标匹配画像",
+                "请先加载参考图和当前截图。",
+            )
+            return
+        weights = (
+            dict(raw_weights)
+            if isinstance(raw_weights, dict)
+            else self.optimization_panel.match_weights()
+        )
+        paired = (
+            (self._active_region_analysis[1],)
+            if self._active_region_analysis is not None
+            else ()
+        )
+        reference = self._images["reference"].rgb
+        current = self._images["current"].rgb
+        shared = self._shared_palette_result
+        self._match_generation += 1
+        generation = self._match_generation
+        self._start_worker(
+            "m3",
+            "m3_match",
+            generation,
+            lambda: build_match_profile(
+                reference,
+                current,
+                shared_palette=shared,
+                paired_regions=paired,
+                weights=weights,
+            ),
+        )
+
+    def _start_safe_grade_preview(self, raw_options: object) -> None:
+        current = self._images.get("current")
+        if current is None:
+            QMessageBox.information(
+                self,
+                "安全调色",
+                "请先加载当前截图。",
+            )
+            return
+        options = raw_options if isinstance(raw_options, dict) else {}
+        recipe = options.get("recipe")
+        if not isinstance(recipe, SafeGradeRecipe):
+            scope = str(options.get("scope", "full"))
+            rect = None
+            if scope == "selected_region":
+                rect = self.region_controller.selected_current_rect()
+                if rect is None:
+                    QMessageBox.information(
+                        self,
+                        "区域安全调色",
+                        "请先在成对区域列表中选择一个完整区域对。",
+                    )
+                    return
+            recipe = self.optimization_panel.current_recipe(rect)
+        reference = self._images.get("reference")
+        reference_rgb = (
+            None if reference is None else reference.rgb
+        )
+        if (
+            recipe.reference_colour_transfer > 0.0
+            and reference_rgb is None
+        ):
+            QMessageBox.information(
+                self,
+                "参考色迁移",
+                "启用参考色迁移前需要加载参考图。",
+            )
+            return
+        self._grade_generation += 1
+        generation = self._grade_generation
+        self._start_worker(
+            "m3",
+            "m3_grade",
+            generation,
+            lambda: (
+                recipe,
+                apply_safe_grade(
+                    current.rgb,
+                    recipe,
+                    reference_rgb=reference_rgb,
+                ),
+            ),
+        )
+
+    def _show_safe_grade_original(self, show_original: bool) -> None:
+        image = self._images.get("current")
+        if image is None:
+            return
+        rgb = (
+            image.rgb
+            if show_original or self._safe_grade_preview is None
+            else self._safe_grade_preview
+        )
+        self.current_pane.canvas.set_image(
+            numpy_to_qimage(rgb, image.alpha),
+            reset_view=False,
+        )
+        self._optimization_preview_visible = not show_original
+        self.statusBar().showMessage(
+            "正在显示原始截图"
+            if show_original
+            else "正在显示安全调色预览"
+        )
+
+    def _export_safe_grade(self, export_kind: str) -> None:
+        if (
+            self._safe_grade_preview is None
+            or self._safe_grade_recipe is None
+        ):
+            QMessageBox.information(
+                self,
+                "导出安全调色",
+                "请先生成安全调色预览。",
+            )
+            return
+        base = (
+            self._project_store.root / "exports"
+            if self._project_store is not None
+            else Path.cwd()
+        )
+        filters = {
+            "png": ("导出预览 PNG", "PNG 图片 (*.png)", ".png"),
+            "json": ("导出调色配方", "JSON 文件 (*.json)", ".json"),
+            "cube": ("导出 3D LUT", "Cube LUT (*.cube)", ".cube"),
+        }
+        title, file_filter, suffix = filters[export_kind]
+        selected, _ = QFileDialog.getSaveFileName(
+            self,
+            title,
+            str(base / f"scenelens_safe_grade{suffix}"),
+            file_filter,
+        )
+        if not selected:
+            return
+        path = Path(selected)
+        if path.suffix.lower() != suffix:
+            path = path.with_suffix(suffix)
+        try:
+            if export_kind == "png":
+                write_grade_png(path, self._safe_grade_preview)
+            elif export_kind == "json":
+                write_grade_recipe(path, self._safe_grade_recipe)
+            else:
+                write_cube_lut(path, self._safe_grade_recipe)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "导出失败", str(exc))
+            return
+        self.statusBar().showMessage(f"已导出：{path.name}")
+
+    def _start_concept_preview(self, raw_options: object) -> None:
+        if not isinstance(raw_options, ConceptPreviewOptions):
+            return
+        store = self._project_store
+        if (
+            store is None
+            or store.read_only
+            or self._active_shot_id is None
+            or self._active_version_id is None
+        ):
+            QMessageBox.information(
+                self,
+                "AI 优化预演",
+                "请先以可写方式打开项目，并选择一个真实 Version。",
+            )
+            return
+        if not {"reference", "current"}.issubset(self._images):
+            QMessageBox.information(
+                self,
+                "AI 优化预演",
+                "预演需要参考图和当前截图。",
+            )
+            return
+        try:
+            manifest = self._provider_registry.manifest(
+                raw_options.provider_id
+            )
+            provider = self._provider_registry.get(
+                raw_options.provider_id
+            )
+            context = self._build_review_context()
+            workbench = WorkbenchStore(store)
+            tasks = workbench.list_tasks(
+                MODULE_ID,
+                shot_id=self._active_shot_id,
+                version_id=self._active_version_id,
+            )
+            confirmed_tasks = tuple(
+                {
+                    "task_id": item.id,
+                    "title": item.title,
+                    "description": item.description,
+                    "priority": item.priority.value,
+                    "status": item.status.value,
+                    "verification": dict(item.verification),
+                }
+                for item in tasks
+            )
+            pair_views = self.region_controller.pair_views()
+            paired_regions = tuple(
+                {
+                    "pair_id": view.pair.id,
+                    "name": view.pair.name,
+                    "semantic_type": view.pair.semantic_type,
+                    "reference_rect": (
+                        view.reference_region.normalized_rect.to_dict()
+                    ),
+                    "current_rect": (
+                        view.current_region.normalized_rect.to_dict()
+                    ),
+                }
+                for view in pair_views
+            )
+            preserve_ids = tuple(
+                view.current_region.id for view in pair_views
+            )
+            protection = PreviewProtectionControls(
+                preserve_composition=raw_options.preserve_composition,
+                preserve_geometry=raw_options.preserve_geometry,
+                preserve_asset_identity=(
+                    raw_options.preserve_asset_identity
+                ),
+                preserve_regions=preserve_ids,
+            )
+            instruction = build_structured_preview_instruction(
+                mode=raw_options.mode,
+                change_budget_percent=(
+                    raw_options.change_budget_percent
+                ),
+                creative_intent=context.creative_intent,
+                reference_visual_brief=(
+                    context.reference_visual_brief
+                ),
+                confirmed_tasks=confirmed_tasks,
+                paired_regions=paired_regions,
+                protection=protection,
+            )
+            export_options = ProviderImageExportOptions(
+                remove_metadata=raw_options.remove_metadata,
+                maximum_side=raw_options.maximum_side,
+            )
+            images = tuple(
+                prepare_provider_image(
+                    self._images[role],
+                    role,
+                    export_options,
+                )
+                for role in ("reference", "current")
+            )
+            request = ImageEditRequest(
+                instruction=instruction,
+                images=images,
+                model_id=raw_options.model_id,
+                change_budget=raw_options.change_budget_percent,
+            )
+            preview = disclosure_preview(manifest, request)
+        except (KeyError, OSError, StorageError, ValueError) as exc:
+            QMessageBox.warning(self, "无法准备 AI 预演", str(exc))
+            return
+        dialog = DataDisclosureDialog(
+            preview,
+            second_opinion=False,
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.statusBar().showMessage("AI 优化预演已取消，未发送数据")
+            return
+
+        credential = ""
+        if raw_options.provider_id != "mock":
+            try:
+                credential = (
+                    self._credential_store.get(
+                        manifest.credential_target
+                    )
+                    or ""
+                )
+            except OSError as exc:
+                QMessageBox.warning(self, "读取系统凭据失败", str(exc))
+                return
+            if not credential:
+                QMessageBox.information(
+                    self,
+                    "缺少 API Key",
+                    "请先把所选供应商的 API Key 存入 Windows 系统凭据。",
+                )
+                return
+
+        approved = replace(
+            request,
+            user_initiated=True,
+            disclosure_confirmed=True,
+        )
+        self._concept_generation += 1
+        generation = self._concept_generation
+        cancellation = CancellationToken()
+        self._concept_cancellation = cancellation
+        model_id = manifest.model_for(
+            ProviderCapability.IMAGE_EDIT,
+            raw_options.model_id,
+        )
+        request_hash = hashlib.sha256(
+            (
+                canonical_json(dict(instruction))
+                + "|"
+                + "|".join(item.sha256 for item in images)
+            ).encode("utf-8")
+        ).hexdigest()
+        self._active_concept_run = AIRun(
+            id=str(uuid.uuid4()),
+            module_id=MODULE_ID,
+            reviewer_id="ai_concept_preview",
+            provider_id=raw_options.provider_id,
+            model_id=model_id,
+            capability=ProviderCapability.IMAGE_EDIT.value,
+            request_hash=request_hash,
+            input_manifest={
+                "image_hashes": {
+                    item.role: item.sha256 for item in images
+                },
+                "change_budget": raw_options.change_budget_percent,
+                "edit_mode": raw_options.mode.value,
+                "remove_metadata": raw_options.remove_metadata,
+                "maximum_side": raw_options.maximum_side,
+            },
+            status=AIRunStatus.RUNNING,
+            created_at=utc_now(),
+        )
+        self._persist_ai_run(self._active_concept_run)
+        self.optimization_panel.show_concept_running(True)
+        self.statusBar().showMessage("AI 优化预演已在后台启动")
+        project_root = store.root
+        shot_id = self._active_shot_id
+        version_id = self._active_version_id
+        protected_rects = tuple(
+            (
+                view.current_region.normalized_rect.x,
+                view.current_region.normalized_rect.y,
+                view.current_region.normalized_rect.width,
+                view.current_region.normalized_rect.height,
+            )
+            for view in pair_views
+        )
+        current_rgb = self._images["current"].rgb
+        reference_rgb = self._images["reference"].rgb
+        input_hashes = {
+            item.role: item.sha256 for item in images
+        }
+
+        def run_preview() -> ConceptPreviewOutcome:
+            response = self._review_coordinator.execution.run_image_edit(
+                provider,
+                approved,
+                credential,
+                cancellation,
+            )
+            if not isinstance(response, ImageEditResponse):
+                raise ValueError("图像供应商返回了不支持的响应类型。")
+            try:
+                with Image.open(BytesIO(response.image_bytes)) as opened:
+                    preview_rgb = np.asarray(
+                        opened.convert("RGB"),
+                        dtype=np.uint8,
+                    )
+            except (OSError, ValueError) as exc:
+                raise ValueError("供应商返回的图片无法解码。") from exc
+            preview_rgb = np.ascontiguousarray(preview_rgb)
+            validation = validate_concept_preview(
+                current_rgb,
+                preview_rgb,
+                reference_rgb,
+                stable_regions=protected_rects,
+                protected_regions=protected_rects,
+            )
+            preview_id = str(uuid.uuid4())
+            relative = (
+                f"artifacts/ai_previews/{preview_id}.png"
+            )
+            write_grade_png(project_root / relative, preview_rgb)
+            entity = AIConceptPreview(
+                id=preview_id,
+                module_id=MODULE_ID,
+                shot_id=shot_id,
+                source_version_id=version_id,
+                provider_id=response.provider_id,
+                model_id=response.model_id,
+                relative_path=relative,
+                input_hashes=input_hashes,
+                instruction=instruction,
+                protection_constraints={
+                    "preserve_composition": (
+                        protection.preserve_composition
+                    ),
+                    "preserve_geometry": protection.preserve_geometry,
+                    "preserve_asset_identity": (
+                        protection.preserve_asset_identity
+                    ),
+                    "preserve_regions": list(
+                        protection.preserve_regions
+                    ),
+                },
+                validation_metrics=validation.to_dict(),
+                preview_status=validation.status,
+                created_at=utc_now(),
+            )
+            WorkbenchStore(store).save_ai_concept_preview(entity)
+            return ConceptPreviewOutcome(
+                entity,
+                preview_rgb,
+                validation,
+            )
+
+        self._start_worker(
+            "m3",
+            "m3_concept",
+            generation,
+            run_preview,
+        )
+
+    def _cancel_concept_preview(self) -> None:
+        if self._concept_cancellation is not None:
+            self._concept_cancellation.cancel()
+            self.optimization_panel.concept_status.setText(
+                "正在取消 AI 优化预演…"
+            )
+
+    def _finish_concept_ai_run(
+        self,
+        *,
+        status: AIRunStatus,
+        output: dict | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        run = self._active_concept_run
+        if run is None:
+            return
+        finished = replace(
+            run,
+            status=status,
+            output=output,
+            error_code=error_code,
+            error_message=(
+                None
+                if error_message is None
+                else str(error_message)[:2000]
+            ),
+            completed_at=utc_now(),
+        )
+        self._persist_ai_run(finished)
+        self._active_concept_run = None
+
+    def _confirm_concept_preview_tasks(self) -> None:
+        store = self._project_store
+        preview = self._last_concept_preview
+        validation = self._last_preview_validation
+        if (
+            store is None
+            or store.read_only
+            or preview is None
+            or validation is None
+        ):
+            QMessageBox.information(
+                self,
+                "预演任务",
+                "当前没有可转换的已保存 AIConceptPreview。",
+            )
+            return
+        if (
+            QMessageBox.question(
+                self,
+                "确认预演任务",
+                "将当前预演的结构化改动方向确认为一个修改任务？\n"
+                "预演图片只作为概念证据，不会替代真实 UE Version。",
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        mode = str(preview.instruction.get("edit_mode", ""))
+        title = {
+            "lighting_only": "根据 AI 预演调整灯光",
+            "colour_only": "根据 AI 预演调整调色",
+            "fog_atmosphere_only": "根据 AI 预演调整雾与氛围",
+        }.get(mode, "根据 AIConceptPreview 调整场景")
+        now = utc_now()
+        evidence = Evidence(
+            id=str(uuid.uuid4()),
+            module_id=MODULE_ID,
+            shot_id=preview.shot_id,
+            version_id=preview.source_version_id,
+            evidence_type=EvidenceType.ALGORITHM_INFERENCE,
+            source=EvidenceSource.AI_PROVIDER,
+            subject_type="ai_concept_preview",
+            subject_id=preview.id,
+            payload={
+                "relative_path": preview.relative_path,
+                "provider_id": preview.provider_id,
+                "model_id": preview.model_id,
+                "preview_status": preview.preview_status.value,
+                "validation": validation.to_dict(),
+                "user_confirmed": True,
+            },
+            created_at=now,
+        )
+        task = Task(
+            id=str(uuid.uuid4()),
+            module_id=MODULE_ID,
+            shot_id=preview.shot_id,
+            version_id=preview.source_version_id,
+            source_evidence_id=evidence.id,
+            title=title,
+            description=(
+                str(
+                    preview.instruction.get(
+                        "change_budget",
+                        {},
+                    ).get("semantics", "")
+                )
+                + "\n预演边界："
+                + (
+                    "仅适合概念参考"
+                    if preview.preview_status.value == "concept_only"
+                    else "候选预演，仍需在 UE 中实施并导入新截图复查"
+                )
+            ),
+            priority=TaskPriority.MEDIUM,
+            status=TaskStatus.OPEN,
+            verification={
+                "ai_concept_preview_id": preview.id,
+                "requires_real_ue_version": True,
+                "validation_metrics": validation.to_dict(),
+            },
+            created_at=now,
+            updated_at=now,
+        )
+        try:
+            workbench = WorkbenchStore(store)
+            workbench.save_evidence(evidence)
+            workbench.save_task(task)
+        except (StorageError, OSError, ValueError) as exc:
+            QMessageBox.warning(self, "保存预演任务失败", str(exc))
+            return
+        self._refresh_workbench_tasks()
+        self.statusBar().showMessage(
+            "AI 预演已转为任务；真实 Version 仍保持不变"
+        )
 
     def _start_ai_review(self, raw_options: object) -> None:
         if not isinstance(raw_options, ReviewPanelOptions):
@@ -2758,8 +3486,12 @@ class MainWindow(QMainWindow):
         if measurements is not None:
             self._start_reference_brief_fields(measurements)
 
-    def _analysis_tab_changed(self, _index: int) -> None:
+    def _analysis_tab_changed(self, index: int) -> None:
         self._mark_workspace_dirty()
+        if index == 4 and {"reference", "current"}.issubset(self._images):
+            self._start_match_profile(
+                self.optimization_panel.match_weights()
+            )
 
     def _independent_palette_selected(self, role: str, index: int) -> None:
         if self._active_mask == (role, index):
@@ -2973,6 +3705,27 @@ class MainWindow(QMainWindow):
             self.current_pane.canvas.clear_annotation_overlays()
             self.statusBar().showMessage("已退出灯光方案标注")
             return
+        if self._optimization_preview_visible:
+            current = self._images.get("current")
+            if current is not None:
+                self.current_pane.canvas.set_image(
+                    numpy_to_qimage(current.rgb, current.alpha),
+                    reset_view=False,
+                )
+            self._optimization_preview_visible = False
+            self.optimization_panel.grade_original_button.blockSignals(
+                True
+            )
+            self.optimization_panel.grade_original_button.setChecked(
+                False
+            )
+            self.optimization_panel.grade_original_button.blockSignals(
+                False
+            )
+            self.statusBar().showMessage(
+                "已退出优化预览，恢复真实当前截图"
+            )
+            return
         if self.region_controller.escape():
             self.statusBar().showMessage("已退出区域模式")
 
@@ -3113,10 +3866,16 @@ class MainWindow(QMainWindow):
             three_threshold_low=self.comparison_panel.thresholds()[0],
             three_threshold_high=self.comparison_panel.thresholds()[1],
             active_analysis_tab=(
-                ("reference", "current", "comparison", "tasks")[
+                (
+                    "reference",
+                    "current",
+                    "comparison",
+                    "tasks",
+                    "optimization",
+                )[
                     self.analysis_tabs.currentIndex()
                 ]
-                if 0 <= self.analysis_tabs.currentIndex() < 4
+                if 0 <= self.analysis_tabs.currentIndex() < 5
                 else "reference"
             ),
         )
@@ -3178,11 +3937,22 @@ class MainWindow(QMainWindow):
         self._clear_palette_mask()
         self._shared_palette_result = None
         self._active_region_analysis = None
+        self._safe_grade_preview = None
+        self._safe_grade_recipe = None
+        self._concept_preview_rgb = None
+        self._last_concept_preview = None
+        self._last_preview_validation = None
+        self._optimization_preview_visible = False
+        self._match_generation += 1
+        self._grade_generation += 1
+        self._concept_generation += 1
         self._region_analysis_generation += 1
         if hasattr(self, "comparison_panel"):
             self.comparison_panel.clear()
         if hasattr(self, "region_panel"):
             self.region_panel.clear_analysis()
+        if hasattr(self, "optimization_panel"):
+            self.optimization_panel.reset_transient_state()
         self._canvas_for(role).clear_image()
         self.analysis_widgets[role].clear(
             "尚未导入参考图"
@@ -3195,8 +3965,16 @@ class MainWindow(QMainWindow):
             self._ai_cancellation.cancel()
             self._ai_cancellation = None
         self._ai_review_generation += 1
+        if self._concept_cancellation is not None:
+            self._concept_cancellation.cancel()
+            self._concept_cancellation = None
+        self._concept_generation += 1
+        self._match_generation += 1
+        self._grade_generation += 1
         if hasattr(self, "ai_review_panel"):
             self.ai_review_panel.set_running(False)
+        if hasattr(self, "optimization_panel"):
+            self.optimization_panel.show_concept_running(False)
         self._brief_generation += 1
         self._comparison_generation += 1
         self._region_analysis_generation += 1

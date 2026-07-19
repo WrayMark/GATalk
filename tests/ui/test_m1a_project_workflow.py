@@ -99,7 +99,7 @@ def test_m1a_create_save_reopen_add_and_switch_version(qtbot, tmp_path: Path):
     assert current_v1_path.name in reopened.analysis_widgets[
         "current"
     ].info_label.text()
-    assert reopened.analysis_tabs.count() == 4
+    assert reopened.analysis_tabs.count() == 5
     assert reopened.project_dock.isVisible()
 
     reopened._import_or_load("current", str(current_v2_path))

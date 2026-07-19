@@ -597,6 +597,18 @@ class RegionController(QObject):
     def pair_views(self) -> tuple[RegionPairView, ...]:
         return self._pair_views
 
+    def selected_current_rect(
+        self,
+    ) -> tuple[float, float, float, float] | None:
+        """Return the selected current-image region in normalized image space."""
+        if self.selected_pair_id is None:
+            return None
+        view = self.pair_view(self.selected_pair_id)
+        if view is None:
+            return None
+        rect = view.current_region.normalized_rect
+        return rect.x, rect.y, rect.width, rect.height
+
     @staticmethod
     def _analysis_label(status: str) -> str:
         return {
