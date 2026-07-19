@@ -103,7 +103,18 @@ def create_application(argv: list[str] | None = None) -> QApplication:
 
 
 def _run_internal_smoke_check() -> None:
+    from io import BytesIO
+
+    from scenelens.analysis.grading import (
+        SafeGradeRecipe,
+        apply_safe_grade,
+    )
+    from scenelens.analysis.match_profile import build_match_profile
+    from scenelens.analysis.preview_validation import (
+        validate_concept_preview,
+    )
     from scenelens.core.analyzers import AnalyzerRequest
+    from scenelens.core.domain import AIConceptPreview
     from scenelens.analysis.models import RenderSettings
     from scenelens.analysis.pipeline import measure_image, render_image
     from scenelens.modules.visual_review.analyzers import PairedRegionAnalyzer
@@ -123,10 +134,14 @@ def _run_internal_smoke_check() -> None:
     )
     from scenelens.providers.contracts import (
         CancellationToken,
+        ImageEditRequest,
         ProviderImage,
     )
     from scenelens.providers.mock import MockProvider
     from scenelens.providers.registry import ProviderRegistry
+    from scenelens.storage.project_store import utc_now
+    from scenelens.storage.workbench_store import WorkbenchStore
+    from scenelens.modules.visual_review import MODULE_ID
 
     rgb = np.empty((64, 96, 3), dtype=np.uint8)
     rgb[:, :48] = (35, 75, 120)
@@ -135,6 +150,23 @@ def _run_internal_smoke_check() -> None:
     rendered = render_image(rgb, RenderSettings(mode="grayscale", blur_sigma=1.0))
     if len(measurements.palette) != 2 or rendered.shape != rgb.shape:
         raise RuntimeError("Internal image-analysis smoke check failed.")
+    original = rgb.copy()
+    graded = apply_safe_grade(
+        rgb,
+        SafeGradeRecipe(
+            exposure_stops=0.2,
+            strength_percent=25,
+        ),
+    )
+    match = build_match_profile(rgb, graded)
+    preview_validation = validate_concept_preview(rgb, graded, rgb)
+    if (
+        np.array_equal(graded, rgb)
+        or not np.array_equal(original, rgb)
+        or match.estimated_match is None
+        or preview_validation.structure_drift < 0.0
+    ):
+        raise RuntimeError("Internal M3 local optimization smoke check failed.")
 
     provider_registry = ProviderRegistry()
     provider_registry.register(MockProvider())
@@ -161,9 +193,32 @@ def _run_internal_smoke_check() -> None:
         credentials={},
         cancellation=CancellationToken(),
     )
-    coordinator.close()
     if review.output.get("reviewer_id") != "art_director_review":
         raise RuntimeError("Internal offline AI review smoke check failed.")
+    image_buffer = BytesIO()
+    Image.fromarray(rgb).save(image_buffer, format="PNG")
+    image_bytes = image_buffer.getvalue()
+    concept_response = coordinator.execution.run_image_edit(
+        provider_registry.get("mock"),
+        ImageEditRequest(
+            instruction={
+                "output_type": "AIConceptPreview",
+                "edit_mode": "lighting_only",
+            },
+            images=(
+                ProviderImage("reference", "image/png", image_bytes),
+                ProviderImage("current", "image/png", image_bytes),
+            ),
+            change_budget=25,
+            user_initiated=True,
+            disclosure_confirmed=True,
+        ),
+        "",
+        CancellationToken(),
+    )
+    if concept_response.image_bytes != image_bytes:
+        raise RuntimeError("Internal M3 image-edit Mock smoke check failed.")
+    coordinator.close()
 
     with tempfile.TemporaryDirectory(prefix="scenelens-smoke-中文-") as temporary:
         folder = Path(temporary)
@@ -246,6 +301,52 @@ def _run_internal_smoke_check() -> None:
         )
         if region_store.load_analysis(cache_key) is None:
             raise RuntimeError("Internal paired-region smoke check failed.")
+        preview_id = "smoke-ai-concept-preview"
+        preview_relative = (
+            f"artifacts/ai_previews/{preview_id}.png"
+        )
+        preview_path = reopened.root / preview_relative
+        preview_path.parent.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(graded).save(preview_path)
+        WorkbenchStore(reopened).save_ai_concept_preview(
+            AIConceptPreview(
+                id=preview_id,
+                module_id=MODULE_ID,
+                shot_id=shot.id,
+                source_version_id=version.id,
+                provider_id="mock",
+                model_id="mock-image-v1",
+                relative_path=preview_relative,
+                input_hashes={
+                    "reference": reference.sha256,
+                    "current": reference.sha256,
+                },
+                instruction={
+                    "output_type": "AIConceptPreview",
+                    "edit_mode": "lighting_only",
+                },
+                protection_constraints={
+                    "preserve_geometry": True,
+                },
+                validation_metrics=preview_validation.to_dict(),
+                preview_status=preview_validation.status,
+                created_at=utc_now(),
+            )
+        )
+        if (
+            len(
+                WorkbenchStore(reopened).list_ai_concept_previews(
+                    MODULE_ID,
+                    shot_id=shot.id,
+                    source_version_id=version.id,
+                )
+            )
+            != 1
+            or len(reopened.list_versions(shot.id)) != 1
+        ):
+            raise RuntimeError(
+                "Internal AIConceptPreview isolation smoke check failed."
+            )
         reopened.close()
 
 
