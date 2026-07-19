@@ -13,9 +13,12 @@
 - PyInstaller `onedir` 构建成功。
 - 打包内 `SceneLens.exe --smoke-test` 退出码为 0；烟测覆盖图像分析、项目
   schema v6、成对区域分析、严格审阅 Schema 和离线 Mock 专项审阅。
-- 候选目录总大小为 266,410,388 bytes（约 254.1 MiB）。
-- 候选程序：
-  `dist/SceneLens/SceneLens.exe`
+- 冻结标签首次候选目录总大小为 266,410,388 bytes（约 254.1 MiB）。
+- 为避免 M3 默认构建覆盖 M2 试用点，已从 `v0.3.0a0-m2` 标签重新构建并
+  独立保留到：
+  `dist/candidates/SceneLens-v0.3.0a0-m2/SceneLens.exe`
+- 独立保留包共 266,411,106 bytes；包内烟测退出码为 0；EXE SHA-256 为
+  `CC678C7BC365FEEAC8D74E298B8025FE1984774C7B900EF19FF5AF7644D6C74D`。
 
 ## 本轮覆盖
 

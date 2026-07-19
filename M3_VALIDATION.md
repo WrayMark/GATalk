@@ -15,6 +15,8 @@
 - 包内烟测实际覆盖 M3 匹配画像、安全调色、结构漂移、图像编辑 Mock、
   `AIConceptPreview` 持久化以及真实 Version 数量不变。
 - 候选目录总大小为 266,472,228 bytes（约 254.1 MiB），共 222 个文件。
+- 候选 EXE SHA-256：
+  `AFE1F5AB9A2168D6E7EA9B77526AD226B5402AA3D55A07C245A06C9512783656`。
 - 候选程序入口：`dist/SceneLens/SceneLens.exe`。
 
 ## M3 能力覆盖
