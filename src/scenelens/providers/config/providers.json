@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "providers": [
+    {
+      "provider_id": "mock",
+      "display_name": "离线 Mock",
+      "api_style": "mock",
+      "base_url": "",
+      "capabilities": ["vision_review", "structured_output", "image_edit"],
+      "default_models": {
+        "vision_review": "mock-vision-v1",
+        "structured_output": "mock-json-v1",
+        "image_edit": "mock-image-v1"
+      },
+      "credential_target": "SceneLens/provider/mock",
+      "optional": false,
+      "mainland_priority": 0
+    },
+    {
+      "provider_id": "aliyun_bailian",
+      "display_name": "阿里云百炼 Qwen VL",
+      "api_style": "openai_chat",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "capabilities": ["vision_review", "structured_output"],
+      "default_models": {
+        "vision_review": "qwen3-vl-plus",
+        "structured_output": "qwen3-vl-plus"
+      },
+      "credential_target": "SceneLens/provider/aliyun_bailian",
+      "optional": true,
+      "mainland_priority": 10,
+      "options": {"json_schema_mode": false}
+    },
+    {
+      "provider_id": "siliconflow",
+      "display_name": "SiliconFlow Qwen VL",
+      "api_style": "openai_chat",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "capabilities": ["vision_review", "structured_output"],
+      "default_models": {
+        "vision_review": "Qwen/Qwen2-VL-72B-Instruct",
+        "structured_output": "Qwen/Qwen2-VL-72B-Instruct"
+      },
+      "credential_target": "SceneLens/provider/siliconflow",
+      "optional": true,
+      "mainland_priority": 20,
+      "options": {"json_schema_mode": false}
+    },
+    {
+      "provider_id": "openai",
+      "display_name": "OpenAI",
+      "api_style": "openai_responses",
+      "base_url": "https://api.openai.com/v1",
+      "capabilities": ["vision_review", "structured_output"],
+      "default_models": {
+        "vision_review": "gpt-5",
+        "structured_output": "gpt-5"
+      },
+      "credential_target": "SceneLens/provider/openai",
+      "optional": true,
+      "mainland_priority": 80
+    },
+    {
+      "provider_id": "google_gemini",
+      "display_name": "Google Gemini",
+      "api_style": "gemini_generate_content",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta",
+      "capabilities": ["vision_review", "structured_output"],
+      "default_models": {
+        "vision_review": "gemini-3.5-flash",
+        "structured_output": "gemini-3.5-flash"
+      },
+      "credential_target": "SceneLens/provider/google_gemini",
+      "optional": true,
+      "mainland_priority": 90
+    },
+    {
+      "provider_id": "xai_grok",
+      "display_name": "xAI Grok",
+      "api_style": "openai_responses",
+      "base_url": "https://api.x.ai/v1",
+      "capabilities": ["vision_review", "structured_output"],
+      "default_models": {
+        "vision_review": "grok-4.5",
+        "structured_output": "grok-4.5"
+      },
+      "credential_target": "SceneLens/provider/xai_grok",
+      "optional": true,
+      "mainland_priority": 100
+    },
+    {
+      "provider_id": "aliyun_wanxiang",
+      "display_name": "阿里云万相",
+      "api_style": "image_edit_slot",
+      "base_url": "https://dashscope.aliyuncs.com",
+      "capabilities": ["image_edit"],
+      "default_models": {"image_edit": "wan2.7-image-pro"},
+      "credential_target": "SceneLens/provider/aliyun_wanxiang",
+      "optional": true,
+      "mainland_priority": 10
+    },
+    {
+      "provider_id": "google_gemini_image",
+      "display_name": "Gemini / Nano Banana",
+      "api_style": "image_edit_slot",
+      "base_url": "https://generativelanguage.googleapis.com/v1",
+      "capabilities": ["image_edit"],
+      "default_models": {"image_edit": "gemini-3.1-flash-image"},
+      "credential_target": "SceneLens/provider/google_gemini",
+      "optional": true,
+      "mainland_priority": 90
+    },
+    {
+      "provider_id": "openai_image",
+      "display_name": "OpenAI GPT Image",
+      "api_style": "image_edit_slot",
+      "base_url": "https://api.openai.com/v1",
+      "capabilities": ["image_edit"],
+      "default_models": {"image_edit": "gpt-image-1"},
+      "credential_target": "SceneLens/provider/openai",
+      "optional": true,
+      "mainland_priority": 80
+    },
+    {
+      "provider_id": "xai_imagine",
+      "display_name": "Grok Imagine",
+      "api_style": "image_edit_slot",
+      "base_url": "https://api.x.ai/v1",
+      "capabilities": ["image_edit"],
+      "default_models": {"image_edit": "grok-imagine-image-quality"},
+      "credential_target": "SceneLens/provider/xai_grok",
+      "optional": true,
+      "mainland_priority": 100
+    }
+  ]
+}
+

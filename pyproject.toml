@@ -32,6 +32,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "scenelens.modules.visual_review.config" = ["*.json"]
 "scenelens.modules.visual_review.schemas" = ["*.json"]
+"scenelens.providers.config" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

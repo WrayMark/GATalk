@@ -9,6 +9,11 @@
   SourceDocument、ReviewProfile 和 QualityGate 共享持久化。
 - 增加受信任内置 Workspace、Reviewer 和 Provider 的显式注册机制及示例模块
   契约测试。
+- 增加百炼、SiliconFlow、OpenAI、Gemini 和 xAI 的视觉审阅适配器，以及
+  万相、Nano Banana、GPT Image 和 Grok Imagine 的 M3 编辑能力位置。
+- 增加 Windows Credential Manager 凭据存储、发送清单、后台取消/超时/重试
+  和错误脱敏。
+- 增加完全离线的 Mock Provider 与各供应商录制传输契约测试。
 - 增加同项目跨进程单写者锁、只读打开和异常退出陈旧锁恢复。
 - 增加模块化分析器契约、注册表和 `scenelens.visual_review` 模块边界。
 - 增加制作意图与参考图视觉简报的字段来源、可信度、依据和用户确认数据模型。

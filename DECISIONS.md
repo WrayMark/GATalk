@@ -336,3 +336,19 @@
   结果；输入清单拒绝 API Key、Authorization 和访问令牌字段。
 - 后果：v4 → v5 迁移前自动备份。M2 后续能力优先复用共享实体，只有出现真实
   模块私有关系时才提升 `scenelens.visual_review` 模块 schema。
+
+## D-038 Provider Manifest、凭据与联网门禁
+
+- 状态：Accepted
+- 日期：2026-07-19
+- 决策：供应商通过 `VisionReviewProvider`、`StructuredOutputProvider` 和
+  `ImageEditProvider` 能力接口接入。端点、默认模型和能力从可打包的 Manifest
+  加载；领域模型不保存具体模型名。
+- 决策：应用启动和 Provider 注册完全离线。真实请求必须由用户主动触发并确认
+  发送清单；默认测试只使用 Mock 或录制传输层。
+- 决策：API Key 使用 Windows Credential Manager，不进入项目、SQLite、
+  JSON、日志或 Git。`AIRun` 只保存 provider/model ID、请求哈希和脱敏元数据。
+- 决策：M2 为万相、Gemini/Nano Banana、OpenAI GPT Image 和 Grok Imagine
+  注册图像编辑能力位置，只允许 Mock 执行；真实编辑放在 M3。
+- 后果：真实 Key、区域开通、计费和供应商响应列为人工联网验收。无 Key 时所有
+  本地项目、测量、区域、任务、报告和离线交换能力仍必须工作。

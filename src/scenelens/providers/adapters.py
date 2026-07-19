@@ -1,0 +1,380 @@
+from __future__ import annotations
+
+import base64
+import json
+from typing import Any, Mapping
+
+from scenelens.providers.contracts import (
+    CancellationToken,
+    ProviderCapability,
+    ProviderError,
+    ProviderManifest,
+    ProviderResponse,
+    StructuredOutputRequest,
+    VisionReviewRequest,
+    require_user_approval,
+)
+from scenelens.providers.transport import (
+    JsonTransport,
+    JsonTransportRequest,
+    UrllibJsonTransport,
+)
+
+
+def _data_url(media_type: str, value: bytes) -> str:
+    encoded = base64.b64encode(value).decode("ascii")
+    return f"data:{media_type};base64,{encoded}"
+
+
+def _parse_json_text(value: str) -> Mapping[str, Any]:
+    text = value.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].lstrip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    try:
+        result = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ProviderError(
+            "AI 返回内容不是有效的结构化 JSON。",
+            code="invalid_structured_output",
+            retryable=False,
+            technical_detail=f"line={exc.lineno},column={exc.colno}",
+        ) from exc
+    if not isinstance(result, dict):
+        raise ProviderError(
+            "AI 返回的 JSON 顶层必须是对象。",
+            code="invalid_structured_output",
+            retryable=False,
+        )
+    return result
+
+
+def _vision_from_structured(
+    request: StructuredOutputRequest,
+    manifest: ProviderManifest,
+) -> VisionReviewRequest:
+    return VisionReviewRequest(
+        system_instruction=request.system_instruction,
+        payload=request.payload,
+        images=(),
+        output_schema=request.output_schema,
+        model_id=manifest.model_for(
+            ProviderCapability.STRUCTURED_OUTPUT,
+            request.model_id,
+        ),
+        user_initiated=request.user_initiated,
+        disclosure_confirmed=request.disclosure_confirmed,
+        timeout_seconds=request.timeout_seconds,
+    )
+
+
+class OpenAICompatibleChatProvider:
+    def __init__(
+        self,
+        manifest: ProviderManifest,
+        transport: JsonTransport | None = None,
+    ) -> None:
+        self.manifest = manifest
+        self.transport = transport or UrllibJsonTransport()
+
+    def build_request(
+        self,
+        request: VisionReviewRequest,
+        credential: str,
+    ) -> JsonTransportRequest:
+        require_user_approval(request)
+        model = self.manifest.model_for(
+            ProviderCapability.VISION_REVIEW,
+            request.model_id,
+        )
+        content: list[dict[str, Any]] = [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": _data_url(image.media_type, image.data),
+                    "detail": "high",
+                },
+            }
+            for image in request.images
+        ]
+        content.append(
+            {
+                "type": "text",
+                "text": request.canonical_payload(),
+            }
+        )
+        body: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": request.system_instruction},
+                {"role": "user", "content": content},
+            ],
+            "temperature": 0.2,
+        }
+        if bool(self.manifest.options.get("json_schema_mode", False)):
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "scenelens_review",
+                    "strict": True,
+                    "schema": dict(request.output_schema),
+                },
+            }
+        return JsonTransportRequest(
+            url=f"{self.manifest.base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {credential}",
+                "Content-Type": "application/json",
+            },
+            body=body,
+            timeout_seconds=request.timeout_seconds,
+        )
+
+    def review(
+        self,
+        request: VisionReviewRequest,
+        credential: str,
+        cancellation: CancellationToken,
+    ) -> ProviderResponse:
+        wire = self.build_request(request, credential)
+        response = self.transport.send(wire, cancellation)
+        try:
+            text = response["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ProviderError(
+                "AI 服务响应缺少结构化输出。",
+                code="missing_output",
+                retryable=False,
+            ) from exc
+        return ProviderResponse(
+            provider_id=self.manifest.provider_id,
+            model_id=str(response.get("model", wire.body["model"])),
+            output=_parse_json_text(str(text)),
+            request_id=(
+                None if response.get("id") is None else str(response["id"])
+            ),
+            usage=dict(response.get("usage", {})),
+        )
+
+    def generate_structured(
+        self,
+        request: StructuredOutputRequest,
+        credential: str,
+        cancellation: CancellationToken,
+    ) -> ProviderResponse:
+        return self.review(
+            _vision_from_structured(request, self.manifest),
+            credential,
+            cancellation,
+        )
+
+
+class ResponsesVisionProvider:
+    def __init__(
+        self,
+        manifest: ProviderManifest,
+        transport: JsonTransport | None = None,
+    ) -> None:
+        self.manifest = manifest
+        self.transport = transport or UrllibJsonTransport()
+
+    def build_request(
+        self,
+        request: VisionReviewRequest,
+        credential: str,
+    ) -> JsonTransportRequest:
+        require_user_approval(request)
+        model = self.manifest.model_for(
+            ProviderCapability.VISION_REVIEW,
+            request.model_id,
+        )
+        content: list[dict[str, Any]] = [
+            {
+                "type": "input_image",
+                "image_url": _data_url(image.media_type, image.data),
+                "detail": "high",
+            }
+            for image in request.images
+        ]
+        content.append(
+            {
+                "type": "input_text",
+                "text": request.canonical_payload(),
+            }
+        )
+        body = {
+            "model": model,
+            "instructions": request.system_instruction,
+            "input": [{"role": "user", "content": content}],
+            "store": False,
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "scenelens_review",
+                    "strict": True,
+                    "schema": dict(request.output_schema),
+                }
+            },
+        }
+        return JsonTransportRequest(
+            url=f"{self.manifest.base_url}/responses",
+            headers={
+                "Authorization": f"Bearer {credential}",
+                "Content-Type": "application/json",
+            },
+            body=body,
+            timeout_seconds=request.timeout_seconds,
+        )
+
+    def review(
+        self,
+        request: VisionReviewRequest,
+        credential: str,
+        cancellation: CancellationToken,
+    ) -> ProviderResponse:
+        wire = self.build_request(request, credential)
+        response = self.transport.send(wire, cancellation)
+        text = response.get("output_text")
+        if text is None:
+            for item in response.get("output", []):
+                if item.get("type") != "message":
+                    continue
+                for content in item.get("content", []):
+                    if content.get("type") == "output_text":
+                        text = content.get("text")
+                        break
+        if text is None:
+            raise ProviderError(
+                "AI 服务响应缺少结构化输出。",
+                code="missing_output",
+                retryable=False,
+            )
+        return ProviderResponse(
+            provider_id=self.manifest.provider_id,
+            model_id=str(response.get("model", wire.body["model"])),
+            output=_parse_json_text(str(text)),
+            request_id=(
+                None if response.get("id") is None else str(response["id"])
+            ),
+            usage=dict(response.get("usage", {})),
+        )
+
+    def generate_structured(
+        self,
+        request: StructuredOutputRequest,
+        credential: str,
+        cancellation: CancellationToken,
+    ) -> ProviderResponse:
+        return self.review(
+            _vision_from_structured(request, self.manifest),
+            credential,
+            cancellation,
+        )
+
+
+class GeminiVisionProvider:
+    def __init__(
+        self,
+        manifest: ProviderManifest,
+        transport: JsonTransport | None = None,
+    ) -> None:
+        self.manifest = manifest
+        self.transport = transport or UrllibJsonTransport()
+
+    def build_request(
+        self,
+        request: VisionReviewRequest,
+        credential: str,
+    ) -> JsonTransportRequest:
+        require_user_approval(request)
+        model = self.manifest.model_for(
+            ProviderCapability.VISION_REVIEW,
+            request.model_id,
+        )
+        parts: list[dict[str, Any]] = [
+            {
+                "inline_data": {
+                    "mime_type": image.media_type,
+                    "data": base64.b64encode(image.data).decode("ascii"),
+                }
+            }
+            for image in request.images
+        ]
+        parts.append({"text": request.canonical_payload()})
+        return JsonTransportRequest(
+            url=(
+                f"{self.manifest.base_url}/models/{model}:generateContent"
+            ),
+            headers={
+                "x-goog-api-key": credential,
+                "Content-Type": "application/json",
+            },
+            body={
+                "systemInstruction": {
+                    "parts": [{"text": request.system_instruction}]
+                },
+                "contents": [{"role": "user", "parts": parts}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "responseMimeType": "application/json",
+                    "responseJsonSchema": dict(request.output_schema),
+                },
+            },
+            timeout_seconds=request.timeout_seconds,
+        )
+
+    def review(
+        self,
+        request: VisionReviewRequest,
+        credential: str,
+        cancellation: CancellationToken,
+    ) -> ProviderResponse:
+        wire = self.build_request(request, credential)
+        response = self.transport.send(wire, cancellation)
+        try:
+            parts = response["candidates"][0]["content"]["parts"]
+            text = next(part["text"] for part in parts if "text" in part)
+        except (KeyError, IndexError, StopIteration, TypeError) as exc:
+            raise ProviderError(
+                "AI 服务响应缺少结构化输出。",
+                code="missing_output",
+                retryable=False,
+            ) from exc
+        return ProviderResponse(
+            provider_id=self.manifest.provider_id,
+            model_id=str(wire.url.split("/models/", 1)[1].split(":", 1)[0]),
+            output=_parse_json_text(str(text)),
+            request_id=None,
+            usage=dict(response.get("usageMetadata", {})),
+        )
+
+    def generate_structured(
+        self,
+        request: StructuredOutputRequest,
+        credential: str,
+        cancellation: CancellationToken,
+    ) -> ProviderResponse:
+        return self.review(
+            _vision_from_structured(request, self.manifest),
+            credential,
+            cancellation,
+        )
+
+
+def create_vision_provider(
+    manifest: ProviderManifest,
+    transport: JsonTransport | None = None,
+):
+    if manifest.api_style == "openai_chat":
+        return OpenAICompatibleChatProvider(manifest, transport)
+    if manifest.api_style == "openai_responses":
+        return ResponsesVisionProvider(manifest, transport)
+    if manifest.api_style == "gemini_generate_content":
+        return GeminiVisionProvider(manifest, transport)
+    raise ValueError(
+        f"Provider {manifest.provider_id} does not expose vision review."
+    )

@@ -32,6 +32,17 @@ a = Analysis(
             ),
             'scenelens/modules/visual_review/schemas',
         ),
+        (
+            str(
+                project_root
+                / 'src'
+                / 'scenelens'
+                / 'providers'
+                / 'config'
+                / 'providers.json'
+            ),
+            'scenelens/providers/config',
+        ),
     ],
     hiddenimports=[],
     hookspath=[],
