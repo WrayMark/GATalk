@@ -202,6 +202,12 @@ def test_schema_two_project_migrates_to_comparison_cache_with_backup(
     root = store.root
     store.close()
     with sqlite3.connect(root / "project.db") as connection:
+        connection.execute("DROP INDEX visual_review_region_analysis_pair")
+        connection.execute("DROP TABLE visual_review_region_analyses")
+        connection.execute("DROP INDEX visual_review_region_pairs_shot")
+        connection.execute("DROP TABLE visual_review_region_pairs")
+        connection.execute("DROP INDEX visual_review_regions_selection")
+        connection.execute("DROP TABLE visual_review_regions")
         connection.execute("DROP INDEX visual_review_comparison_selection")
         connection.execute("DROP TABLE visual_review_comparison_analyses")
         connection.execute(
@@ -210,7 +216,9 @@ def test_schema_two_project_migrates_to_comparison_cache_with_backup(
             WHERE module_id = 'scenelens.visual_review'
             """
         )
-        connection.execute("DELETE FROM schema_migrations WHERE version = 3")
+        connection.execute(
+            "DELETE FROM schema_migrations WHERE version IN (3, 4)"
+        )
         connection.execute("PRAGMA user_version = 2")
         connection.commit()
     manifest_data = load_json(root / "project.json")
@@ -234,5 +242,5 @@ def test_schema_two_project_migrates_to_comparison_cache_with_backup(
             """
         ).fetchone()[0]
     assert table is not None
-    assert module_version == 2
-    assert len(list((root / "backups").glob("pre-migration_0002_to_0003_*"))) == 1
+    assert module_version == 3
+    assert len(list((root / "backups").glob("pre-migration_0002_to_0004_*"))) == 1

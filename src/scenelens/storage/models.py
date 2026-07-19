@@ -8,7 +8,7 @@ from typing import Any
 
 MANIFEST_FORMAT = "scenelens.project"
 MANIFEST_FORMAT_VERSION = 1
-DATABASE_SCHEMA_VERSION = 3
+DATABASE_SCHEMA_VERSION = 4
 
 
 class BriefDocumentType(StrEnum):

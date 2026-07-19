@@ -63,6 +63,10 @@ from scenelens.modules.visual_review.presets import load_visual_review_presets
 from scenelens.modules.visual_review.registry import (
     create_visual_review_registry,
 )
+from scenelens.modules.visual_review.ui.region_controller import (
+    RegionController,
+)
+from scenelens.modules.visual_review.ui.region_widgets import RegionPairPanel
 from scenelens.storage.errors import ProjectLockedError, StorageError
 from scenelens.storage.models import (
     ArtBrief,
@@ -115,7 +119,7 @@ class ImagePane(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self, recent_projects: RecentProjects | None = None) -> None:
         super().__init__()
-        self.setWindowTitle("SceneLens — M1B.1")
+        self.setWindowTitle("SceneLens — M1B.2")
         self.resize(1550, 900)
         self.setMinimumSize(1050, 650)
 
@@ -178,6 +182,7 @@ class MainWindow(QMainWindow):
         self._build_central_ui()
         self._build_project_dock()
         self._build_status_bar()
+        self._build_region_controller()
         self._connect_canvas_sync()
         self._refresh_recent_menu()
 
@@ -203,7 +208,7 @@ class MainWindow(QMainWindow):
 
         escape_action = QAction("退出当前遮罩或工具", self)
         escape_action.setShortcut(QKeySequence(Qt.Key.Key_Escape))
-        escape_action.triggered.connect(self._clear_palette_mask)
+        escape_action.triggered.connect(self._escape_current_tool)
         self.addAction(escape_action)
 
         self.statusBar().showMessage(
@@ -343,6 +348,8 @@ class MainWindow(QMainWindow):
         self.comparison_panel.thresholds_changed.connect(
             self._comparison_thresholds_changed
         )
+        self.region_panel = RegionPairPanel()
+        self.comparison_panel.set_region_panel(self.region_panel)
         self.analysis_tabs.addTab(self.comparison_panel, "对比分析")
         self.analysis_tabs.addTab(
             self._placeholder_panel("修改任务将在后续纵向功能中实现。"),
@@ -394,6 +401,18 @@ class MainWindow(QMainWindow):
         self.progress.setFixedWidth(130)
         self.progress.setVisible(False)
         self.statusBar().addPermanentWidget(self.progress)
+
+    def _build_region_controller(self) -> None:
+        self.region_controller = RegionController(
+            self.reference_pane.canvas,
+            self.current_pane.canvas,
+            self.region_panel,
+            self._presets,
+            self,
+        )
+        self.region_controller.status_message.connect(
+            self.statusBar().showMessage
+        )
 
     @staticmethod
     def _placeholder_panel(text: str) -> QWidget:
@@ -486,6 +505,7 @@ class MainWindow(QMainWindow):
         self._project_store = None
         self._active_shot_id = None
         self._active_version_id = None
+        self.region_controller.set_context(None, None, None)
         self._invalidate_image_jobs()
         self._clear_role("reference")
         self._clear_role("current")
@@ -493,7 +513,7 @@ class MainWindow(QMainWindow):
         self.save_project_action.setEnabled(False)
         self.reference_button.setEnabled(True)
         self.current_button.setEnabled(True)
-        self.setWindowTitle("SceneLens — M1B.1")
+        self.setWindowTitle("SceneLens — M1B.2")
         return True
 
     def _offer_read_only_open(
@@ -550,6 +570,11 @@ class MainWindow(QMainWindow):
             self._workspace_template = state
             self._active_shot_id = active_shot
             self._active_version_id = active_version
+            self.region_controller.set_context(
+                store,
+                active_shot,
+                active_version,
+            )
             self._ab_role = (
                 state.ab_role
                 if state.ab_role in {"reference", "current"}
@@ -649,6 +674,7 @@ class MainWindow(QMainWindow):
             shot = store.create_shot(name)
             self._active_shot_id = shot.id
             self._active_version_id = None
+            self.region_controller.set_context(store, shot.id, None)
             self._clear_role("reference")
             self._clear_role("current")
             self._refresh_project_navigator()
@@ -804,6 +830,11 @@ class MainWindow(QMainWindow):
         versions = store.list_versions(shot_id)
         self._active_shot_id = shot_id
         self._active_version_id = versions[-1].id if versions else None
+        self.region_controller.set_context(
+            store,
+            self._active_shot_id,
+            self._active_version_id,
+        )
         self._clear_role("reference")
         self._clear_role("current")
         self._refresh_project_navigator()
@@ -824,6 +855,11 @@ class MainWindow(QMainWindow):
             return
         self._active_shot_id = shot_id
         self._active_version_id = version_id
+        self.region_controller.set_context(
+            self._project_store,
+            shot_id,
+            version_id,
+        )
         self._clear_role("reference")
         self._clear_role("current")
         self._refresh_project_navigator()
@@ -992,6 +1028,11 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage("参考图已安全导入项目")
             elif kind == "import_version" and isinstance(result, VersionRecord):
                 self._active_version_id = result.id
+                self.region_controller.set_context(
+                    store,
+                    self._active_shot_id,
+                    result.id,
+                )
                 self._refresh_project_navigator()
                 self._load_project_asset("current", result.asset_id)
                 self._mark_workspace_dirty()
@@ -1030,6 +1071,7 @@ class MainWindow(QMainWindow):
                 numpy_to_qimage(loaded.rgb, loaded.alpha),
                 reset_view=reset_view,
             )
+            self.region_controller.refresh()
             if canvas_state is not None:
                 self._canvas_for(role).apply_external_view_state(
                     canvas_state.zoom_factor,
@@ -1683,6 +1725,13 @@ class MainWindow(QMainWindow):
             self.comparison_panel.clear_palette_selection()
         if was_active:
             self.statusBar().showMessage("已退出颜色来源遮罩")
+
+    def _escape_current_tool(self) -> None:
+        if self._active_mask is not None:
+            self._clear_palette_mask()
+            return
+        if self.region_controller.escape():
+            self.statusBar().showMessage("已退出区域模式")
 
     def _current_render_settings(self) -> RenderSettings:
         return RenderSettings(

@@ -32,8 +32,8 @@ class ComparisonPanel(QWidget):
         outer.addWidget(scroll)
 
         contents = QWidget()
-        layout = QVBoxLayout(contents)
-        layout.setContentsMargins(10, 10, 10, 10)
+        self.content_layout = QVBoxLayout(contents)
+        self.content_layout.setContentsMargins(10, 10, 10, 10)
         scroll.setWidget(contents)
 
         palette_box = QGroupBox("算法推断 · 共享 Oklab 色板")
@@ -77,7 +77,7 @@ class ComparisonPanel(QWidget):
         self.palette_sample_label = QLabel("等待参考图与当前截图")
         self.palette_sample_label.setStyleSheet("color: #9AA0A6;")
         palette_layout.addWidget(self.palette_sample_label)
-        layout.addWidget(palette_box)
+        self.content_layout.addWidget(palette_box)
 
         luminance_box = QGroupBox("测量结果 · 三阶明度比例")
         luminance_layout = QVBoxLayout(luminance_box)
@@ -127,8 +127,14 @@ class ComparisonPanel(QWidget):
         note.setStyleSheet("color: #9AA0A6;")
         note.setWordWrap(True)
         luminance_layout.addWidget(note)
-        layout.addWidget(luminance_box)
-        layout.addStretch(1)
+        self.content_layout.addWidget(luminance_box)
+        self.content_layout.addStretch(1)
+
+    def set_region_panel(self, panel: QWidget) -> None:
+        self.content_layout.insertWidget(
+            max(0, self.content_layout.count() - 1),
+            panel,
+        )
 
     def clear(self) -> None:
         self.palette_table.setRowCount(0)

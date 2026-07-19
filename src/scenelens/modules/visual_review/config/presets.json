@@ -108,7 +108,10 @@
         {"id": "foreground", "label": "前景"},
         {"id": "midground", "label": "中景"},
         {"id": "background", "label": "远景"},
-        {"id": "ground", "label": "地面"}
+        {"id": "ground", "label": "地面"},
+        {"id": "architecture", "label": "建筑"},
+        {"id": "vegetation", "label": "植被"},
+        {"id": "water", "label": "水体"}
       ]
     }
   }

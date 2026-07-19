@@ -105,6 +105,16 @@ M1B.0 不重写主窗口。后续按真实需求逐步拆分：
 
 只有当第二或第三个模块出现相同需求时，才把模块能力提升为公共核心。
 
+M1B.2 的实际演进：
+
+- 通用 `ImageCanvas` 提供无业务语义的矩形叠层交互；
+- `modules.visual_review.ui.RegionController` 协调区域模式、配对和 Version；
+- `modules.visual_review.RegionStore` 拥有区域模块 SQL；
+- 应用外壳只注入当前 Project / Shot / Version 并挂载模块面板。
+
+这是由真实区域工作流驱动的局部拆分。其他模块若不需要相同能力，不会被迫依赖
+SceneLens 的区域表或语义。
+
 ## 7. 本阶段明确不做
 
 - 动态发现和加载第三方 Python 包；

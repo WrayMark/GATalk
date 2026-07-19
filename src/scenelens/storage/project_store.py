@@ -1691,6 +1691,26 @@ class ProjectStore:
             connection.close()
 
     @contextmanager
+    def module_read_connection(
+        self,
+        module_id: str,
+    ) -> Iterator[sqlite3.Connection]:
+        if module_id != VISUAL_REVIEW_MODULE_ID:
+            raise ProjectFormatError(f"未知项目模块：{module_id}")
+        with self._read_connection() as connection:
+            yield connection
+
+    @contextmanager
+    def module_write_connection(
+        self,
+        module_id: str,
+    ) -> Iterator[sqlite3.Connection]:
+        if module_id != VISUAL_REVIEW_MODULE_ID:
+            raise ProjectSaveError(f"未知项目模块：{module_id}")
+        with self._write_connection() as connection:
+            yield connection
+
+    @contextmanager
     def _write_connection(self) -> Iterator[sqlite3.Connection]:
         self._ensure_writable()
         try:

@@ -522,10 +522,106 @@ def _migration_3(connection: sqlite3.Connection, project_id: str, now: str) -> N
     )
 
 
+def _migration_4(connection: sqlite3.Connection, project_id: str, now: str) -> None:
+    del project_id
+    statements = (
+        """
+        CREATE TABLE visual_review_regions (
+            id TEXT PRIMARY KEY,
+            module_id TEXT NOT NULL DEFAULT 'scenelens.visual_review',
+            shot_id TEXT NOT NULL REFERENCES shots(id) ON DELETE CASCADE,
+            image_role TEXT NOT NULL CHECK (
+                image_role IN ('reference', 'current')
+            ),
+            version_id TEXT REFERENCES versions(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            semantic_type TEXT NOT NULL,
+            rect_x REAL NOT NULL CHECK (rect_x >= 0.0 AND rect_x <= 1.0),
+            rect_y REAL NOT NULL CHECK (rect_y >= 0.0 AND rect_y <= 1.0),
+            rect_width REAL NOT NULL CHECK (
+                rect_width > 0.0 AND rect_width <= 1.0
+            ),
+            rect_height REAL NOT NULL CHECK (
+                rect_height > 0.0 AND rect_height <= 1.0
+            ),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK (rect_x + rect_width <= 1.000000001),
+            CHECK (rect_y + rect_height <= 1.000000001),
+            CHECK (
+                (image_role = 'reference' AND version_id IS NULL)
+                OR
+                (image_role = 'current' AND version_id IS NOT NULL)
+            )
+        )
+        """,
+        """
+        CREATE INDEX visual_review_regions_selection
+        ON visual_review_regions(shot_id, image_role, version_id, created_at)
+        """,
+        """
+        CREATE TABLE visual_review_region_pairs (
+            id TEXT PRIMARY KEY,
+            shot_id TEXT NOT NULL REFERENCES shots(id) ON DELETE CASCADE,
+            reference_region_id TEXT NOT NULL
+                REFERENCES visual_review_regions(id) ON DELETE CASCADE,
+            current_region_id TEXT NOT NULL UNIQUE
+                REFERENCES visual_review_regions(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            semantic_type TEXT NOT NULL,
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX visual_review_region_pairs_shot
+        ON visual_review_region_pairs(shot_id, created_at)
+        """,
+        """
+        CREATE TABLE visual_review_region_analyses (
+            id TEXT PRIMARY KEY,
+            pair_id TEXT NOT NULL
+                REFERENCES visual_review_region_pairs(id) ON DELETE CASCADE,
+            module_id TEXT NOT NULL,
+            analyzer_id TEXT NOT NULL,
+            analyzer_version TEXT NOT NULL,
+            reference_image_hash TEXT NOT NULL,
+            current_image_hash TEXT NOT NULL,
+            reference_region_geometry_json TEXT NOT NULL,
+            current_region_geometry_json TEXT NOT NULL,
+            shared_palette_cache_key TEXT NOT NULL,
+            parameters_json TEXT NOT NULL,
+            cache_key TEXT NOT NULL UNIQUE,
+            result_json TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (
+                status IN ('complete', 'stale', 'failed')
+            ),
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX visual_review_region_analysis_pair
+        ON visual_review_region_analyses(pair_id, status, created_at)
+        """,
+    )
+    for statement in statements:
+        connection.execute(statement)
+    connection.execute(
+        """
+        UPDATE module_schema_versions
+        SET schema_version = 3, updated_at = ?
+        WHERE module_id = 'scenelens.visual_review'
+        """,
+        (now,),
+    )
+
+
 MIGRATIONS: dict[int, tuple[str, Migration]] = {
     1: ("initial_m1a_schema", _migration_1),
     2: ("m1b_visual_review_module_schema", _migration_2),
     3: ("m1b_comparison_analysis_cache", _migration_3),
+    4: ("m1b_paired_regions", _migration_4),
 }
 
 

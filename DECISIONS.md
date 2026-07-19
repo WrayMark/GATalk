@@ -260,3 +260,29 @@
   通过人工验收并冻结。
 - 后果：M1B.1 基线只接受阻断性回归修复；区域系统进入 M1B.2。真实高 DPI
   和完全无 Python 干净机测试继续保留为 Windows Alpha 前验收项。
+
+## D-032 M1B.2 schema v4 与区域身份
+
+- 状态：Accepted
+- 日期：2026-07-19
+- 决策：schema v4 新增 `visual_review_regions`、
+  `visual_review_region_pairs` 和 `visual_review_region_analyses`，模块数据版本
+  升为 3；v3 → v4 迁移前继续完整备份。
+- 决策：区域坐标使用 EXIF 纠正工作图上的归一化矩形。参考区域绑定 Shot 且
+  `version_id` 为空；当前区域绑定具体 Version。
+- 决策：同一参考区域可以被多个 Version 的 Pair 复用；当前区域和 Pair 在复制
+  上一 Version 时生成新 ID。未配对区域保存为独立 Region，不建立半完整 Pair。
+- 后果：新 Version 可以复用参考语义，同时保持当前区域可独立调整；软件不会把
+  归一化坐标等同于机位精确对齐。
+
+## D-033 区域模块边界
+
+- 状态：Accepted
+- 日期：2026-07-19
+- 决策：通用 `ImageCanvas` 只提供归一化矩形叠层、选择、移动和缩放信号；
+  SceneLens 的区域语义、配对、Version 复制和持久化由
+  `modules.visual_review` 的控制器与仓储负责。
+- 原因：区域是 SceneLens 业务，不应继续写入应用外壳或通用画布；矩形交互本身
+  又是可跨模块复用的显示能力。
+- 后果：`MainWindow` 只挂载模块面板和传递当前项目上下文，不执行区域 SQL 或
+  局部图像统计。
