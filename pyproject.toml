@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scenelens"
+version = "0.0.5"
+description = "Local visual review workbench for game environment art."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "PySide6==6.11.1",
+    "Pillow==12.3.0",
+    "numpy==2.3.5",
+    "opencv-python-headless==4.13.0.92",
+    "colour-science==0.4.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pytest-qt==4.5.0",
+    "PyInstaller==6.21.0",
+]
+
+[project.scripts]
+scenelens = "scenelens.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+qt_api = "pyside6"
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: tests that process large images or build packages",
+]

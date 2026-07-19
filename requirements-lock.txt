@@ -1,0 +1,23 @@
+# M0.5 verified environment snapshot (Python 3.11 x64, 2026-07-18).
+# pyproject.toml remains the authoritative direct-dependency declaration.
+altgraph==0.17.5
+colorama==0.4.6
+colour-science==0.4.7
+iniconfig==2.3.0
+numpy==2.3.5
+opencv-python-headless==4.13.0.92
+packaging==26.2
+pefile==2024.8.26
+pillow==12.3.0
+pluggy==1.6.0
+Pygments==2.20.0
+pyinstaller==6.21.0
+pyinstaller-hooks-contrib==2026.6
+PySide6==6.11.1
+PySide6_Addons==6.11.1
+PySide6_Essentials==6.11.1
+pytest==9.1.1
+pytest-qt==4.5.0
+pywin32-ctypes==0.2.3
+shiboken6==6.11.1
+typing_extensions==4.16.0
