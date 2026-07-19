@@ -30,8 +30,8 @@ M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前
 
 ## 使用
 
-请阅读 [USER_GUIDE.md](USER_GUIDE.md)。它是随每次用户可见更新同步维护的
-简明中文使用手册。
+请阅读 [SceneLens_使用手册.docx](SceneLens_使用手册.docx)。它是随每次
+用户可见更新同步维护的纯文字简明 Word 使用手册。
 
 最短流程：新建项目 → 填写制作意图 → 新建 Shot → 导入参考图与当前截图 →
 查看全图/区域证据 → AI 专项审阅 → 确认任务 → 优化预演 → 导入新 Version
@@ -57,7 +57,7 @@ M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前
 
 ## 文档
 
-- [USER_GUIDE.md](USER_GUIDE.md)：当前版本功能与简明操作手册
+- [SceneLens_使用手册.docx](SceneLens_使用手册.docx)：纯文字简明 Word 使用手册
 - [PROJECT_BRIEF.md](PROJECT_BRIEF.md)：产品目标与范围
 - [DECISIONS.md](DECISIONS.md)：已接受的产品与技术决策
 - [ROADMAP.md](ROADMAP.md)：开发阶段与验收标准

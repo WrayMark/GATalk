@@ -68,8 +68,10 @@
 - 依赖升级运行算法、UI 和 PyInstaller 验证。
 - 重要取舍写入 `DECISIONS.md`，范围写入 `ROADMAP.md`，用户变化写入
   `CHANGELOG.md`，依赖变化同步 `THIRD_PARTY_LICENSES.md`。
-- 每次用户可见更新必须同步更新 `USER_GUIDE.md`，简要说明新增或变化的功能、
-  操作入口、最短使用步骤和必要限制；避免实现细节、重复说明和长篇背景。
+- 每次用户可见更新必须同步更新 `USER_GUIDE.md`，并运行
+  `scripts/build_user_guide_docx.py` 重新生成 `SceneLens_使用手册.docx`。
+  Word 版是用户交付手册，使用纯文字、简单标题和短步骤；避免实现细节、重复
+  说明和长篇背景。交付前必须渲染检查全部页面。
 - 文档使用中文；代码标识符、类型和测试名称使用英文。
 
 ## 常用命令
