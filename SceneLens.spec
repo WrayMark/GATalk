@@ -7,7 +7,20 @@ a = Analysis(
     [str(project_root / 'src' / 'scenelens' / '__main__.py')],
     pathex=[str(project_root / 'src')],
     binaries=[],
-    datas=[],
+    datas=[
+        (
+            str(
+                project_root
+                / 'src'
+                / 'scenelens'
+                / 'modules'
+                / 'visual_review'
+                / 'config'
+                / 'presets.json'
+            ),
+            'scenelens/modules/visual_review/config',
+        ),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

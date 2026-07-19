@@ -29,10 +29,18 @@ from PySide6.QtWidgets import (
 )
 
 from scenelens.analysis.models import ImageMeasurements, RenderSettings
-from scenelens.analysis.pipeline import measure_image, render_image
+from scenelens.analysis.pipeline import render_image
+from scenelens.core.analyzers import AnalyzerRequest
 from scenelens.imaging.loader import LoadedImage, load_image
 from scenelens.imaging.qt import numpy_to_qimage
-from scenelens.storage.errors import StorageError
+from scenelens.modules.visual_review import MODULE_ID
+from scenelens.modules.visual_review.analyzers import (
+    BASIC_MEASUREMENTS_ANALYZER_ID,
+)
+from scenelens.modules.visual_review.registry import (
+    create_visual_review_registry,
+)
+from scenelens.storage.errors import ProjectLockedError, StorageError
 from scenelens.storage.models import (
     ArtBrief,
     CanvasState,
@@ -42,7 +50,6 @@ from scenelens.storage.models import (
 )
 from scenelens.storage.project_store import (
     ProjectStore,
-    default_measurement_parameters,
     utc_now,
 )
 from scenelens.storage.recent_projects import RecentProjects
@@ -77,7 +84,7 @@ class ImagePane(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self, recent_projects: RecentProjects | None = None) -> None:
         super().__init__()
-        self.setWindowTitle("SceneLens — M1A")
+        self.setWindowTitle("SceneLens — M1B.0")
         self.resize(1550, 900)
         self.setMinimumSize(1050, 650)
 
@@ -110,6 +117,11 @@ class MainWindow(QMainWindow):
         self._workspace_dirty = False
         self._restoring_workspace = False
         self._recent_projects = recent_projects or RecentProjects()
+        self._analyzer_registry = create_visual_review_registry()
+        self._measurement_analyzer = self._analyzer_registry.get(
+            MODULE_ID,
+            BASIC_MEASUREMENTS_ANALYZER_ID,
+        )
 
         self._thread_pool = QThreadPool(self)
         ideal = max(2, QThread.idealThreadCount())
@@ -377,15 +389,20 @@ class MainWindow(QMainWindow):
             self._show_storage_error("无法创建项目", exc)
             return False
 
-    def open_project(self, path: Path) -> bool:
+    def open_project(self, path: Path, read_only: bool = False) -> bool:
         if not self._prepare_project_switch():
             return False
         try:
-            store = ProjectStore.open(path)
+            store = ProjectStore.open(path, read_only=read_only)
             self._activate_project_store(store)
             self._remember_project(store)
-            self.statusBar().showMessage(f"项目已打开：{store.manifest.name}")
+            mode = "（只读）" if store.read_only else ""
+            self.statusBar().showMessage(
+                f"项目已打开{mode}：{store.manifest.name}"
+            )
             return True
+        except ProjectLockedError as exc:
+            return self._offer_read_only_open(path, exc)
         except StorageError as exc:
             self._show_storage_error("无法打开项目", exc)
             return False
@@ -393,13 +410,55 @@ class MainWindow(QMainWindow):
     def _prepare_project_switch(self) -> bool:
         if self._project_store is None:
             return True
-        return self._flush_autosave(show_error=True)
+        if not self._flush_autosave(show_error=True):
+            return False
+        self._project_store.close()
+        self._project_store = None
+        self._active_shot_id = None
+        self._active_version_id = None
+        self._invalidate_image_jobs()
+        self._clear_role("reference")
+        self._clear_role("current")
+        self.project_navigator.clear_project()
+        self.save_project_action.setEnabled(False)
+        self.reference_button.setEnabled(True)
+        self.current_button.setEnabled(True)
+        self.setWindowTitle("SceneLens — M1B")
+        return True
+
+    def _offer_read_only_open(
+        self,
+        path: Path,
+        error: ProjectLockedError,
+    ) -> bool:
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setWindowTitle("项目已被其他进程打开")
+        dialog.setText(str(error))
+        dialog.setInformativeText(
+            "可以只读打开以查看项目，或取消并回到当前界面。"
+        )
+        read_only_button = dialog.addButton(
+            "只读打开",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        dialog.addButton(
+            "取消",
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        dialog.exec()
+        if dialog.clickedButton() is read_only_button:
+            return self.open_project(path, read_only=True)
+        return False
 
     def _activate_project_store(self, store: ProjectStore) -> None:
         self._invalidate_image_jobs()
         self._project_store = store
-        self.save_project_action.setEnabled(True)
-        self.setWindowTitle(f"SceneLens — {store.manifest.name}")
+        self.save_project_action.setEnabled(not store.read_only)
+        self.reference_button.setEnabled(not store.read_only)
+        self.current_button.setEnabled(not store.read_only)
+        suffix = " [只读]" if store.read_only else ""
+        self.setWindowTitle(f"SceneLens — {store.manifest.name}{suffix}")
         state = store.get_workspace_state()
         shots = store.list_shots()
         shot_ids = {shot.id for shot in shots}
@@ -645,6 +704,13 @@ class MainWindow(QMainWindow):
         if self._project_store is None:
             self._load_path(role, path)
             return
+        if self._project_store.read_only:
+            QMessageBox.information(
+                self,
+                "项目为只读",
+                "该项目正由另一个进程写入；当前窗口不会导入或修改图片。",
+            )
+            return
         if self._active_shot_id is None:
             QMessageBox.information(
                 self,
@@ -887,26 +953,36 @@ class MainWindow(QMainWindow):
             self._asset_ids.get(role),
             parameters,
         )
+        request = AnalyzerRequest(
+            inputs={"rgb": loaded.rgb, "alpha": loaded.alpha},
+            input_hashes={
+                "rgb": self._measurement_input_hash(role, generation),
+            },
+            parameters=parameters,
+        )
         self._start_worker(
             role,
             "measure",
             generation,
-            lambda: measure_image(
-                loaded.rgb,
-                loaded.alpha,
-                palette_colours=parameters["palette_colours"],
-                palette_seed=parameters["palette_seed"],
-                palette_max_samples=parameters["palette_max_samples"],
-            ),
+            lambda: self._measurement_analyzer.run(request),
         )
 
     def _measurement_parameters(self) -> dict:
         state = self._workspace_template
-        return default_measurement_parameters(
+        return self._measurement_analyzer.default_parameters(
             state.palette_colours,
             state.palette_seed,
             state.palette_max_samples,
         )
+
+    def _measurement_input_hash(self, role: str, generation: int) -> str:
+        asset_id = self._asset_ids.get(role)
+        if asset_id is not None and self._project_store is not None:
+            try:
+                return self._project_store.get_asset(asset_id).sha256
+            except StorageError:
+                LOGGER.exception("Failed to read analyzer input hash")
+        return f"session:{role}:{generation}"
 
     def _load_cached_measurements(
         self,
@@ -1018,7 +1094,11 @@ class MainWindow(QMainWindow):
         self._mark_workspace_dirty()
 
     def _mark_workspace_dirty(self, _value=None) -> None:
-        if self._project_store is None or self._restoring_workspace:
+        if (
+            self._project_store is None
+            or self._project_store.read_only
+            or self._restoring_workspace
+        ):
             return
         self._workspace_dirty = True
         if hasattr(self, "_autosave_timer"):
@@ -1140,6 +1220,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._flush_autosave(show_error=False):
+            if self._project_store is not None:
+                self._project_store.close()
             event.accept()
             return
         choice = QMessageBox.warning(
@@ -1153,10 +1235,14 @@ class MainWindow(QMainWindow):
         )
         if choice == QMessageBox.StandardButton.Retry:
             if self._flush_autosave(show_error=True):
+                if self._project_store is not None:
+                    self._project_store.close()
                 event.accept()
             else:
                 event.ignore()
         elif choice == QMessageBox.StandardButton.Discard:
+            if self._project_store is not None:
+                self._project_store.close()
             event.accept()
         else:
             event.ignore()

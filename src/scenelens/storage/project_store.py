@@ -34,6 +34,7 @@ from scenelens.storage.atomic import (
 )
 from scenelens.storage.errors import (
     ProjectFormatError,
+    ProjectReadOnlyError,
     ProjectSaveError,
     ProjectVersionError,
     StorageError,
@@ -49,17 +50,24 @@ from scenelens.storage.models import (
     MANIFEST_FORMAT,
     MANIFEST_FORMAT_VERSION,
     ArtBrief,
+    BriefDocumentRecord,
+    BriefDocumentType,
+    BriefFieldValue,
     CanvasState,
+    FieldSource,
     ImageAssetRecord,
     ProjectManifest,
     ShotRecord,
     VersionRecord,
     WorkspaceState,
 )
+from scenelens.storage.project_lock import ProjectWriteLock
 
 
 MEASUREMENT_ALGORITHM_ID = "scenelens.basic_measurements"
 MEASUREMENT_ALGORITHM_VERSION = "1"
+VISUAL_REVIEW_MODULE_ID = "scenelens.visual_review"
+MEASUREMENT_ANALYZER_ID = "basic_image_measurements"
 
 
 def utc_now() -> str:
@@ -86,9 +94,18 @@ def default_measurement_parameters(
 
 
 class ProjectStore:
-    def __init__(self, root: Path, manifest: ProjectManifest) -> None:
+    def __init__(
+        self,
+        root: Path,
+        manifest: ProjectManifest,
+        *,
+        read_only: bool = False,
+        write_lock: ProjectWriteLock | None = None,
+    ) -> None:
         self.root = Path(root).resolve()
         self.manifest = manifest
+        self.read_only = bool(read_only)
+        self._write_lock = write_lock
 
     @property
     def manifest_path(self) -> Path:
@@ -105,6 +122,13 @@ class ProjectStore:
     @property
     def artifacts_directory(self) -> Path:
         return self._resolve_relative(self.manifest.artifacts_path)
+
+    @property
+    def recovered_stale_lock(self) -> bool:
+        return bool(
+            self._write_lock is not None
+            and self._write_lock.recovered_stale_lock
+        )
 
     @classmethod
     def create(cls, root: Path, name: str) -> ProjectStore:
@@ -150,10 +174,25 @@ class ProjectStore:
             if isinstance(exc, ProjectSaveError):
                 raise
             raise ProjectSaveError(f"无法创建项目：{exc}") from exc
-        return cls(target, manifest)
+        try:
+            write_lock = ProjectWriteLock.acquire(
+                target,
+                manifest.project_id,
+                utc_now(),
+            )
+        except Exception as exc:
+            raise ProjectSaveError(
+                f"项目已创建，但无法取得写锁：{exc}"
+            ) from exc
+        return cls(target, manifest, write_lock=write_lock)
 
     @classmethod
-    def open(cls, path: Path) -> ProjectStore:
+    def open(
+        cls,
+        path: Path,
+        *,
+        read_only: bool = False,
+    ) -> ProjectStore:
         selected = Path(path).expanduser().resolve()
         manifest_path = selected / "project.json" if selected.is_dir() else selected
         if manifest_path.name.lower() != "project.json" or not manifest_path.is_file():
@@ -172,26 +211,49 @@ class ProjectStore:
         if manifest.format_version < 1:
             raise ProjectFormatError("不支持该项目清单版本。")
 
-        store = cls(root, manifest)
+        store = cls(root, manifest, read_only=read_only)
         store._validate_manifest_paths()
         if not store.database_path.is_file():
             raise ProjectFormatError("项目缺少 project.db。")
-        try:
-            actual_version = migrate_database(
-                store.database_path,
+        if not read_only:
+            store._write_lock = ProjectWriteLock.acquire(
+                root,
                 manifest.project_id,
-                store.root,
-                manifest.backups_path,
                 utc_now(),
-                __version__,
             )
+        try:
+            if read_only:
+                with connect_database(
+                    store.database_path,
+                    read_only=True,
+                ) as connection:
+                    actual_version = database_version(connection)
+                if actual_version != DATABASE_SCHEMA_VERSION:
+                    raise ProjectVersionError(
+                        "该项目需要数据库迁移，不能以只读模式打开；"
+                        "请等待拥有写权限的进程完成打开。"
+                    )
+            else:
+                actual_version = migrate_database(
+                    store.database_path,
+                    manifest.project_id,
+                    store.root,
+                    manifest.backups_path,
+                    utc_now(),
+                    __version__,
+                )
             store._validate_database_identity()
         except (ProjectVersionError, ProjectFormatError):
+            store.close()
             raise
         except Exception as exc:
+            store.close()
             raise ProjectFormatError(f"无法打开项目数据库：{exc}") from exc
 
-        if actual_version != manifest.database_schema_version:
+        if (
+            not read_only
+            and actual_version != manifest.database_schema_version
+        ):
             store.manifest = replace(
                 manifest,
                 database_schema_version=actual_version,
@@ -207,9 +269,11 @@ class ProjectStore:
         return store
 
     def save(self) -> None:
+        self._ensure_writable()
         self._touch_manifest()
 
     def rename_project(self, name: str) -> None:
+        self._ensure_writable()
         cleaned = name.strip()
         if not cleaned:
             raise ProjectSaveError("项目名称不能为空。")
@@ -238,6 +302,7 @@ class ProjectStore:
         return ArtBrief(**dict(row))
 
     def save_art_brief(self, brief: ArtBrief) -> None:
+        self._ensure_writable()
         now = utc_now()
         fields = brief.to_dict()
         with self._write_connection() as connection:
@@ -280,9 +345,179 @@ class ProjectStore:
                     """,
                     (*values, row["id"]),
                 )
+            document = self._ensure_brief_document(
+                connection,
+                BriefDocumentType.CREATIVE_INTENT,
+                now,
+            )
+            migrated_fields = {
+                "scene_type": brief.scene_type,
+                "production_stage": brief.production_stage,
+                "target_style": brief.target_style,
+                "target_moods": brief.target_mood,
+                "primary_focus": brief.primary_focus,
+                "secondary_focus": brief.secondary_focus,
+                "preserve_content": brief.preserve_content,
+                "main_issues": brief.main_issues,
+                "excluded_review": brief.excluded_review,
+                "constraints": brief.constraints,
+                "additional_notes": (
+                    f"M1A 时间与天气（未拆分）：{brief.time_weather}"
+                    if brief.time_weather
+                    else ""
+                ),
+            }
+            for field_key, value in migrated_fields.items():
+                self._upsert_brief_field(
+                    connection,
+                    document.id,
+                    field_key,
+                    BriefFieldValue(
+                        value=value,
+                        source=FieldSource.USER_REVISION,
+                        evidence=(
+                            {
+                                "legacy_field": "time_weather",
+                                "original_value": brief.time_weather,
+                            }
+                            if field_key == "additional_notes"
+                            and brief.time_weather
+                            else {"legacy_editor": True}
+                        ),
+                        user_confirmed=True,
+                        updated_at=now,
+                    ),
+                )
         self._touch_manifest()
 
+    def get_creative_intent_document(
+        self,
+        shot_id: str | None = None,
+    ) -> BriefDocumentRecord | None:
+        with self._read_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM visual_review_brief_documents
+                WHERE document_type = 'creative_intent'
+                  AND project_id = ?
+                  AND (
+                      (? IS NULL AND shot_id IS NULL)
+                      OR shot_id = ?
+                  )
+                """,
+                (self.manifest.project_id, shot_id, shot_id),
+            ).fetchone()
+        return None if row is None else self._brief_document_from_row(row)
+
+    def ensure_creative_intent_document(
+        self,
+        shot_id: str | None = None,
+    ) -> BriefDocumentRecord:
+        self._ensure_writable()
+        now = utc_now()
+        with self._write_connection() as connection:
+            return self._ensure_brief_document(
+                connection,
+                BriefDocumentType.CREATIVE_INTENT,
+                now,
+                shot_id=shot_id,
+            )
+
+    def get_reference_visual_brief(
+        self,
+        shot_id: str,
+    ) -> BriefDocumentRecord | None:
+        with self._read_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT documents.*
+                FROM shots
+                JOIN visual_review_brief_documents AS documents
+                  ON documents.shot_id = shots.id
+                 AND documents.asset_id = shots.reference_asset_id
+                 AND documents.document_type = 'reference_visual'
+                WHERE shots.id = ?
+                """,
+                (shot_id,),
+            ).fetchone()
+        return None if row is None else self._brief_document_from_row(row)
+
+    def list_brief_fields(
+        self,
+        document_id: str,
+    ) -> dict[str, BriefFieldValue]:
+        with self._read_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT field_key, value_json, source, confidence,
+                       evidence_json, user_confirmed, updated_at
+                FROM visual_review_brief_fields
+                WHERE document_id = ?
+                ORDER BY field_key
+                """,
+                (document_id,),
+            ).fetchall()
+        result: dict[str, BriefFieldValue] = {}
+        for row in rows:
+            try:
+                value = json.loads(row["value_json"])
+                evidence = (
+                    None
+                    if row["evidence_json"] is None
+                    else json.loads(row["evidence_json"])
+                )
+                source = FieldSource(row["source"])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            result[str(row["field_key"])] = BriefFieldValue(
+                value=value,
+                source=source,
+                confidence=(
+                    None
+                    if row["confidence"] is None
+                    else float(row["confidence"])
+                ),
+                evidence=evidence,
+                user_confirmed=bool(row["user_confirmed"]),
+                updated_at=str(row["updated_at"]),
+            )
+        return result
+
+    def save_brief_field(
+        self,
+        document_id: str,
+        field_key: str,
+        field: BriefFieldValue,
+    ) -> bool:
+        self._ensure_writable()
+        cleaned_key = field_key.strip()
+        if not cleaned_key:
+            raise ProjectSaveError("Brief 字段键不能为空。")
+        if field.confidence is not None and not 0.0 <= field.confidence <= 1.0:
+            raise ProjectSaveError("Brief 字段可信度必须在 0 到 1 之间。")
+        now = utc_now()
+        stored = replace(field, updated_at=now)
+        with self._write_connection() as connection:
+            exists = connection.execute(
+                """
+                SELECT id FROM visual_review_brief_documents WHERE id = ?
+                """,
+                (document_id,),
+            ).fetchone()
+            if exists is None:
+                raise ProjectSaveError("找不到要更新的 Brief 文档。")
+            changed = self._upsert_brief_field(
+                connection,
+                document_id,
+                cleaned_key,
+                stored,
+            )
+        if changed:
+            self._touch_manifest()
+        return changed
+
     def create_shot(self, name: str) -> ShotRecord:
+        self._ensure_writable()
         cleaned = name.strip()
         if not cleaned:
             raise ProjectSaveError("Shot 名称不能为空。")
@@ -369,6 +604,7 @@ class ProjectStore:
         return VersionRecord(**dict(row))
 
     def import_reference(self, shot_id: str, source: Path) -> ImageAssetRecord:
+        self._ensure_writable()
         staged, loaded = self._stage_and_load(source)
         try:
             now = utc_now()
@@ -388,6 +624,22 @@ class ProjectStore:
                     """,
                     (asset.id, now, shot_id),
                 )
+                connection.execute(
+                    """
+                    UPDATE visual_review_brief_documents
+                    SET status = 'stale', updated_at = ?
+                    WHERE document_type = 'reference_visual'
+                      AND shot_id = ? AND asset_id <> ? AND status = 'current'
+                    """,
+                    (now, shot_id, asset.id),
+                )
+                self._ensure_brief_document(
+                    connection,
+                    BriefDocumentType.REFERENCE_VISUAL,
+                    now,
+                    shot_id=shot_id,
+                    asset=asset,
+                )
         finally:
             if staged.temporary_path.exists():
                 staged.temporary_path.unlink()
@@ -401,6 +653,7 @@ class ProjectStore:
         name: str | None = None,
         notes: str = "",
     ) -> VersionRecord:
+        self._ensure_writable()
         staged, loaded = self._stage_and_load(source)
         try:
             now = utc_now()
@@ -509,10 +762,12 @@ class ProjectStore:
             palette_colours=int(row["palette_colours"]),
             palette_seed=int(row["palette_seed"]),
             palette_max_samples=int(row["palette_max_samples"]),
+            active_analysis_tab=str(row["active_analysis_tab"]),
             updated_at=row["updated_at"],
         )
 
     def save_workspace_state(self, state: WorkspaceState) -> None:
+        self._ensure_writable()
         now = utc_now()
         with self._write_connection() as connection:
             self._validate_active_selection(
@@ -528,7 +783,8 @@ class ProjectStore:
                     sync_views = ?, blur_sigma = ?,
                     three_threshold_low = ?, three_threshold_high = ?,
                     five_thresholds_json = ?, palette_colours = ?,
-                    palette_seed = ?, palette_max_samples = ?, updated_at = ?
+                    palette_seed = ?, palette_max_samples = ?,
+                    active_analysis_tab = ?, updated_at = ?
                 WHERE project_id = ?
                 """,
                 (
@@ -545,6 +801,7 @@ class ProjectStore:
                     int(state.palette_colours),
                     int(state.palette_seed),
                     int(state.palette_max_samples),
+                    state.active_analysis_tab,
                     now,
                     self.manifest.project_id,
                 ),
@@ -580,6 +837,7 @@ class ProjectStore:
         return None if row is None else CanvasState(**dict(row))
 
     def save_canvas_state(self, state: CanvasState) -> None:
+        self._ensure_writable()
         if state.role not in {"reference", "current"}:
             raise ProjectSaveError("未知画布类型。")
         if state.role == "reference" and state.version_id is not None:
@@ -636,9 +894,13 @@ class ProjectStore:
         measurements: ImageMeasurements,
         parameters: dict[str, Any] | None = None,
     ) -> str:
+        self._ensure_writable()
         parameters = parameters or default_measurement_parameters()
         asset = self.get_asset(asset_id)
         key_parts = {
+            "module_id": VISUAL_REVIEW_MODULE_ID,
+            "analyzer_id": MEASUREMENT_ANALYZER_ID,
+            "analyzer_version": MEASUREMENT_ALGORITHM_VERSION,
             "algorithm_id": MEASUREMENT_ALGORITHM_ID,
             "algorithm_version": MEASUREMENT_ALGORITHM_VERSION,
             "input_sha256": asset.sha256,
@@ -701,8 +963,9 @@ class ProjectStore:
                 """
                 INSERT INTO analysis_runs(
                     id, asset_id, algorithm_id, algorithm_version,
-                    parameters_json, input_sha256, cache_key, status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'complete', ?)
+                    parameters_json, input_sha256, cache_key, status, created_at,
+                    module_id, analyzer_id, analyzer_version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'complete', ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -713,6 +976,9 @@ class ProjectStore:
                     asset.sha256,
                     cache_key,
                     now,
+                    VISUAL_REVIEW_MODULE_ID,
+                    MEASUREMENT_ANALYZER_ID,
+                    MEASUREMENT_ALGORITHM_VERSION,
                 ),
             )
             relative_text = artifact_relative.as_posix()
@@ -753,6 +1019,17 @@ class ProjectStore:
         asset = self.get_asset(asset_id)
         cache_key = cache_key_for(
             {
+                "module_id": VISUAL_REVIEW_MODULE_ID,
+                "analyzer_id": MEASUREMENT_ANALYZER_ID,
+                "analyzer_version": MEASUREMENT_ALGORITHM_VERSION,
+                "algorithm_id": MEASUREMENT_ALGORITHM_ID,
+                "algorithm_version": MEASUREMENT_ALGORITHM_VERSION,
+                "input_sha256": asset.sha256,
+                "parameters": parameters,
+            }
+        )
+        legacy_cache_key = cache_key_for(
+            {
                 "algorithm_id": MEASUREMENT_ALGORITHM_ID,
                 "algorithm_version": MEASUREMENT_ALGORITHM_VERSION,
                 "input_sha256": asset.sha256,
@@ -773,10 +1050,12 @@ class ProjectStore:
                   ON analysis_runs.id = analysis_results.analysis_run_id
                 WHERE analysis_results.analysis_run_id = (
                     SELECT id FROM analysis_runs
-                    WHERE cache_key = ? AND status = 'complete'
+                    WHERE cache_key IN (?, ?) AND status = 'complete'
+                    ORDER BY CASE cache_key WHEN ? THEN 0 ELSE 1 END
+                    LIMIT 1
                 )
                 """,
-                (cache_key,),
+                (cache_key, legacy_cache_key, cache_key),
             ).fetchall()
         if not rows:
             return None
@@ -921,6 +1200,172 @@ class ProjectStore:
         )
         return asset
 
+    def _ensure_brief_document(
+        self,
+        connection: sqlite3.Connection,
+        document_type: BriefDocumentType,
+        now: str,
+        *,
+        shot_id: str | None = None,
+        asset: ImageAssetRecord | None = None,
+    ) -> BriefDocumentRecord:
+        if document_type is BriefDocumentType.REFERENCE_VISUAL:
+            if shot_id is None or asset is None:
+                raise ProjectSaveError("参考图视觉简报必须绑定 Shot 和参考图片。")
+            row = connection.execute(
+                """
+                SELECT * FROM visual_review_brief_documents
+                WHERE document_type = 'reference_visual'
+                  AND shot_id = ? AND asset_id = ?
+                """,
+                (shot_id, asset.id),
+            ).fetchone()
+        else:
+            row = connection.execute(
+                """
+                SELECT * FROM visual_review_brief_documents
+                WHERE document_type = 'creative_intent'
+                  AND project_id = ?
+                  AND (
+                      (? IS NULL AND shot_id IS NULL)
+                      OR shot_id = ?
+                  )
+                """,
+                (self.manifest.project_id, shot_id, shot_id),
+            ).fetchone()
+        if row is not None:
+            return self._brief_document_from_row(row)
+
+        document_id = str(uuid.uuid4())
+        connection.execute(
+            """
+            INSERT INTO visual_review_brief_documents(
+                id, document_type, project_id, shot_id, asset_id, asset_sha256,
+                analyzer_id, analyzer_version, analyzed_at, status,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 'current', ?, ?)
+            """,
+            (
+                document_id,
+                document_type.value,
+                self.manifest.project_id,
+                shot_id,
+                None if asset is None else asset.id,
+                None if asset is None else asset.sha256,
+                now,
+                now,
+            ),
+        )
+        created = connection.execute(
+            "SELECT * FROM visual_review_brief_documents WHERE id = ?",
+            (document_id,),
+        ).fetchone()
+        if created is None:
+            raise ProjectSaveError("创建 Brief 文档失败。")
+        return self._brief_document_from_row(created)
+
+    @staticmethod
+    def _upsert_brief_field(
+        connection: sqlite3.Connection,
+        document_id: str,
+        field_key: str,
+        field: BriefFieldValue,
+    ) -> bool:
+        existing = connection.execute(
+            """
+            SELECT source, user_confirmed
+            FROM visual_review_brief_fields
+            WHERE document_id = ? AND field_key = ?
+            """,
+            (document_id, field_key),
+        ).fetchone()
+        generated_sources = {
+            FieldSource.AUTOMATIC_MEASUREMENT.value,
+            FieldSource.ALGORITHM_INFERENCE.value,
+            FieldSource.AI_ANALYSIS.value,
+        }
+        if (
+            existing is not None
+            and field.source.value in generated_sources
+            and (
+                bool(existing["user_confirmed"])
+                or existing["source"]
+                in {
+                    FieldSource.USER_INPUT.value,
+                    FieldSource.USER_REVISION.value,
+                }
+            )
+        ):
+            return False
+        value_json = canonical_json(field.value)
+        evidence_json = (
+            None if field.evidence is None else canonical_json(field.evidence)
+        )
+        if existing is None:
+            connection.execute(
+                """
+                INSERT INTO visual_review_brief_fields(
+                    id, document_id, field_key, value_json, source, confidence,
+                    evidence_json, user_confirmed, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    document_id,
+                    field_key,
+                    value_json,
+                    field.source.value,
+                    field.confidence,
+                    evidence_json,
+                    int(field.user_confirmed),
+                    field.updated_at,
+                ),
+            )
+        else:
+            connection.execute(
+                """
+                UPDATE visual_review_brief_fields
+                SET value_json = ?, source = ?, confidence = ?,
+                    evidence_json = ?, user_confirmed = ?, updated_at = ?
+                WHERE document_id = ? AND field_key = ?
+                """,
+                (
+                    value_json,
+                    field.source.value,
+                    field.confidence,
+                    evidence_json,
+                    int(field.user_confirmed),
+                    field.updated_at,
+                    document_id,
+                    field_key,
+                ),
+            )
+        connection.execute(
+            """
+            UPDATE visual_review_brief_documents
+            SET updated_at = ? WHERE id = ?
+            """,
+            (field.updated_at, document_id),
+        )
+        return True
+
+    @staticmethod
+    def _brief_document_from_row(row: sqlite3.Row) -> BriefDocumentRecord:
+        return BriefDocumentRecord(
+            id=str(row["id"]),
+            document_type=BriefDocumentType(str(row["document_type"])),
+            project_id=str(row["project_id"]),
+            shot_id=row["shot_id"],
+            asset_id=row["asset_id"],
+            asset_sha256=row["asset_sha256"],
+            analyzer_id=row["analyzer_id"],
+            analyzer_version=row["analyzer_version"],
+            analyzed_at=row["analyzed_at"],
+            status=str(row["status"]),
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
+
     @staticmethod
     def _media_type(source_format: str) -> str:
         return {
@@ -1007,7 +1452,10 @@ class ProjectStore:
     @contextmanager
     def _read_connection(self) -> Iterator[sqlite3.Connection]:
         try:
-            connection = connect_database(self.database_path)
+            connection = connect_database(
+                self.database_path,
+                read_only=self.read_only,
+            )
         except (OSError, sqlite3.Error) as exc:
             raise ProjectFormatError(f"无法读取项目数据库：{exc}") from exc
         try:
@@ -1019,6 +1467,7 @@ class ProjectStore:
 
     @contextmanager
     def _write_connection(self) -> Iterator[sqlite3.Connection]:
+        self._ensure_writable()
         try:
             connection = connect_database(self.database_path)
         except (OSError, sqlite3.Error) as exc:
@@ -1036,6 +1485,7 @@ class ProjectStore:
             connection.close()
 
     def _touch_manifest(self) -> None:
+        self._ensure_writable()
         previous = self.manifest
         self.manifest = replace(
             previous,
@@ -1050,3 +1500,24 @@ class ProjectStore:
             raise ProjectSaveError(
                 "项目数据已写入，但 project.json 更新失败；请检查磁盘和权限后重试保存。"
             ) from exc
+
+    def close(self) -> None:
+        if self._write_lock is not None:
+            self._write_lock.release()
+            self._write_lock = None
+
+    def __enter__(self) -> ProjectStore:
+        return self
+
+    def __exit__(self, _exc_type, _exc, _traceback) -> None:
+        self.close()
+
+    def _ensure_writable(self) -> None:
+        if self.read_only:
+            raise ProjectReadOnlyError(
+                "项目以只读模式打开，当前操作不会写入任何项目文件。"
+            )
+        if self._write_lock is None:
+            raise ProjectReadOnlyError(
+                "项目写锁已释放，当前操作不会写入任何项目文件。"
+            )

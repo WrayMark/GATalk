@@ -1,0 +1,115 @@
+{
+  "format_version": 1,
+  "module_id": "scenelens.visual_review",
+  "fields": {
+    "production_stage": {
+      "input_mode": "editable_single",
+      "allow_custom": true,
+      "options": [
+        {"id": "concept_planning", "label": "概念与规划"},
+        {"id": "blockout", "label": "白盒"},
+        {"id": "asset_planning", "label": "资产规划"},
+        {"id": "asset_population", "label": "资产填充"},
+        {"id": "material_creation", "label": "材质制作"},
+        {"id": "vegetation_creation", "label": "植被制作"},
+        {"id": "lighting_first_pass", "label": "灯光初版"},
+        {"id": "atmosphere_adjustment", "label": "氛围调整"},
+        {"id": "detail_polish", "label": "细节润色"},
+        {"id": "final_presentation", "label": "最终展示"}
+      ]
+    },
+    "time": {
+      "input_mode": "editable_single",
+      "allow_custom": true,
+      "options": [
+        {"id": "pre_dawn", "label": "黎明前"},
+        {"id": "sunrise", "label": "日出"},
+        {"id": "early_morning", "label": "清晨"},
+        {"id": "morning", "label": "上午"},
+        {"id": "noon", "label": "正午"},
+        {"id": "afternoon", "label": "下午"},
+        {"id": "dusk", "label": "黄昏"},
+        {"id": "nightfall", "label": "入夜"},
+        {"id": "night", "label": "夜晚"},
+        {"id": "unclear", "label": "不明确"}
+      ]
+    },
+    "season": {
+      "input_mode": "editable_single",
+      "allow_custom": true,
+      "options": [
+        {"id": "spring", "label": "春"},
+        {"id": "summer", "label": "夏"},
+        {"id": "autumn", "label": "秋"},
+        {"id": "winter", "label": "冬"},
+        {"id": "transitional", "label": "过渡季节"},
+        {"id": "unclear", "label": "不明确"}
+      ]
+    },
+    "weather": {
+      "input_mode": "editable_single",
+      "allow_custom": true,
+      "options": [
+        {"id": "clear", "label": "晴朗"},
+        {"id": "partly_cloudy", "label": "多云"},
+        {"id": "overcast", "label": "阴天"},
+        {"id": "light_fog", "label": "薄雾"},
+        {"id": "dense_fog", "label": "浓雾"},
+        {"id": "light_rain", "label": "小雨"},
+        {"id": "heavy_rain", "label": "大雨"},
+        {"id": "snow", "label": "雪"},
+        {"id": "sandstorm", "label": "风沙"},
+        {"id": "humid", "label": "潮湿"},
+        {"id": "unclear", "label": "不明确"}
+      ]
+    },
+    "target_moods": {
+      "input_mode": "editable_multi",
+      "allow_custom": true,
+      "options": [
+        {"id": "fresh", "label": "清爽"},
+        {"id": "quiet", "label": "宁静"},
+        {"id": "warm", "label": "温暖"},
+        {"id": "cold", "label": "冷峻"},
+        {"id": "mysterious", "label": "神秘"},
+        {"id": "oppressive", "label": "压抑"},
+        {"id": "grand", "label": "壮阔"},
+        {"id": "desolate", "label": "荒凉"},
+        {"id": "damp", "label": "潮湿"},
+        {"id": "hazy", "label": "朦胧"},
+        {"id": "dreamlike", "label": "梦幻"},
+        {"id": "dangerous", "label": "危险"},
+        {"id": "nostalgic", "label": "怀旧"},
+        {"id": "vibrant", "label": "生机"}
+      ]
+    },
+    "reference_use": {
+      "input_mode": "editable_multi",
+      "allow_custom": true,
+      "options": [
+        {"id": "primary", "label": "主参考"},
+        {"id": "composition", "label": "构图参考"},
+        {"id": "color_key", "label": "Color Key参考"},
+        {"id": "lighting", "label": "灯光参考"},
+        {"id": "atmosphere", "label": "氛围参考"},
+        {"id": "architecture", "label": "建筑参考"},
+        {"id": "materials", "label": "材质参考"},
+        {"id": "vegetation", "label": "植被参考"},
+        {"id": "level_layout", "label": "关卡布局参考"}
+      ]
+    },
+    "region_label": {
+      "input_mode": "editable_single",
+      "allow_custom": true,
+      "options": [
+        {"id": "sky", "label": "天空"},
+        {"id": "subject", "label": "主体"},
+        {"id": "secondary_focus", "label": "次要焦点"},
+        {"id": "foreground", "label": "前景"},
+        {"id": "midground", "label": "中景"},
+        {"id": "background", "label": "远景"},
+        {"id": "ground", "label": "地面"}
+      ]
+    }
+  }
+}

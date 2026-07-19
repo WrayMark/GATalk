@@ -77,8 +77,8 @@ class ProjectNavigator(QWidget):
         try:
             self.tree.clear()
             self.project_label.setText(store.manifest.name)
-            self.new_shot_button.setEnabled(True)
-            self.brief_button.setEnabled(True)
+            self.new_shot_button.setEnabled(not store.read_only)
+            self.brief_button.setEnabled(not store.read_only)
             root = QTreeWidgetItem([store.manifest.name])
             root.setData(0, ITEM_KIND_ROLE, "project")
             root.setData(0, ITEM_ID_ROLE, store.manifest.project_id)

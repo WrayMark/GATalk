@@ -127,6 +127,7 @@ def _run_internal_smoke_check() -> None:
         reference = store.import_reference(shot.id, source)
         version = store.add_version(shot.id, source)
         store.save_measurements(version.asset_id, measurements)
+        store.close()
         reopened = ProjectStore.open(store.root)
         if (
             reopened.get_shot(shot.id).reference_asset_id != reference.id
@@ -134,6 +135,7 @@ def _run_internal_smoke_check() -> None:
             or reopened.load_measurements(version.asset_id) is None
         ):
             raise RuntimeError("Internal project-storage smoke check failed.")
+        reopened.close()
 
 
 def main() -> int:

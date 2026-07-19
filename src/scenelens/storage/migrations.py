@@ -14,16 +14,33 @@ from scenelens.storage.models import DATABASE_SCHEMA_VERSION
 Migration = Callable[[sqlite3.Connection, str, str], None]
 
 
-def configure_connection(connection: sqlite3.Connection) -> None:
+def configure_connection(
+    connection: sqlite3.Connection,
+    read_only: bool = False,
+) -> None:
     connection.execute("PRAGMA foreign_keys = ON")
-    connection.execute("PRAGMA journal_mode = WAL")
-    connection.execute("PRAGMA synchronous = FULL")
+    if read_only:
+        connection.execute("PRAGMA query_only = ON")
+    else:
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = FULL")
     connection.row_factory = sqlite3.Row
 
 
-def connect_database(path: Path) -> sqlite3.Connection:
-    connection = sqlite3.connect(Path(path), timeout=10.0)
-    configure_connection(connection)
+def connect_database(
+    path: Path,
+    read_only: bool = False,
+) -> sqlite3.Connection:
+    database_path = Path(path)
+    if read_only:
+        connection = sqlite3.connect(
+            f"{database_path.resolve().as_uri()}?mode=ro",
+            uri=True,
+            timeout=10.0,
+        )
+    else:
+        connection = sqlite3.connect(database_path, timeout=10.0)
+    configure_connection(connection, read_only=read_only)
     return connection
 
 
@@ -217,8 +234,250 @@ def _migration_1(connection: sqlite3.Connection, project_id: str, now: str) -> N
     )
 
 
+def _migration_2(connection: sqlite3.Connection, project_id: str, now: str) -> None:
+    statements = (
+        """
+        CREATE TABLE module_schema_versions (
+            module_id TEXT PRIMARY KEY,
+            schema_version INTEGER NOT NULL CHECK (schema_version >= 1),
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        ALTER TABLE analysis_runs
+        ADD COLUMN module_id TEXT NOT NULL DEFAULT 'scenelens.visual_review'
+        """,
+        """
+        ALTER TABLE analysis_runs
+        ADD COLUMN analyzer_id TEXT NOT NULL DEFAULT 'basic_image_measurements'
+        """,
+        """
+        ALTER TABLE analysis_runs
+        ADD COLUMN analyzer_version TEXT NOT NULL DEFAULT '1'
+        """,
+        """
+        ALTER TABLE workspace_state
+        ADD COLUMN active_analysis_tab TEXT NOT NULL DEFAULT 'reference'
+        """,
+        """
+        CREATE TABLE visual_review_brief_documents (
+            id TEXT PRIMARY KEY,
+            document_type TEXT NOT NULL CHECK (
+                document_type IN ('creative_intent', 'reference_visual')
+            ),
+            project_id TEXT NOT NULL REFERENCES project_identity(id),
+            shot_id TEXT REFERENCES shots(id) ON DELETE CASCADE,
+            asset_id TEXT REFERENCES image_assets(id),
+            asset_sha256 TEXT,
+            analyzer_id TEXT,
+            analyzer_version TEXT,
+            analyzed_at TEXT,
+            status TEXT NOT NULL DEFAULT 'current' CHECK (
+                status IN ('current', 'stale')
+            ),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK (
+                (document_type = 'creative_intent' AND asset_id IS NULL)
+                OR
+                (
+                    document_type = 'reference_visual'
+                    AND shot_id IS NOT NULL
+                    AND asset_id IS NOT NULL
+                    AND asset_sha256 IS NOT NULL
+                )
+            )
+        )
+        """,
+        """
+        CREATE UNIQUE INDEX visual_review_project_intent
+        ON visual_review_brief_documents(project_id)
+        WHERE document_type = 'creative_intent' AND shot_id IS NULL
+        """,
+        """
+        CREATE UNIQUE INDEX visual_review_shot_intent
+        ON visual_review_brief_documents(shot_id)
+        WHERE document_type = 'creative_intent' AND shot_id IS NOT NULL
+        """,
+        """
+        CREATE UNIQUE INDEX visual_review_reference_brief
+        ON visual_review_brief_documents(shot_id, asset_id)
+        WHERE document_type = 'reference_visual'
+        """,
+        """
+        CREATE TABLE visual_review_brief_fields (
+            id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL
+                REFERENCES visual_review_brief_documents(id) ON DELETE CASCADE,
+            field_key TEXT NOT NULL,
+            value_json TEXT NOT NULL,
+            source TEXT NOT NULL CHECK (
+                source IN (
+                    'automatic_measurement',
+                    'algorithm_inference',
+                    'ai_analysis',
+                    'user_input',
+                    'user_revision'
+                )
+            ),
+            confidence REAL CHECK (
+                confidence IS NULL OR (confidence >= 0.0 AND confidence <= 1.0)
+            ),
+            evidence_json TEXT,
+            user_confirmed INTEGER NOT NULL DEFAULT 0 CHECK (
+                user_confirmed IN (0, 1)
+            ),
+            updated_at TEXT NOT NULL,
+            UNIQUE (document_id, field_key)
+        )
+        """,
+    )
+    for statement in statements:
+        connection.execute(statement)
+
+    connection.execute(
+        """
+        INSERT INTO module_schema_versions(module_id, schema_version, updated_at)
+        VALUES ('scenelens.visual_review', 1, ?)
+        """,
+        (now,),
+    )
+    connection.execute(
+        """
+        UPDATE analysis_runs
+        SET module_id = 'scenelens.visual_review',
+            analyzer_id = CASE
+                WHEN algorithm_id = 'scenelens.basic_measurements'
+                THEN 'basic_image_measurements'
+                ELSE algorithm_id
+            END,
+            analyzer_version = algorithm_version
+        """
+    )
+
+    creative_document_id = str(uuid.uuid4())
+    connection.execute(
+        """
+        INSERT INTO visual_review_brief_documents(
+            id, document_type, project_id, shot_id, asset_id, asset_sha256,
+            analyzer_id, analyzer_version, analyzed_at, status,
+            created_at, updated_at
+        ) VALUES (?, 'creative_intent', ?, NULL, NULL, NULL,
+                  NULL, NULL, NULL, 'current', ?, ?)
+        """,
+        (creative_document_id, project_id, now, now),
+    )
+    legacy = connection.execute(
+        """
+        SELECT scene_type, production_stage, target_style, time_weather,
+               target_mood, primary_focus, secondary_focus,
+               preserve_content, main_issues, excluded_review, constraints
+        FROM art_briefs
+        WHERE project_id = ? AND shot_id IS NULL
+        """,
+        (project_id,),
+    ).fetchone()
+    if legacy is not None:
+        field_mapping = {
+            "scene_type": "scene_type",
+            "production_stage": "production_stage",
+            "target_style": "target_style",
+            "target_mood": "target_moods",
+            "primary_focus": "primary_focus",
+            "secondary_focus": "secondary_focus",
+            "preserve_content": "preserve_content",
+            "main_issues": "main_issues",
+            "excluded_review": "excluded_review",
+            "constraints": "constraints",
+        }
+        for legacy_key, field_key in field_mapping.items():
+            value = legacy[legacy_key]
+            if value:
+                _insert_brief_field(
+                    connection,
+                    creative_document_id,
+                    field_key,
+                    value,
+                    now,
+                    {"migrated_from": f"art_briefs.{legacy_key}"},
+                )
+        if legacy["time_weather"]:
+            _insert_brief_field(
+                connection,
+                creative_document_id,
+                "additional_notes",
+                f"M1A 时间与天气（未拆分）：{legacy['time_weather']}",
+                now,
+                {
+                    "migrated_from": "art_briefs.time_weather",
+                    "original_value": legacy["time_weather"],
+                    "migration_note": "未猜测拆分为时间、季节或天气。",
+                },
+            )
+
+    reference_rows = connection.execute(
+        """
+        SELECT shots.id AS shot_id, image_assets.id AS asset_id,
+               image_assets.sha256 AS asset_sha256
+        FROM shots
+        JOIN image_assets ON image_assets.id = shots.reference_asset_id
+        """
+    ).fetchall()
+    for reference in reference_rows:
+        connection.execute(
+            """
+            INSERT INTO visual_review_brief_documents(
+                id, document_type, project_id, shot_id, asset_id, asset_sha256,
+                analyzer_id, analyzer_version, analyzed_at, status,
+                created_at, updated_at
+            ) VALUES (?, 'reference_visual', ?, ?, ?, ?, NULL, NULL, NULL,
+                      'current', ?, ?)
+            """,
+            (
+                str(uuid.uuid4()),
+                project_id,
+                reference["shot_id"],
+                reference["asset_id"],
+                reference["asset_sha256"],
+                now,
+                now,
+            ),
+        )
+
+
+def _insert_brief_field(
+    connection: sqlite3.Connection,
+    document_id: str,
+    field_key: str,
+    value: object,
+    now: str,
+    evidence: object | None,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO visual_review_brief_fields(
+            id, document_id, field_key, value_json, source, confidence,
+            evidence_json, user_confirmed, updated_at
+        ) VALUES (?, ?, ?, ?, 'user_input', NULL, ?, 1, ?)
+        """,
+        (
+            str(uuid.uuid4()),
+            document_id,
+            field_key,
+            json.dumps(value, ensure_ascii=False, sort_keys=True),
+            (
+                None
+                if evidence is None
+                else json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+            ),
+            now,
+        ),
+    )
+
+
 MIGRATIONS: dict[int, tuple[str, Migration]] = {
     1: ("initial_m1a_schema", _migration_1),
+    2: ("m1b_visual_review_module_schema", _migration_2),
 }
 
 

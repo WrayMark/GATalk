@@ -97,6 +97,7 @@ def test_art_brief_shot_version_assets_and_state_survive_reopen(tmp_path: Path):
     store.save_canvas_state(
         CanvasState("current", shot.id, version.id, 1.8, 0.25, 0.7)
     )
+    store.close()
 
     reopened = ProjectStore.open(root)
 
@@ -160,7 +161,9 @@ def test_measurements_are_restored_and_artifact_is_rebuildable(tmp_path: Path):
     )
 
     store.save_measurements(version.asset_id, measurements)
-    restored = ProjectStore.open(store.root).load_measurements(version.asset_id)
+    store.close()
+    reopened = ProjectStore.open(store.root)
+    restored = reopened.load_measurements(version.asset_id)
 
     assert restored is not None
     assert restored.luminance_histogram.tolist() == pytest.approx([0.25, 0.75])
@@ -168,7 +171,7 @@ def test_measurements_are_restored_and_artifact_is_rebuildable(tmp_path: Path):
     artifacts = list(store.artifacts_directory.rglob("measurements.json"))
     assert len(artifacts) == 1
     artifacts[0].unlink()
-    assert store.load_measurements(version.asset_id) is not None
+    assert reopened.load_measurements(version.asset_id) is not None
     assert artifacts[0].is_file()
 
 
@@ -207,6 +210,7 @@ def test_newer_database_is_never_written(tmp_path: Path):
         connection.execute(
             f"PRAGMA user_version = {DATABASE_SCHEMA_VERSION + 1}"
         )
+    store.close()
 
     with pytest.raises(ProjectVersionError):
         ProjectStore.open(store.root)

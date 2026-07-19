@@ -1,13 +1,27 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 
 MANIFEST_FORMAT = "scenelens.project"
 MANIFEST_FORMAT_VERSION = 1
-DATABASE_SCHEMA_VERSION = 1
+DATABASE_SCHEMA_VERSION = 2
+
+
+class BriefDocumentType(StrEnum):
+    CREATIVE_INTENT = "creative_intent"
+    REFERENCE_VISUAL = "reference_visual"
+
+
+class FieldSource(StrEnum):
+    AUTOMATIC_MEASUREMENT = "automatic_measurement"
+    ALGORITHM_INFERENCE = "algorithm_inference"
+    AI_ANALYSIS = "ai_analysis"
+    USER_INPUT = "user_input"
+    USER_REVISION = "user_revision"
 
 
 @dataclass(frozen=True)
@@ -90,6 +104,32 @@ class ArtBrief:
 
 
 @dataclass(frozen=True)
+class BriefFieldValue:
+    value: Any
+    source: FieldSource
+    confidence: float | None = None
+    evidence: Any = None
+    user_confirmed: bool = False
+    updated_at: str = ""
+
+
+@dataclass(frozen=True)
+class BriefDocumentRecord:
+    id: str
+    document_type: BriefDocumentType
+    project_id: str
+    shot_id: str | None
+    asset_id: str | None
+    asset_sha256: str | None
+    analyzer_id: str | None
+    analyzer_version: str | None
+    analyzed_at: str | None
+    status: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class ImageAssetRecord:
     id: str
     sha256: str
@@ -144,6 +184,7 @@ class WorkspaceState:
     palette_colours: int = 8
     palette_seed: int = 13_579
     palette_max_samples: int = 60_000
+    active_analysis_tab: str = "reference"
     updated_at: str = ""
 
 

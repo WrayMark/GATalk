@@ -73,6 +73,7 @@ def main() -> int:
     shot = store.create_shot("村口固定机位")
     store.import_reference(shot.id, reference_path)
     store.add_version(shot.id, current_path, "灯光 v1")
+    store.close()
 
     window = MainWindow(
         RecentProjects(temp_folder / "recent-projects.json")

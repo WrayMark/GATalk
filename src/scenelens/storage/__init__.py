@@ -2,6 +2,10 @@
 
 from scenelens.storage.models import (
     ArtBrief,
+    BriefDocumentRecord,
+    BriefDocumentType,
+    BriefFieldValue,
+    FieldSource,
     ImageAssetRecord,
     ProjectManifest,
     ShotRecord,
@@ -12,6 +16,10 @@ from scenelens.storage.project_store import ProjectStore
 
 __all__ = [
     "ArtBrief",
+    "BriefDocumentRecord",
+    "BriefDocumentType",
+    "BriefFieldValue",
+    "FieldSource",
     "ImageAssetRecord",
     "ProjectManifest",
     "ProjectStore",
