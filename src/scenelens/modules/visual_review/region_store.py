@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+import json
 from dataclasses import replace
+from typing import Any
 
 from scenelens.modules.visual_review import MODULE_ID
 from scenelens.modules.visual_review.regions import (
@@ -10,9 +12,11 @@ from scenelens.modules.visual_review.regions import (
     RegionPairRecord,
     RegionPairView,
     RegionRecord,
+    RegionAnalysisRecord,
     validate_region_size,
 )
 from scenelens.storage.errors import ProjectSaveError
+from scenelens.storage.atomic import canonical_json
 from scenelens.storage.project_store import ProjectStore, utc_now
 
 
@@ -236,7 +240,14 @@ class RegionStore:
                            SELECT status
                            FROM visual_review_region_analyses AS analyses
                            WHERE analyses.pair_id = pairs.id
-                           ORDER BY analyses.created_at DESC LIMIT 1
+                           ORDER BY
+                               CASE analyses.status
+                                   WHEN 'complete' THEN 0
+                                   WHEN 'stale' THEN 1
+                                   ELSE 2
+                               END,
+                               analyses.created_at DESC
+                           LIMIT 1
                        ), 'pending') AS analysis_status
                 FROM visual_review_region_pairs AS pairs
                 JOIN visual_review_regions AS reference
@@ -399,6 +410,160 @@ class RegionStore:
             }
         return tuple(region for region in regions if region.id not in paired_ids)
 
+    def load_analysis(self, cache_key: str) -> RegionAnalysisRecord | None:
+        with self.project.module_read_connection(MODULE_ID) as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM visual_review_region_analyses
+                WHERE cache_key = ? AND status = 'complete'
+                """,
+                (cache_key,),
+            ).fetchone()
+        return None if row is None else self._analysis_from_row(row)
+
+    def latest_analysis(
+        self,
+        pair_id: str,
+    ) -> RegionAnalysisRecord | None:
+        with self.project.module_read_connection(MODULE_ID) as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM visual_review_region_analyses
+                WHERE pair_id = ?
+                ORDER BY created_at DESC, id DESC LIMIT 1
+                """,
+                (pair_id,),
+            ).fetchone()
+        return None if row is None else self._analysis_from_row(row)
+
+    def mark_pair_analyses_stale(self, pair_id: str) -> None:
+        with self.project.module_write_connection(MODULE_ID) as connection:
+            connection.execute(
+                """
+                UPDATE visual_review_region_analyses
+                SET status = 'stale'
+                WHERE pair_id = ? AND status = 'complete'
+                """,
+                (pair_id,),
+            )
+
+    def update_analysis_freshness(
+        self,
+        expected_cache_keys: dict[str, str],
+    ) -> None:
+        if not expected_cache_keys:
+            return
+        with self.project.module_write_connection(MODULE_ID) as connection:
+            for pair_id, expected_key in expected_cache_keys.items():
+                connection.execute(
+                    """
+                    UPDATE visual_review_region_analyses
+                    SET status = CASE
+                        WHEN cache_key = ? THEN 'complete'
+                        ELSE 'stale'
+                    END
+                    WHERE pair_id = ? AND status <> 'failed'
+                    """,
+                    (expected_key, pair_id),
+                )
+
+    def mark_version_analyses_stale(
+        self,
+        shot_id: str,
+        version_id: str,
+    ) -> None:
+        with self.project.module_write_connection(MODULE_ID) as connection:
+            connection.execute(
+                """
+                UPDATE visual_review_region_analyses
+                SET status = 'stale'
+                WHERE status = 'complete' AND pair_id IN (
+                    SELECT pairs.id
+                    FROM visual_review_region_pairs AS pairs
+                    JOIN visual_review_regions AS current
+                      ON current.id = pairs.current_region_id
+                    WHERE pairs.shot_id = ? AND current.version_id = ?
+                )
+                """,
+                (shot_id, version_id),
+            )
+
+    def save_analysis(
+        self,
+        pair_id: str,
+        *,
+        analyzer_id: str,
+        analyzer_version: str,
+        reference_image_hash: str,
+        current_image_hash: str,
+        reference_region_geometry: dict[str, float],
+        current_region_geometry: dict[str, float],
+        shared_palette_cache_key: str,
+        parameters: dict[str, Any],
+        cache_key: str,
+        result: dict[str, Any],
+    ) -> RegionAnalysisRecord:
+        self.get_pair(pair_id)
+        existing = self.load_analysis(cache_key)
+        if existing is not None:
+            return existing
+        record = RegionAnalysisRecord(
+            id=str(uuid.uuid4()),
+            pair_id=pair_id,
+            module_id=MODULE_ID,
+            analyzer_id=analyzer_id,
+            analyzer_version=analyzer_version,
+            reference_image_hash=reference_image_hash,
+            current_image_hash=current_image_hash,
+            reference_region_geometry=dict(reference_region_geometry),
+            current_region_geometry=dict(current_region_geometry),
+            shared_palette_cache_key=shared_palette_cache_key,
+            parameters=dict(parameters),
+            cache_key=cache_key,
+            result=dict(result),
+            status="complete",
+            created_at=utc_now(),
+        )
+        with self.project.module_write_connection(MODULE_ID) as connection:
+            connection.execute(
+                """
+                UPDATE visual_review_region_analyses
+                SET status = 'stale'
+                WHERE pair_id = ? AND status = 'complete'
+                """,
+                (pair_id,),
+            )
+            connection.execute(
+                """
+                INSERT INTO visual_review_region_analyses(
+                    id, pair_id, module_id, analyzer_id, analyzer_version,
+                    reference_image_hash, current_image_hash,
+                    reference_region_geometry_json,
+                    current_region_geometry_json,
+                    shared_palette_cache_key, parameters_json, cache_key,
+                    result_json, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          'complete', ?)
+                """,
+                (
+                    record.id,
+                    record.pair_id,
+                    record.module_id,
+                    record.analyzer_id,
+                    record.analyzer_version,
+                    record.reference_image_hash,
+                    record.current_image_hash,
+                    canonical_json(record.reference_region_geometry),
+                    canonical_json(record.current_region_geometry),
+                    record.shared_palette_cache_key,
+                    canonical_json(record.parameters),
+                    record.cache_key,
+                    canonical_json(record.result),
+                    record.created_at,
+                ),
+            )
+        return record
+
     def _validate_role_selection(
         self,
         shot_id: str,
@@ -496,6 +661,30 @@ class RegionStore:
             notes=str(row["notes"]),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _analysis_from_row(row: sqlite3.Row) -> RegionAnalysisRecord:
+        return RegionAnalysisRecord(
+            id=str(row["id"]),
+            pair_id=str(row["pair_id"]),
+            module_id=str(row["module_id"]),
+            analyzer_id=str(row["analyzer_id"]),
+            analyzer_version=str(row["analyzer_version"]),
+            reference_image_hash=str(row["reference_image_hash"]),
+            current_image_hash=str(row["current_image_hash"]),
+            reference_region_geometry=json.loads(
+                row["reference_region_geometry_json"]
+            ),
+            current_region_geometry=json.loads(
+                row["current_region_geometry_json"]
+            ),
+            shared_palette_cache_key=str(row["shared_palette_cache_key"]),
+            parameters=json.loads(row["parameters_json"]),
+            cache_key=str(row["cache_key"]),
+            result=json.loads(row["result_json"]),
+            status=str(row["status"]),
+            created_at=str(row["created_at"]),
         )
 
     @classmethod

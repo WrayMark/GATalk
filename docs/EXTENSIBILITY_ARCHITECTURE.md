@@ -79,6 +79,7 @@ analysis + storage public APIs
 scenelens.visual_review/basic_image_measurements@1
 scenelens.visual_review/shared_oklab_palette@1
 scenelens.visual_review/three_value_luminance_comparison@1
+scenelens.visual_review/paired_region_comparison@1
 ```
 
 ## 5. 模块数据与迁移

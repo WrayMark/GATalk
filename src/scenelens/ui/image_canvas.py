@@ -65,9 +65,16 @@ class _RegionOverlayItem(QGraphicsRectItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setAcceptHoverEvents(True)
+        self.label_background = QGraphicsRectItem(self)
+        label_brush = QColor(self.colour)
+        label_brush.setAlpha(190 if spec.selected else 135)
+        self.label_background.setBrush(QBrush(label_brush))
+        self.label_background.setPen(QPen(Qt.PenStyle.NoPen))
+        self.label_background.setZValue(0.5)
         self.label = QGraphicsSimpleTextItem(spec.name, self)
         self.label.setBrush(QBrush(QColor("#FFFFFF")))
         self.label.setZValue(1.0)
+        self.label.setOpacity(0.45 if spec.muted else 1.0)
         self._update_label()
         self.setSelected(spec.selected)
         self.set_editable(owner.region_mode)
@@ -190,7 +197,16 @@ class _RegionOverlayItem(QGraphicsRectItem):
         return super().itemChange(change, value)
 
     def _update_label(self) -> None:
-        self.label.setPos(self.rect().left() + 4.0, self.rect().top() + 3.0)
+        label_x = self.rect().left() + 4.0
+        label_y = self.rect().top() + 3.0
+        self.label.setPos(label_x, label_y)
+        bounds = self.label.boundingRect()
+        self.label_background.setRect(
+            label_x - 3.0,
+            label_y - 2.0,
+            bounds.width() + 6.0,
+            bounds.height() + 4.0,
+        )
         self.label.setToolTip(self.name)
 
     def _handle_scene_size(self) -> float:
@@ -227,6 +243,7 @@ class ImageCanvas(QGraphicsView):
     file_dropped = Signal(str)
     view_state_changed = Signal(float, float, float)
     region_created = Signal(object)
+    region_creation_rejected = Signal(str)
     region_selected = Signal(str)
     region_geometry_changed = Signal(str, object)
 
@@ -525,6 +542,10 @@ class ImageCanvas(QGraphicsView):
                         rect.width() / image_rect.width(),
                         rect.height() / image_rect.height(),
                     )
+                )
+            else:
+                self.region_creation_rejected.emit(
+                    "区域必须具有可见的宽度和高度，请重新拖动。"
                 )
             event.accept()
             return

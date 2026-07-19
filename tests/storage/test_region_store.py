@@ -239,6 +239,62 @@ def test_deleting_region_removes_its_pair_but_preserves_other_side(tmp_path: Pat
     project.close()
 
 
+def test_region_analysis_cache_survives_reopen_and_reference_change_stales_it(
+    tmp_path: Path,
+):
+    project, shot, version_1, _version_2 = _make_project(tmp_path)
+    regions = RegionStore(project)
+    reference = regions.create_region(
+        shot.id,
+        "reference",
+        None,
+        "天空参考",
+        "天空",
+        NormalizedRect(0.0, 0.0, 1.0, 0.4),
+    )
+    current = regions.create_region(
+        shot.id,
+        "current",
+        version_1.id,
+        "天空当前",
+        "天空",
+        NormalizedRect(0.0, 0.0, 1.0, 0.38),
+    )
+    pair = regions.create_pair(reference.id, current.id, "天空", "天空")
+    reference_asset = project.get_asset(
+        project.get_shot(shot.id).reference_asset_id
+    )
+    current_asset = project.get_asset(version_1.asset_id)
+    saved = regions.save_analysis(
+        pair.id,
+        analyzer_id="paired_region_comparison",
+        analyzer_version="1",
+        reference_image_hash=reference_asset.sha256,
+        current_image_hash=current_asset.sha256,
+        reference_region_geometry=reference.normalized_rect.to_dict(),
+        current_region_geometry=current.normalized_rect.to_dict(),
+        shared_palette_cache_key="shared-palette-key",
+        parameters={"low_threshold": 0.3, "high_threshold": 0.7},
+        cache_key="paired-analysis-key",
+        result={"reference": {"mean": 0.2}, "current": {"mean": 0.3}},
+    )
+    root = project.root
+    project.close()
+
+    reopened = ProjectStore.open(root)
+    reopened_regions = RegionStore(reopened)
+    restored = reopened_regions.load_analysis("paired-analysis-key")
+
+    assert restored == saved
+    replacement = tmp_path / "新 参考.png"
+    _make_image(replacement, (150, 100, 60))
+    reopened.import_reference(shot.id, replacement)
+
+    assert reopened_regions.load_analysis("paired-analysis-key") is None
+    assert reopened_regions.latest_analysis(pair.id).status == "stale"
+    reopened.close()
+
+
 def test_schema_three_migrates_to_four_with_pre_migration_backup(tmp_path: Path):
     project, _shot, _version_1, _version_2 = _make_project(tmp_path)
     root = project.root

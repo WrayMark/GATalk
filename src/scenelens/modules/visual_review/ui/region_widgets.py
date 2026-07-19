@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from scenelens.analysis.models import SharedPaletteResult
+from scenelens.analysis.region_analysis import PairedRegionAnalysis
 from scenelens.modules.visual_review.presets import PresetCatalog
 
 
@@ -107,6 +109,7 @@ class RegionPairPanel(QGroupBox):
     edit_requested = Signal(str, str)
     delete_requested = Signal(str, str)
     reanalyze_requested = Signal(str)
+    region_palette_selected = Signal(int)
 
     def __init__(self, parent=None) -> None:
         super().__init__("成对区域")
@@ -174,6 +177,71 @@ class RegionPairPanel(QGroupBox):
         self.selection_label.setWordWrap(True)
         self.selection_label.setStyleSheet("color: #9AA0A6;")
         layout.addWidget(self.selection_label)
+
+        self.details_box = QGroupBox("当前区域详细比较")
+        self.details_box.setCheckable(True)
+        self.details_box.setChecked(True)
+        details_layout = QVBoxLayout(self.details_box)
+        self.analysis_status_label = QLabel("选择完整区域对后开始分析。")
+        self.analysis_status_label.setWordWrap(True)
+        self.analysis_status_label.setStyleSheet("color: #9AA0A6;")
+        details_layout.addWidget(self.analysis_status_label)
+        self.metrics_table = QTableWidget(0, 5)
+        self.metrics_table.setHorizontalHeaderLabels(
+            ("指标", "参考", "当前", "差异", "类型")
+        )
+        self.metrics_table.verticalHeader().setVisible(False)
+        self.metrics_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )
+        self.metrics_table.setMinimumHeight(255)
+        self.metrics_table.horizontalHeader().setStretchLastSection(True)
+        details_layout.addWidget(self.metrics_table)
+        self.hue_distribution_label = QLabel("色相分布：等待分析。")
+        self.hue_distribution_label.setWordWrap(True)
+        self.hue_distribution_label.setToolTip(
+            "低于中性色阈值的像素不进入色相分布。"
+        )
+        details_layout.addWidget(self.hue_distribution_label)
+        palette_label = QLabel("区域内共享色板组成")
+        palette_label.setStyleSheet("font-weight: 600;")
+        details_layout.addWidget(palette_label)
+        self.region_palette_table = QTableWidget(0, 6)
+        self.region_palette_table.setHorizontalHeaderLabels(
+            ("颜色", "HEX", "参考", "当前", "差异", "类型")
+        )
+        self.region_palette_table.verticalHeader().setVisible(False)
+        self.region_palette_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )
+        self.region_palette_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.region_palette_table.setSelectionMode(
+            QTableWidget.SelectionMode.SingleSelection
+        )
+        self.region_palette_table.setMinimumHeight(150)
+        self.region_palette_table.cellClicked.connect(
+            lambda row, _column: self.region_palette_selected.emit(row)
+        )
+        details_layout.addWidget(self.region_palette_table)
+        self.analysis_note = QLabel(
+            "明度统计为测量结果；Oklab、色相与共享色板归类为算法推断。"
+            "仅呈现差异，不生成好坏结论。"
+        )
+        self.analysis_note.setWordWrap(True)
+        self.analysis_note.setStyleSheet("color: #9AA0A6;")
+        details_layout.addWidget(self.analysis_note)
+        self._detail_widgets = (
+            self.analysis_status_label,
+            self.metrics_table,
+            self.hue_distribution_label,
+            palette_label,
+            self.region_palette_table,
+            self.analysis_note,
+        )
+        self.details_box.toggled.connect(self._details_toggled)
+        layout.addWidget(self.details_box)
         self._rows: list[RegionListRow] = []
         self.set_editable(False)
 
@@ -224,6 +292,245 @@ class RegionPairPanel(QGroupBox):
     def leave_region_mode(self) -> None:
         self.mode_button.setChecked(False)
 
+    def clear_analysis(self, message: str = "选择完整区域对后开始分析。") -> None:
+        self.analysis_status_label.setText(message)
+        self.metrics_table.setRowCount(0)
+        self.region_palette_table.setRowCount(0)
+        self.hue_distribution_label.setText("色相分布：等待分析。")
+
+    def set_analysis(
+        self,
+        result: PairedRegionAnalysis,
+        shared_palette: SharedPaletteResult,
+        *,
+        stale: bool = False,
+    ) -> None:
+        reference = result.reference
+        current = result.current
+        status = "旧结果已过期，正在等待重新分析。" if stale else "分析已完成。"
+        self.analysis_status_label.setText(
+            f"{status} 参考 {reference.pixel_count:,} px；"
+            f"当前 {current.pixel_count:,} px；"
+            f"色彩采样 {reference.colour_sample_count:,} / "
+            f"{current.colour_sample_count:,}。"
+        )
+        metrics = [
+            (
+                "平均线性明度",
+                reference.mean_linear_luminance,
+                current.mean_linear_luminance,
+                "",
+                "测量结果",
+            ),
+            (
+                "Oklab L 均值",
+                reference.mean_oklab_l,
+                current.mean_oklab_l,
+                "",
+                "算法推断",
+            ),
+            (
+                "Oklab a 均值",
+                reference.mean_oklab[1],
+                current.mean_oklab[1],
+                "",
+                "算法推断",
+            ),
+            (
+                "Oklab b 均值",
+                reference.mean_oklab[2],
+                current.mean_oklab[2],
+                "",
+                "算法推断",
+            ),
+            (
+                "明度标准差",
+                reference.luminance_standard_deviation,
+                current.luminance_standard_deviation,
+                "",
+                "测量结果",
+            ),
+            (
+                "P10 明度",
+                reference.luminance_p10,
+                current.luminance_p10,
+                "",
+                "测量结果",
+            ),
+            (
+                "P50 明度",
+                reference.luminance_p50,
+                current.luminance_p50,
+                "",
+                "测量结果",
+            ),
+            (
+                "P90 明度",
+                reference.luminance_p90,
+                current.luminance_p90,
+                "",
+                "测量结果",
+            ),
+            (
+                "P10–P90 跨度",
+                reference.effective_luminance_span,
+                current.effective_luminance_span,
+                "",
+                "测量结果",
+            ),
+            (
+                "平均彩度",
+                reference.mean_chroma,
+                current.mean_chroma,
+                "",
+                "算法推断",
+            ),
+            (
+                "彩度中位数",
+                reference.median_chroma,
+                current.median_chroma,
+                "",
+                "算法推断",
+            ),
+            (
+                "中性色比例",
+                reference.neutral_ratio,
+                current.neutral_ratio,
+                "%",
+                "算法推断",
+            ),
+            (
+                "色相圆形均值",
+                reference.hue_mean_degrees,
+                current.hue_mean_degrees,
+                "°",
+                "算法推断",
+            ),
+            (
+                "暗部比例",
+                reference.three_value_ratios[0],
+                current.three_value_ratios[0],
+                "%",
+                "测量结果",
+            ),
+            (
+                "中间调比例",
+                reference.three_value_ratios[1],
+                current.three_value_ratios[1],
+                "%",
+                "测量结果",
+            ),
+            (
+                "亮部比例",
+                reference.three_value_ratios[2],
+                current.three_value_ratios[2],
+                "%",
+                "测量结果",
+            ),
+        ]
+        self.metrics_table.setRowCount(len(metrics))
+        for row, (name, ref_value, current_value, unit, source) in enumerate(
+            metrics
+        ):
+            is_percent = unit == "%"
+            scale = 100.0 if is_percent else 1.0
+            suffix = "%" if is_percent else unit
+            difference_suffix = " pp" if is_percent else ""
+            reference_text = (
+                "无有效色相"
+                if ref_value is None
+                else f"{ref_value * scale:.3f}{suffix}"
+            )
+            current_text = (
+                "无有效色相"
+                if current_value is None
+                else f"{current_value * scale:.3f}{suffix}"
+            )
+            difference_text = (
+                "—"
+                if ref_value is None or current_value is None
+                else (
+                    f"{(current_value - ref_value) * scale:+.3f}"
+                    f"{difference_suffix or suffix}"
+                )
+            )
+            values = (
+                name,
+                reference_text,
+                current_text,
+                difference_text,
+                source,
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setToolTip(
+                    "差异定义为当前截图减参考图。"
+                    if column == 3
+                    else value
+                )
+                self.metrics_table.setItem(row, column, item)
+        self.metrics_table.resizeColumnsToContents()
+        bin_width = 360.0 / result.hue_bins
+        reference_hue = " / ".join(
+            (
+                f"{index * bin_width:.0f}°"
+                f" {value * 100:.1f}%"
+            )
+            for index, value in enumerate(reference.hue_distribution)
+        )
+        current_hue = " / ".join(
+            (
+                f"{index * bin_width:.0f}°"
+                f" {value * 100:.1f}%"
+            )
+            for index, value in enumerate(current.hue_distribution)
+        )
+        self.hue_distribution_label.setText(
+            f"色相分布（{result.hue_bins} 区间）\n"
+            f"参考：{reference_hue}\n当前：{current_hue}"
+        )
+
+        colour_count = min(
+            len(shared_palette.colours),
+            len(reference.shared_palette_proportions),
+            len(current.shared_palette_proportions),
+        )
+        self.region_palette_table.setRowCount(colour_count)
+        for row in range(colour_count):
+            colour = shared_palette.colours[row]
+            reference_ratio = reference.shared_palette_proportions[row]
+            current_ratio = current.shared_palette_proportions[row]
+            swatch = QTableWidgetItem("")
+            swatch.setBackground(QColor(*colour.rgb))
+            values = (
+                swatch,
+                QTableWidgetItem(colour.hex_colour),
+                QTableWidgetItem(f"{reference_ratio * 100:.1f}%"),
+                QTableWidgetItem(f"{current_ratio * 100:.1f}%"),
+                QTableWidgetItem(
+                    f"{(current_ratio - reference_ratio) * 100:+.1f} pp"
+                ),
+                QTableWidgetItem("算法推断"),
+            )
+            for column, item in enumerate(values):
+                item.setToolTip(
+                    (
+                        "点击此行，只在当前成对区域内查看该颜色来源。"
+                        if column == 0
+                        else item.text()
+                    )
+                )
+                self.region_palette_table.setItem(row, column, item)
+        self.region_palette_table.resizeColumnsToContents()
+        self.analysis_note.setText(
+            "明度统计为测量结果；Oklab、色相与共享色板归类为算法推断。"
+            f"低彩度阈值为 Oklab C < {result.neutral_chroma_threshold:.3f}。"
+            "仅呈现差异，不生成好坏结论。"
+        )
+
+    def clear_region_palette_selection(self) -> None:
+        self.region_palette_table.clearSelection()
+
     def current_row(self) -> RegionListRow | None:
         index = self.table.currentRow()
         if not 0 <= index < len(self._rows):
@@ -267,3 +574,7 @@ class RegionPairPanel(QGroupBox):
         row = self.current_row()
         if row is not None and row.row_kind == "pair":
             self.reanalyze_requested.emit(row.row_id)
+
+    def _details_toggled(self, expanded: bool) -> None:
+        for widget in self._detail_widgets:
+            widget.setVisible(expanded)

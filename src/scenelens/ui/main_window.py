@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import hashlib
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -37,6 +38,10 @@ from scenelens.analysis.models import (
     SharedPaletteResult,
 )
 from scenelens.analysis.pipeline import render_image
+from scenelens.analysis.region_analysis import (
+    PairedRegionAnalysis,
+    render_region_palette_source_mask,
+)
 from scenelens.analysis.shared_palette import (
     palette_membership_mask,
     render_palette_source_mask,
@@ -48,6 +53,7 @@ from scenelens.modules.visual_review import MODULE_ID
 from scenelens.modules.visual_review.analyzers import (
     BASIC_MEASUREMENTS_ANALYZER_ID,
     LUMINANCE_COMPARISON_ANALYZER_ID,
+    PAIRED_REGION_ANALYZER_ID,
     SHARED_PALETTE_ANALYZER_ID,
 )
 from scenelens.modules.visual_review.brief_measurements import (
@@ -60,6 +66,10 @@ from scenelens.modules.visual_review.comparison_results import (
     shared_palette_to_payload,
 )
 from scenelens.modules.visual_review.presets import load_visual_review_presets
+from scenelens.modules.visual_review.region_results import (
+    paired_region_from_payload,
+    paired_region_to_payload,
+)
 from scenelens.modules.visual_review.registry import (
     create_visual_review_registry,
 )
@@ -68,6 +78,7 @@ from scenelens.modules.visual_review.ui.region_controller import (
 )
 from scenelens.modules.visual_review.ui.region_widgets import RegionPairPanel
 from scenelens.storage.errors import ProjectLockedError, StorageError
+from scenelens.storage.atomic import canonical_json
 from scenelens.storage.models import (
     ArtBrief,
     BriefFieldValue,
@@ -135,9 +146,13 @@ class MainWindow(QMainWindow):
         self._import_generation = {"reference": 0, "current": 0}
         self._brief_generation = 0
         self._comparison_generation = 0
+        self._region_analysis_generation = 0
         self._mask_generation = 0
         self._active_mask: tuple[str, int] | None = None
         self._shared_palette_result: SharedPaletteResult | None = None
+        self._active_region_analysis: (
+            tuple[str, PairedRegionAnalysis] | None
+        ) = None
         self._load_context: dict[
             str, dict[int, tuple[str | None, bool, CanvasState | None]]
         ] = {"reference": {}, "current": {}}
@@ -170,6 +185,10 @@ class MainWindow(QMainWindow):
         self._luminance_comparison_analyzer = self._analyzer_registry.get(
             MODULE_ID,
             LUMINANCE_COMPARISON_ANALYZER_ID,
+        )
+        self._paired_region_analyzer = self._analyzer_registry.get(
+            MODULE_ID,
+            PAIRED_REGION_ANALYZER_ID,
         )
         self._presets = load_visual_review_presets()
 
@@ -412,6 +431,12 @@ class MainWindow(QMainWindow):
         )
         self.region_controller.status_message.connect(
             self.statusBar().showMessage
+        )
+        self.region_controller.analysis_requested.connect(
+            self._start_region_analysis
+        )
+        self.region_panel.region_palette_selected.connect(
+            self._region_palette_selected
         )
 
     @staticmethod
@@ -1140,6 +1165,12 @@ class MainWindow(QMainWindow):
             self._apply_comparison_result(result)
             return
 
+        if kind == "region_analysis":
+            if generation != self._region_analysis_generation:
+                return
+            self._apply_region_analysis_result(result)
+            return
+
         if kind == "mask":
             if generation != self._mask_generation:
                 return
@@ -1171,6 +1202,8 @@ class MainWindow(QMainWindow):
             expected = self._brief_generation
         elif kind == "comparison":
             expected = self._comparison_generation
+        elif kind == "region_analysis":
+            expected = self._region_analysis_generation
         elif kind == "mask":
             expected = self._mask_generation
         else:
@@ -1190,6 +1223,7 @@ class MainWindow(QMainWindow):
             "import_version": "截图版本导入失败",
             "reference_brief": "参考图自动测量关联失败",
             "comparison": "对比分析失败",
+            "region_analysis": "成对区域分析失败",
             "mask": "颜色来源遮罩失败",
         }.get(kind, "SceneLens 操作失败")
         QMessageBox.warning(
@@ -1540,6 +1574,7 @@ class MainWindow(QMainWindow):
             numpy_to_qimage(result["reference_thumbnail"]),
             numpy_to_qimage(result["current_thumbnail"]),
         )
+        self._update_region_analysis_freshness()
         store = self._project_store
         if (
             store is not None
@@ -1579,6 +1614,286 @@ class MainWindow(QMainWindow):
                 )
                 return
         self.statusBar().showMessage("共享色板与三阶明度比较完成")
+        selected_pair_id = self.region_controller.selected_pair_id
+        if selected_pair_id is not None:
+            self._start_region_analysis(selected_pair_id)
+
+    def _start_region_analysis(self, pair_id: str) -> None:
+        store = self._project_store
+        region_store = self.region_controller.store
+        view = self.region_controller.pair_view(pair_id)
+        shared = self._shared_palette_result
+        reference = self._images.get("reference")
+        current = self._images.get("current")
+        if (
+            store is None
+            or region_store is None
+            or view is None
+            or shared is None
+            or reference is None
+            or current is None
+            or self._active_shot_id is None
+            or self._active_version_id is None
+        ):
+            self.region_panel.clear_analysis(
+                "等待参考图、当前截图和全图共享色板完成后再分析。"
+            )
+            return
+        centres = np.asarray(
+            [item.oklab for item in shared.colours],
+            dtype=np.float64,
+        )
+        if len(centres) == 0:
+            self.region_panel.clear_analysis("共享色板为空，无法进行区域归类。")
+            return
+        reference_rect = view.reference_region.normalized_rect
+        current_rect = view.current_region.normalized_rect
+        parameters = self._paired_region_analyzer.default_parameters(
+            *self.comparison_panel.thresholds()
+        )
+        reference_hash = self._role_input_hash("reference")
+        current_hash = self._role_input_hash("current")
+        shared_cache_key = self._shared_palette_cache_key(
+            reference_hash,
+            current_hash,
+        )
+        reference_geometry = reference_rect.to_dict()
+        current_geometry = current_rect.to_dict()
+        request = AnalyzerRequest(
+            inputs={
+                "reference_rgb": reference.rgb,
+                "current_rgb": current.rgb,
+                "reference_rect": tuple(reference_geometry.values()),
+                "current_rect": tuple(current_geometry.values()),
+                "shared_palette_centres": centres,
+            },
+            input_hashes={
+                "reference_image": reference_hash,
+                "current_image": current_hash,
+                "reference_geometry": self._dict_hash(reference_geometry),
+                "current_geometry": self._dict_hash(current_geometry),
+                "shared_palette": shared_cache_key,
+            },
+            parameters=parameters,
+        )
+        cache_key = self._paired_region_analyzer.cache_key(request)
+        selection = {
+            "project_id": store.manifest.project_id,
+            "shot_id": self._active_shot_id,
+            "version_id": self._active_version_id,
+            "pair_id": pair_id,
+            "reference_asset_id": self._asset_ids.get("reference"),
+            "current_asset_id": self._asset_ids.get("current"),
+            "reference_geometry": reference_geometry,
+            "current_geometry": current_geometry,
+            "shared_palette_cache_key": shared_cache_key,
+        }
+        try:
+            cached = region_store.load_analysis(cache_key)
+            if cached is not None:
+                restored = paired_region_from_payload(cached.result)
+                self._active_region_analysis = (pair_id, restored)
+                self.region_panel.set_analysis(restored, shared)
+                self.region_controller.refresh()
+                self.statusBar().showMessage("成对区域分析已从项目恢复")
+                return
+            latest = region_store.latest_analysis(pair_id)
+            if latest is not None:
+                try:
+                    stale_result = paired_region_from_payload(latest.result)
+                    self.region_panel.set_analysis(
+                        stale_result,
+                        shared,
+                        stale=True,
+                    )
+                except (KeyError, TypeError, ValueError):
+                    self.region_panel.clear_analysis(
+                        "旧区域分析无法读取，正在重新分析。"
+                    )
+            else:
+                self.region_panel.clear_analysis("正在分析选中的区域对…")
+            if not store.read_only:
+                region_store.mark_pair_analyses_stale(pair_id)
+        except (StorageError, KeyError, TypeError, ValueError):
+            LOGGER.exception("Failed to restore paired region analysis")
+            self.region_panel.clear_analysis("正在重新计算区域分析…")
+
+        self._region_analysis_generation += 1
+        generation = self._region_analysis_generation
+
+        def analyze_region_pair():
+            result = self._paired_region_analyzer.run(request)
+            return {
+                "selection": selection,
+                "result": result,
+                "parameters": parameters,
+                "cache_key": cache_key,
+                "reference_hash": reference_hash,
+                "current_hash": current_hash,
+            }
+
+        self.statusBar().showMessage("正在后台计算成对区域明度与色彩…")
+        self._start_worker(
+            "comparison",
+            "region_analysis",
+            generation,
+            analyze_region_pair,
+        )
+
+    def _apply_region_analysis_result(self, result: object) -> None:
+        if not isinstance(result, dict):
+            return
+        selection = result.get("selection")
+        analysis = result.get("result")
+        if (
+            not isinstance(selection, dict)
+            or not isinstance(analysis, PairedRegionAnalysis)
+        ):
+            return
+        pair_id = str(selection.get("pair_id", ""))
+        current_view = self.region_controller.pair_view(pair_id)
+        store = self._project_store
+        if current_view is None or store is None:
+            return
+        current_selection = {
+            "project_id": store.manifest.project_id,
+            "shot_id": self._active_shot_id,
+            "version_id": self._active_version_id,
+            "pair_id": pair_id,
+            "reference_asset_id": self._asset_ids.get("reference"),
+            "current_asset_id": self._asset_ids.get("current"),
+            "reference_geometry": (
+                current_view.reference_region.normalized_rect.to_dict()
+            ),
+            "current_geometry": (
+                current_view.current_region.normalized_rect.to_dict()
+            ),
+            "shared_palette_cache_key": self._shared_palette_cache_key(
+                self._role_input_hash("reference"),
+                self._role_input_hash("current"),
+            ),
+        }
+        if selection != current_selection:
+            return
+        shared = self._shared_palette_result
+        if shared is None:
+            return
+        self._active_region_analysis = (pair_id, analysis)
+        self.region_panel.set_analysis(analysis, shared)
+        region_store = self.region_controller.store
+        if region_store is not None and not store.read_only:
+            try:
+                descriptor = self._paired_region_analyzer.descriptor
+                region_store.save_analysis(
+                    pair_id,
+                    analyzer_id=descriptor.analyzer_id,
+                    analyzer_version=descriptor.version,
+                    reference_image_hash=str(result["reference_hash"]),
+                    current_image_hash=str(result["current_hash"]),
+                    reference_region_geometry=selection[
+                        "reference_geometry"
+                    ],
+                    current_region_geometry=selection["current_geometry"],
+                    shared_palette_cache_key=selection[
+                        "shared_palette_cache_key"
+                    ],
+                    parameters=result["parameters"],
+                    cache_key=str(result["cache_key"]),
+                    result=paired_region_to_payload(analysis),
+                )
+                self.region_controller.refresh()
+            except (StorageError, ValueError, TypeError):
+                LOGGER.exception("Failed to persist paired region analysis")
+                self.statusBar().showMessage(
+                    "区域分析完成，但结果保存失败"
+                )
+                return
+        self.statusBar().showMessage("成对区域分析完成")
+
+    @staticmethod
+    def _dict_hash(value: dict) -> str:
+        return hashlib.sha256(
+            canonical_json(value).encode("utf-8")
+        ).hexdigest()
+
+    def _shared_palette_cache_key(
+        self,
+        reference_hash: str,
+        current_hash: str,
+    ) -> str:
+        parameters = self._shared_palette_analyzer.default_parameters(
+            self._workspace_template.palette_colours,
+            self._workspace_template.palette_seed,
+            self._workspace_template.palette_max_samples,
+        )
+        return self._shared_palette_analyzer.cache_key(
+            AnalyzerRequest(
+                inputs={},
+                input_hashes={
+                    "reference": reference_hash,
+                    "current": current_hash,
+                },
+                parameters=parameters,
+            )
+        )
+
+    def _update_region_analysis_freshness(self) -> None:
+        store = self._project_store
+        region_store = self.region_controller.store
+        shared = self._shared_palette_result
+        reference = self._images.get("reference")
+        current = self._images.get("current")
+        if (
+            store is None
+            or store.read_only
+            or region_store is None
+            or shared is None
+            or reference is None
+            or current is None
+        ):
+            return
+        centres = np.asarray(
+            [item.oklab for item in shared.colours],
+            dtype=np.float64,
+        )
+        if len(centres) == 0:
+            return
+        reference_hash = self._role_input_hash("reference")
+        current_hash = self._role_input_hash("current")
+        shared_key = self._shared_palette_cache_key(
+            reference_hash,
+            current_hash,
+        )
+        parameters = self._paired_region_analyzer.default_parameters(
+            *self.comparison_panel.thresholds()
+        )
+        expected: dict[str, str] = {}
+        for view in self.region_controller.pair_views():
+            reference_geometry = (
+                view.reference_region.normalized_rect.to_dict()
+            )
+            current_geometry = view.current_region.normalized_rect.to_dict()
+            request = AnalyzerRequest(
+                inputs={},
+                input_hashes={
+                    "reference_image": reference_hash,
+                    "current_image": current_hash,
+                    "reference_geometry": self._dict_hash(
+                        reference_geometry
+                    ),
+                    "current_geometry": self._dict_hash(current_geometry),
+                    "shared_palette": shared_key,
+                },
+                parameters=parameters,
+            )
+            expected[view.pair.id] = self._paired_region_analyzer.cache_key(
+                request
+            )
+        try:
+            region_store.update_analysis_freshness(expected)
+            self.region_controller.refresh()
+        except StorageError:
+            LOGGER.exception("Failed to update paired region freshness")
 
     def _role_input_hash(self, role: str) -> str:
         store = self._project_store
@@ -1604,6 +1919,22 @@ class MainWindow(QMainWindow):
             three_threshold_low=low,
             three_threshold_high=high,
         )
+        region_store = self.region_controller.store
+        if (
+            region_store is not None
+            and self._project_store is not None
+            and not self._project_store.read_only
+            and self._active_shot_id is not None
+            and self._active_version_id is not None
+        ):
+            try:
+                region_store.mark_version_analyses_stale(
+                    self._active_shot_id,
+                    self._active_version_id,
+                )
+                self.region_controller.refresh()
+            except StorageError:
+                LOGGER.exception("Failed to stale region analyses")
         self._mark_workspace_dirty()
         self._schedule_comparison_analysis()
         if self.mode_combo.currentData() == "three_value":
@@ -1660,6 +1991,74 @@ class MainWindow(QMainWindow):
             },
         )
 
+    def _region_palette_selected(self, index: int) -> None:
+        active = self._active_region_analysis
+        shared = self._shared_palette_result
+        if active is None or shared is None:
+            return
+        pair_id, analysis = active
+        view = self.region_controller.pair_view(pair_id)
+        if (
+            view is None
+            or not 0 <= index < len(shared.colours)
+            or "reference" not in self._images
+            or "current" not in self._images
+        ):
+            return
+        key = (f"region:{pair_id}", index)
+        if self._active_mask == key:
+            self._clear_palette_mask()
+            return
+        centres = np.asarray(
+            [item.oklab for item in shared.colours],
+            dtype=np.float64,
+        )
+        self._clear_palette_mask()
+        self._active_mask = key
+        self._mask_generation += 1
+        generation = self._mask_generation
+        reference_rect = view.reference_region.normalized_rect
+        current_rect = view.current_region.normalized_rect
+        reference_rgb = self._images["reference"].rgb
+        current_rgb = self._images["current"].rgb
+
+        def build_region_mask():
+            return {
+                "key": key,
+                "previews": {
+                    "reference": render_region_palette_source_mask(
+                        reference_rgb,
+                        (
+                            reference_rect.x,
+                            reference_rect.y,
+                            reference_rect.width,
+                            reference_rect.height,
+                        ),
+                        centres,
+                        index,
+                    ),
+                    "current": render_region_palette_source_mask(
+                        current_rgb,
+                        (
+                            current_rect.x,
+                            current_rect.y,
+                            current_rect.width,
+                            current_rect.height,
+                        ),
+                        centres,
+                        index,
+                    ),
+                },
+            }
+
+        self.statusBar().showMessage("正在定位成对区域内的颜色来源…")
+        self._start_worker(
+            "comparison",
+            "mask",
+            generation,
+            build_region_mask,
+        )
+
     def _start_palette_mask(
         self,
         key: tuple[str, int],
@@ -1704,6 +2103,25 @@ class MainWindow(QMainWindow):
                 f"{item.hex_colour} · 参考 {item.reference_proportion * 100:.1f}% "
                 f"· 当前 {item.current_proportion * 100:.1f}% · Esc 退出遮罩"
             )
+        elif (
+            scope.startswith("region:")
+            and self._active_region_analysis is not None
+            and self._shared_palette_result is not None
+        ):
+            pair_id, analysis = self._active_region_analysis
+            if scope == f"region:{pair_id}":
+                item = self._shared_palette_result.colours[index]
+                reference_ratio = (
+                    analysis.reference.shared_palette_proportions[index]
+                )
+                current_ratio = (
+                    analysis.current.shared_palette_proportions[index]
+                )
+                self.statusBar().showMessage(
+                    f"区域 {item.hex_colour} · "
+                    f"参考 {reference_ratio * 100:.1f}% · "
+                    f"当前 {current_ratio * 100:.1f}% · Esc 退出遮罩"
+                )
         else:
             measurements = self._measurements.get(scope)
             if measurements is not None and index < len(measurements.palette):
@@ -1723,6 +2141,8 @@ class MainWindow(QMainWindow):
             widget.palette.set_selected_index(None)
         if hasattr(self, "comparison_panel"):
             self.comparison_panel.clear_palette_selection()
+        if hasattr(self, "region_panel"):
+            self.region_panel.clear_region_palette_selection()
         if was_active:
             self.statusBar().showMessage("已退出颜色来源遮罩")
 
@@ -1923,8 +2343,12 @@ class MainWindow(QMainWindow):
         self._asset_ids[role] = None
         self._clear_palette_mask()
         self._shared_palette_result = None
+        self._active_region_analysis = None
+        self._region_analysis_generation += 1
         if hasattr(self, "comparison_panel"):
             self.comparison_panel.clear()
+        if hasattr(self, "region_panel"):
+            self.region_panel.clear_analysis()
         self._canvas_for(role).clear_image()
         self.analysis_widgets[role].clear(
             "尚未导入参考图"
@@ -1935,6 +2359,7 @@ class MainWindow(QMainWindow):
     def _invalidate_image_jobs(self) -> None:
         self._brief_generation += 1
         self._comparison_generation += 1
+        self._region_analysis_generation += 1
         self._mask_generation += 1
         if hasattr(self, "_comparison_timer"):
             self._comparison_timer.stop()

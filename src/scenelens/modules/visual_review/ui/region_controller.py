@@ -9,6 +9,7 @@ from scenelens.modules.visual_review.regions import (
     NormalizedRect,
     RegionPairView,
     RegionRecord,
+    validate_region_size,
 )
 from scenelens.modules.visual_review.ui.region_widgets import (
     RegionListRow,
@@ -65,6 +66,12 @@ class RegionController(QObject):
         self.current_canvas.region_created.connect(
             lambda geometry: self._region_drawn("current", geometry)
         )
+        self.reference_canvas.region_creation_rejected.connect(
+            self.status_message
+        )
+        self.current_canvas.region_creation_rejected.connect(
+            self.status_message
+        )
         self.reference_canvas.region_selected.connect(
             lambda region_id: self.select_region("reference", region_id)
         )
@@ -105,6 +112,7 @@ class RegionController(QObject):
             self.selected_reference_id = None
             self.selected_current_id = None
             self.selected_pair_id = None
+            self.panel.clear_analysis()
         editable = bool(project is not None and not project.read_only and shot_id)
         self.panel.set_editable(editable)
         if not editable:
@@ -117,6 +125,7 @@ class RegionController(QObject):
             self._pair_views = ()
             self._regions = ()
             self.panel.set_rows(())
+            self.panel.clear_analysis()
             self.reference_canvas.clear_region_overlays()
             self.current_canvas.clear_region_overlays()
             return
@@ -267,9 +276,11 @@ class RegionController(QObject):
         )
         self.selected_pair_id = pair.id
         self.refresh()
+        self.analysis_requested.emit(pair.id)
         return pair
 
     def select_region(self, role: str, region_id: str) -> None:
+        previous_pair_id = self.selected_pair_id
         if role == "reference":
             self.selected_reference_id = region_id
         else:
@@ -295,6 +306,11 @@ class RegionController(QObject):
         self.reference_canvas.select_region(self.selected_reference_id)
         self.current_canvas.select_region(self.selected_current_id)
         self._update_selection_text()
+        if (
+            containing is not None
+            and containing.pair.id != previous_pair_id
+        ):
+            self.analysis_requested.emit(containing.pair.id)
 
     def set_region_mode(self, active: bool) -> None:
         self.reference_canvas.set_region_mode(active)
@@ -374,6 +390,11 @@ class RegionController(QObject):
         if role == "current" and self.version_id is None:
             self.status_message.emit("请先导入或选择一个截图 Version。")
             return
+        try:
+            validate_region_size(NormalizedRect(*geometry))
+        except ValueError as exc:
+            self.status_message.emit(str(exc))
+            return
         next_number = len(self._regions) + 1
         dialog = RegionMetadataDialog(
             "创建参考区域" if role == "reference" else "创建当前区域",
@@ -405,6 +426,20 @@ class RegionController(QObject):
             )
             self.refresh()
             self.status_message.emit("区域位置已保存；旧分析已标记为过期。")
+            containing = next(
+                (
+                    view
+                    for view in self._pair_views
+                    if region_id
+                    in {
+                        view.reference_region.id,
+                        view.current_region.id,
+                    }
+                ),
+                None,
+            )
+            if containing is not None:
+                self.analysis_requested.emit(containing.pair.id)
         except (StorageError, ValueError) as exc:
             QMessageBox.warning(self.panel, "无法调整区域", str(exc))
             self.refresh()
@@ -453,6 +488,7 @@ class RegionController(QObject):
             self.reference_canvas.select_region(self.selected_reference_id)
             self.current_canvas.select_region(self.selected_current_id)
             self._update_selection_text()
+            self.analysis_requested.emit(row_id)
             return
         region = next((item for item in self._regions if item.id == row_id), None)
         if region is not None:
@@ -519,6 +555,7 @@ class RegionController(QObject):
             if row_kind == "pair":
                 self.store.delete_pair(row_id)
                 self.selected_pair_id = None
+                self.panel.clear_analysis()
             else:
                 self.store.delete_region(row_id)
                 if self.selected_reference_id == row_id:
@@ -550,6 +587,15 @@ class RegionController(QObject):
         self.panel.set_selection_text(
             f"参考：{reference_name}　|　当前：{current_name}"
         )
+
+    def pair_view(self, pair_id: str) -> RegionPairView | None:
+        return next(
+            (view for view in self._pair_views if view.pair.id == pair_id),
+            None,
+        )
+
+    def pair_views(self) -> tuple[RegionPairView, ...]:
+        return self._pair_views
 
     @staticmethod
     def _analysis_label(status: str) -> str:

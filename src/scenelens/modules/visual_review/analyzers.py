@@ -16,6 +16,13 @@ from scenelens.analysis.palette import (
 )
 from scenelens.analysis.pipeline import measure_image
 from scenelens.analysis.shared_palette import extract_shared_oklab_palette
+from scenelens.analysis.region_analysis import (
+    DEFAULT_HUE_BINS,
+    DEFAULT_MAX_REGION_COLOUR_SAMPLES,
+    DEFAULT_NEUTRAL_CHROMA_THRESHOLD,
+    PairedRegionAnalysis,
+    analyze_paired_regions,
+)
 from scenelens.core.analyzers import (
     AnalyzerDescriptor,
     AnalyzerRequest,
@@ -27,6 +34,7 @@ from scenelens.modules.visual_review import MODULE_ID
 BASIC_MEASUREMENTS_ANALYZER_ID = "basic_image_measurements"
 SHARED_PALETTE_ANALYZER_ID = "shared_oklab_palette"
 LUMINANCE_COMPARISON_ANALYZER_ID = "three_value_luminance_comparison"
+PAIRED_REGION_ANALYZER_ID = "paired_region_comparison"
 
 
 class BasicImageMeasurementsAnalyzer:
@@ -239,6 +247,88 @@ class LuminanceComparisonAnalyzer:
                 low,
                 high,
             ),
+        )
+
+    def cache_key(self, request: AnalyzerRequest) -> str:
+        return deterministic_analyzer_cache_key(self.descriptor, request)
+
+
+class PairedRegionAnalyzer:
+    descriptor = AnalyzerDescriptor(
+        module_id=MODULE_ID,
+        analyzer_id=PAIRED_REGION_ANALYZER_ID,
+        display_name="成对区域明度与色彩比较",
+        version="1",
+        supported_inputs=(
+            "reference.numpy.rgb.uint8",
+            "current.numpy.rgb.uint8",
+            "reference.normalized_rect",
+            "current.normalized_rect",
+            "shared_palette.oklab_centres",
+        ),
+        parameter_schema={
+            "type": "object",
+            "required": [
+                "low_threshold",
+                "high_threshold",
+                "neutral_chroma_threshold",
+                "hue_bins",
+                "max_colour_samples",
+                "luminance_percentiles",
+                "colour_space",
+            ],
+        },
+        output_schema={
+            "type": "object",
+            "required": [
+                "reference",
+                "current",
+                "low_threshold",
+                "high_threshold",
+                "neutral_chroma_threshold",
+            ],
+        },
+    )
+
+    @staticmethod
+    def default_parameters(
+        low_threshold: float = 1.0 / 3.0,
+        high_threshold: float = 2.0 / 3.0,
+        neutral_chroma_threshold: float = DEFAULT_NEUTRAL_CHROMA_THRESHOLD,
+        hue_bins: int = DEFAULT_HUE_BINS,
+        max_colour_samples: int = DEFAULT_MAX_REGION_COLOUR_SAMPLES,
+    ) -> dict[str, Any]:
+        return {
+            "low_threshold": float(low_threshold),
+            "high_threshold": float(high_threshold),
+            "neutral_chroma_threshold": float(neutral_chroma_threshold),
+            "hue_bins": int(hue_bins),
+            "max_colour_samples": int(max_colour_samples),
+            "luminance_percentiles": "linear-srgb-relative-luminance-v1",
+            "three_value_luminance": "display-srgb-from-linear-v1",
+            "colour_space": "Oklab",
+            "hue_statistics": "neutral-filtered-chroma-weighted-circular-v1",
+            "colour_sampling": "bounded-spatial-area-v1",
+        }
+
+    def run(self, request: AnalyzerRequest) -> PairedRegionAnalysis:
+        parameters = request.parameters
+        return analyze_paired_regions(
+            np.asarray(request.inputs["reference_rgb"], dtype=np.uint8),
+            np.asarray(request.inputs["current_rgb"], dtype=np.uint8),
+            tuple(request.inputs["reference_rect"]),
+            tuple(request.inputs["current_rect"]),
+            np.asarray(
+                request.inputs["shared_palette_centres"],
+                dtype=np.float64,
+            ),
+            low_threshold=float(parameters["low_threshold"]),
+            high_threshold=float(parameters["high_threshold"]),
+            neutral_chroma_threshold=float(
+                parameters["neutral_chroma_threshold"]
+            ),
+            hue_bins=int(parameters["hue_bins"]),
+            max_colour_samples=int(parameters["max_colour_samples"]),
         )
 
     def cache_key(self, request: AnalyzerRequest) -> str:

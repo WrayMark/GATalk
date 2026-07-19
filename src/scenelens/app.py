@@ -103,8 +103,15 @@ def create_application(argv: list[str] | None = None) -> QApplication:
 
 
 def _run_internal_smoke_check() -> None:
+    from scenelens.core.analyzers import AnalyzerRequest
     from scenelens.analysis.models import RenderSettings
     from scenelens.analysis.pipeline import measure_image, render_image
+    from scenelens.modules.visual_review.analyzers import PairedRegionAnalyzer
+    from scenelens.modules.visual_review.region_results import (
+        paired_region_to_payload,
+    )
+    from scenelens.modules.visual_review.region_store import RegionStore
+    from scenelens.modules.visual_review.regions import NormalizedRect
     from scenelens.storage.project_store import ProjectStore
 
     rgb = np.empty((64, 96, 3), dtype=np.uint8)
@@ -135,6 +142,67 @@ def _run_internal_smoke_check() -> None:
             or reopened.load_measurements(version.asset_id) is None
         ):
             raise RuntimeError("Internal project-storage smoke check failed.")
+        region_store = RegionStore(reopened)
+        reference_region = region_store.create_region(
+            shot.id,
+            "reference",
+            None,
+            "主体参考",
+            "主体",
+            NormalizedRect(0.0, 0.0, 0.5, 1.0),
+        )
+        current_region = region_store.create_region(
+            shot.id,
+            "current",
+            version.id,
+            "主体当前",
+            "主体",
+            NormalizedRect(0.0, 0.0, 0.5, 1.0),
+        )
+        pair = region_store.create_pair(
+            reference_region.id,
+            current_region.id,
+            "主体",
+            "主体",
+        )
+        analyzer = PairedRegionAnalyzer()
+        parameters = analyzer.default_parameters(max_colour_samples=2_000)
+        request = AnalyzerRequest(
+            inputs={
+                "reference_rgb": rgb,
+                "current_rgb": rgb,
+                "reference_rect": (0.0, 0.0, 0.5, 1.0),
+                "current_rect": (0.0, 0.0, 0.5, 1.0),
+                "shared_palette_centres": np.asarray(
+                    [item.oklab for item in measurements.palette]
+                ),
+            },
+            input_hashes={
+                "reference_image": reference.sha256,
+                "current_image": reference.sha256,
+                "reference_geometry": "smoke-reference",
+                "current_geometry": "smoke-current",
+                "shared_palette": "smoke-shared",
+            },
+            parameters=parameters,
+        )
+        region_result = analyzer.run(request)
+        cache_key = analyzer.cache_key(request)
+        region_store.save_analysis(
+            pair.id,
+            analyzer_id=analyzer.descriptor.analyzer_id,
+            analyzer_version=analyzer.descriptor.version,
+            reference_image_hash=reference.sha256,
+            current_image_hash=reference.sha256,
+            reference_region_geometry=reference_region.normalized_rect.to_dict(),
+            current_region_geometry=current_region.normalized_rect.to_dict(),
+            shared_palette_cache_key="smoke-shared",
+            parameters=parameters,
+            cache_key=cache_key,
+            result=paired_region_to_payload(region_result),
+        )
+        if region_store.load_analysis(cache_key) is None:
+            raise RuntimeError("Internal paired-region smoke check failed.")
         reopened.close()
 
 

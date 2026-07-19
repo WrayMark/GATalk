@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from scenelens.modules.visual_review import MODULE_ID
 
@@ -107,6 +108,25 @@ class RegionPairView:
     reference_region: RegionRecord
     current_region: RegionRecord
     analysis_status: str
+
+
+@dataclass(frozen=True)
+class RegionAnalysisRecord:
+    id: str
+    pair_id: str
+    module_id: str
+    analyzer_id: str
+    analyzer_version: str
+    reference_image_hash: str
+    current_image_hash: str
+    reference_region_geometry: dict[str, float]
+    current_region_geometry: dict[str, float]
+    shared_palette_cache_key: str
+    parameters: dict[str, Any]
+    cache_key: str
+    result: dict[str, Any]
+    status: str
+    created_at: str
 
 
 def validate_region_size(rect: NormalizedRect) -> None:

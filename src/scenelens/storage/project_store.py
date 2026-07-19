@@ -702,6 +702,18 @@ class ProjectStore:
                     """,
                     (shot_id, asset.id),
                 )
+                connection.execute(
+                    """
+                    UPDATE visual_review_region_analyses
+                    SET status = 'stale'
+                    WHERE pair_id IN (
+                        SELECT id FROM visual_review_region_pairs
+                        WHERE shot_id = ?
+                    ) AND reference_image_hash <> ?
+                      AND status = 'complete'
+                    """,
+                    (shot_id, asset.sha256),
+                )
                 self._ensure_brief_document(
                     connection,
                     BriefDocumentType.REFERENCE_VISUAL,
