@@ -8,6 +8,9 @@ from typing import Callable
 
 from scenelens.providers.contracts import (
     CancellationToken,
+    ImageEditProvider,
+    ImageEditRequest,
+    ImageEditResponse,
     ProviderCancelledError,
     ProviderError,
     ProviderResponse,
@@ -24,7 +27,7 @@ class RetryPolicy:
 
 @dataclass
 class ProviderJob:
-    future: Future[ProviderResponse]
+    future: Future
     cancellation: CancellationToken
 
     def cancel(self) -> bool:
@@ -78,6 +81,58 @@ class ProviderExecutionService:
             cancellation.raise_if_cancelled()
             try:
                 return provider.review(request, credential, cancellation)
+            except ProviderCancelledError:
+                raise
+            except ProviderError as exc:
+                exc.technical_detail = redact_sensitive_text(
+                    exc.technical_detail,
+                    credential,
+                )
+                if not exc.retryable or attempt >= policy.max_attempts:
+                    raise
+                delay = policy.initial_backoff_seconds * (2 ** (attempt - 1))
+                cancellation.raise_if_cancelled()
+                self._sleep(delay)
+        raise AssertionError("retry loop ended unexpectedly")
+
+    def submit_image_edit(
+        self,
+        provider: ImageEditProvider,
+        request: ImageEditRequest,
+        credential: str,
+        retry_policy: RetryPolicy | None = None,
+    ) -> ProviderJob:
+        cancellation = CancellationToken()
+        policy = retry_policy or RetryPolicy()
+        future = self._executor.submit(
+            self.run_image_edit,
+            provider,
+            request,
+            credential,
+            cancellation,
+            policy,
+        )
+        return ProviderJob(future=future, cancellation=cancellation)
+
+    def run_image_edit(
+        self,
+        provider: ImageEditProvider,
+        request: ImageEditRequest,
+        credential: str,
+        cancellation: CancellationToken,
+        retry_policy: RetryPolicy | None = None,
+    ) -> ImageEditResponse:
+        policy = retry_policy or RetryPolicy()
+        if policy.max_attempts < 1:
+            raise ValueError("max_attempts must be at least one.")
+        for attempt in range(1, policy.max_attempts + 1):
+            cancellation.raise_if_cancelled()
+            try:
+                return provider.edit_image(
+                    request,
+                    credential,
+                    cancellation,
+                )
             except ProviderCancelledError:
                 raise
             except ProviderError as exc:

@@ -125,4 +125,3 @@ def test_error_redaction_removes_common_secret_shapes():
     assert "hello" not in redacted
     assert "sk-abcdefghijk" not in redacted
     assert "[REDACTED]" in redacted
-

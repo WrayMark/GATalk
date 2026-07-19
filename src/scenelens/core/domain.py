@@ -54,6 +54,12 @@ class QualityGateState(StrEnum):
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
 
 
+class AIConceptPreviewStatus(StrEnum):
+    CANDIDATE = "candidate"
+    CONCEPT_ONLY = "concept_only"
+    REJECTED = "rejected"
+
+
 @dataclass(frozen=True)
 class Project:
     id: str
@@ -154,6 +160,23 @@ class DerivedArtifact:
 
 
 @dataclass(frozen=True)
+class AIConceptPreview:
+    id: str
+    module_id: str
+    shot_id: str
+    source_version_id: str
+    provider_id: str
+    model_id: str
+    relative_path: str
+    input_hashes: Mapping[str, str]
+    instruction: Mapping[str, Any]
+    protection_constraints: Mapping[str, Any]
+    validation_metrics: Mapping[str, Any]
+    preview_status: AIConceptPreviewStatus
+    created_at: str
+
+
+@dataclass(frozen=True)
 class AIRun:
     id: str
     module_id: str
@@ -206,4 +229,3 @@ class QualityGate:
     weight: float
     state: QualityGateState
     updated_at: str
-

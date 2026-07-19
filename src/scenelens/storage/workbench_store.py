@@ -4,6 +4,8 @@ import json
 from collections.abc import Mapping
 
 from scenelens.core.domain import (
+    AIConceptPreview,
+    AIConceptPreviewStatus,
     AIRun,
     AIRunStatus,
     Annotation,
@@ -239,6 +241,96 @@ class WorkbenchStore:
                 ),
             )
         return artifact
+
+    def save_ai_concept_preview(
+        self,
+        preview: AIConceptPreview,
+    ) -> AIConceptPreview:
+        if not preview.relative_path.replace("\\", "/").startswith(
+            "artifacts/ai_previews/"
+        ):
+            raise ValueError(
+                "AIConceptPreview must stay under artifacts/ai_previews."
+            )
+        self.save_artifact(
+            DerivedArtifact(
+                id=preview.id,
+                module_id=preview.module_id,
+                shot_id=preview.shot_id,
+                version_id=preview.source_version_id,
+                artifact_type="ai_concept_preview",
+                relative_path=preview.relative_path,
+                input_hashes=dict(preview.input_hashes),
+                parameters={
+                    "provider_id": preview.provider_id,
+                    "model_id": preview.model_id,
+                    "instruction": dict(preview.instruction),
+                    "protection_constraints": dict(
+                        preview.protection_constraints
+                    ),
+                    "validation_metrics": dict(
+                        preview.validation_metrics
+                    ),
+                    "preview_status": preview.preview_status.value,
+                },
+                created_at=preview.created_at,
+            )
+        )
+        return preview
+
+    def list_ai_concept_previews(
+        self,
+        module_id: str,
+        *,
+        shot_id: str | None = None,
+        source_version_id: str | None = None,
+    ) -> tuple[AIConceptPreview, ...]:
+        clauses = [
+            "module_id = ?",
+            "artifact_type = 'ai_concept_preview'",
+            "status != 'deleted'",
+        ]
+        values: list[object] = [module_id]
+        if shot_id is not None:
+            clauses.append("shot_id = ?")
+            values.append(shot_id)
+        if source_version_id is not None:
+            clauses.append("version_id = ?")
+            values.append(source_version_id)
+        query = (
+            "SELECT * FROM workbench_derived_artifacts WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY created_at, id"
+        )
+        with self.project.workspace_read_connection() as connection:
+            rows = connection.execute(query, values).fetchall()
+        previews = []
+        for row in rows:
+            parameters = json.loads(row["parameters_json"])
+            previews.append(
+                AIConceptPreview(
+                    id=str(row["id"]),
+                    module_id=str(row["module_id"]),
+                    shot_id=str(row["shot_id"]),
+                    source_version_id=str(row["version_id"]),
+                    provider_id=str(parameters["provider_id"]),
+                    model_id=str(parameters["model_id"]),
+                    relative_path=str(row["relative_path"]),
+                    input_hashes=json.loads(row["input_hashes_json"]),
+                    instruction=dict(parameters["instruction"]),
+                    protection_constraints=dict(
+                        parameters["protection_constraints"]
+                    ),
+                    validation_metrics=dict(
+                        parameters["validation_metrics"]
+                    ),
+                    preview_status=AIConceptPreviewStatus(
+                        str(parameters["preview_status"])
+                    ),
+                    created_at=str(row["created_at"]),
+                )
+            )
+        return tuple(previews)
 
     def save_ai_run(self, run: AIRun) -> AIRun:
         self._assert_no_secret_fields(run.input_manifest)

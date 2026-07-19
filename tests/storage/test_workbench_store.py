@@ -5,8 +5,11 @@ import uuid
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from scenelens.core.domain import (
+    AIConceptPreview,
+    AIConceptPreviewStatus,
     AIRun,
     AIRunStatus,
     Annotation,
@@ -28,6 +31,10 @@ from scenelens.storage.workbench_store import WorkbenchStore
 
 
 MODULE_ID = "scenelens.visual_review"
+
+
+def _save_image(path: Path) -> None:
+    Image.new("RGB", (32, 24), (80, 100, 120)).save(path)
 
 
 def test_workbench_entities_round_trip_without_network_or_credentials(
@@ -167,6 +174,38 @@ def test_ai_run_manifest_rejects_credential_fields(tmp_path: Path):
 
     with pytest.raises(ValueError, match="credentials"):
         store.save_ai_run(run)
+    project.close()
+
+
+def test_ai_concept_preview_is_artifact_not_version(tmp_path: Path):
+    project = ProjectStore.create(
+        tmp_path / "预演隔离.scenelens",
+        "预演隔离",
+    )
+    shot = project.create_shot("镜头")
+    source = tmp_path / "source.png"
+    _save_image(source)
+    version = project.add_version(shot.id, source)
+    before_versions = project.list_versions(shot.id)
+    preview = AIConceptPreview(
+        id=str(uuid.uuid4()),
+        module_id=MODULE_ID,
+        shot_id=shot.id,
+        source_version_id=version.id,
+        provider_id="mock",
+        model_id="mock-image",
+        relative_path="artifacts/ai_previews/preview.png",
+        input_hashes={"current": "abc"},
+        instruction={"edit_mode": "lighting_only"},
+        protection_constraints={"preserve_geometry": True},
+        validation_metrics={"structure_drift": 0.02},
+        preview_status=AIConceptPreviewStatus.CANDIDATE,
+        created_at=utc_now(),
+    )
+    workbench = WorkbenchStore(project)
+    workbench.save_ai_concept_preview(preview)
+    assert workbench.list_ai_concept_previews(MODULE_ID) == (preview,)
+    assert project.list_versions(shot.id) == before_versions
     project.close()
 
 

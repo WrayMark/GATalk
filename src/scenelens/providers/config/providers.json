@@ -91,18 +91,21 @@
     {
       "provider_id": "aliyun_wanxiang",
       "display_name": "阿里云万相",
-      "api_style": "image_edit_slot",
+      "api_style": "dashscope_image_edit",
       "base_url": "https://dashscope.aliyuncs.com",
       "capabilities": ["image_edit"],
       "default_models": {"image_edit": "wan2.7-image-pro"},
       "credential_target": "SceneLens/provider/aliyun_wanxiang",
       "optional": true,
-      "mainland_priority": 10
+      "mainland_priority": 10,
+      "options": {
+        "endpoint": "/api/v1/services/aigc/multimodal-generation/generation"
+      }
     },
     {
       "provider_id": "google_gemini_image",
       "display_name": "Gemini / Nano Banana",
-      "api_style": "image_edit_slot",
+      "api_style": "gemini_image_edit",
       "base_url": "https://generativelanguage.googleapis.com/v1",
       "capabilities": ["image_edit"],
       "default_models": {"image_edit": "gemini-3.1-flash-image"},
@@ -113,25 +116,26 @@
     {
       "provider_id": "openai_image",
       "display_name": "OpenAI GPT Image",
-      "api_style": "image_edit_slot",
+      "api_style": "multipart_image_edit",
       "base_url": "https://api.openai.com/v1",
       "capabilities": ["image_edit"],
       "default_models": {"image_edit": "gpt-image-1"},
       "credential_target": "SceneLens/provider/openai",
       "optional": true,
-      "mainland_priority": 80
+      "mainland_priority": 80,
+      "options": {"endpoint": "/images/edits"}
     },
     {
       "provider_id": "xai_imagine",
       "display_name": "Grok Imagine",
-      "api_style": "image_edit_slot",
+      "api_style": "multipart_image_edit",
       "base_url": "https://api.x.ai/v1",
       "capabilities": ["image_edit"],
       "default_models": {"image_edit": "grok-imagine-image-quality"},
       "credential_target": "SceneLens/provider/xai_grok",
       "optional": true,
-      "mainland_priority": 100
+      "mainland_priority": 100,
+      "options": {"endpoint": "/images/edits"}
     }
   ]
 }
-
