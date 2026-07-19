@@ -131,13 +131,14 @@ M1B 不自动生成好坏评分或美术结论，不接入 AI API、模型、CUD
 
 ## M2：AI 主美控制台与灯光审片台
 
-状态：开发中
+状态：内部候选完成，已建立重大外部试用点并连续进入 M3
 候选版本：`v0.3.0a0-m2`
 
 - 已完成：共享工作台 schema v5、显式 Workspace/Reviewer/Provider 注册和示例模块。
 - 已完成：五类视觉 Provider 适配与四类图像编辑能力位置；凭据、主动发送门禁、后台取消/重试/脱敏。
 - 已完成：主美/灯光严格 Schema、证据校验器、质量门禁、新 Version 变化状态、第二意见合并和六种本地灯光观察算法。
-- 进行中：应用界面接入、AI Run/任务持久化、结构化灯光标注与候选 `onedir`。
+- 已完成：应用界面接入、AI Run/任务持久化、结构化灯光标注与候选 `onedir`。
+- 验证：122 项测试、源码烟测和打包内烟测通过；真实 Key 联网验证保留为人工项。
 - 建立 `VisionReviewProvider`、`StructuredOutputProvider`、
   `ImageEditProvider`、能力清单、Manifest 和注册表。
 - 首批适配百炼 Qwen VL、SiliconFlow Qwen VL、OpenAI、Gemini 和 Grok；
@@ -153,7 +154,7 @@ M1B 不自动生成好坏评分或美术结论，不接入 AI API、模型、CUD
 
 ## M3：参考匹配与画面优化实验室
 
-状态：待 M2 内部候选完成后连续实施
+状态：开发中
 候选版本：`v0.4.0a0-m3`
 
 - 建立透明权重的目标匹配画像和“估计匹配度”，不宣称绝对审美分数。
