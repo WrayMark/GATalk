@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0 — 2026-07-19
+
 ### Added
 
 - 完成 `project.json` + SQLite schema v1 的混合项目存储。
@@ -14,7 +16,7 @@
 
 ### Changed
 
-- 版本进入 `0.1.0a1` M1A 试用候选。
+- M1A 通过真实项目人工验收并冻结为 `0.1.0`。
 - 打包内部烟测现在同时覆盖图片分析、SQLite 项目创建、资产导入与重开。
 
 ### Validation
