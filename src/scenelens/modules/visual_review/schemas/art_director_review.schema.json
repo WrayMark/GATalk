@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SceneLens Art Director Review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "reviewer_id",
+    "summary",
+    "dimension_states",
+    "findings",
+    "quality_gate_results"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "reviewer_id": {
+      "const": "art_director_review"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dimension_states": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["dimension", "status", "rationale"],
+        "properties": {
+          "dimension": {"type": "string", "minLength": 1},
+          "status": {
+            "type": "string",
+            "enum": [
+              "meets_target",
+              "needs_attention",
+              "conflict",
+              "insufficient_evidence"
+            ]
+          },
+          "rationale": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "finding_id",
+          "observation",
+          "image_evidence",
+          "measurement_evidence",
+          "linked_image_role",
+          "linked_region_ids",
+          "impact",
+          "recommended_action",
+          "priority",
+          "confidence",
+          "counterevidence_or_uncertainty",
+          "next_version_validation"
+        ],
+        "properties": {
+          "finding_id": {"type": "string", "minLength": 1},
+          "observation": {"type": "string", "minLength": 1},
+          "image_evidence": {"type": "string", "minLength": 1},
+          "measurement_evidence": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "linked_image_role": {
+            "type": "string",
+            "enum": ["reference", "current", "both"]
+          },
+          "linked_region_ids": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "impact": {"type": "string", "minLength": 1},
+          "recommended_action": {"type": "string", "minLength": 1},
+          "priority": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "counterevidence_or_uncertainty": {"type": "string"},
+          "next_version_validation": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "quality_gate_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["gate_id", "status", "reason"],
+        "properties": {
+          "gate_id": {"type": "string", "minLength": 1},
+          "status": {
+            "type": "string",
+            "enum": ["pass", "needs_attention", "insufficient_evidence"]
+          },
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

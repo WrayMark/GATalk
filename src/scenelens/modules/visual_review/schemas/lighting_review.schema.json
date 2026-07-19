@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SceneLens Lighting Review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "reviewer_id",
+    "summary",
+    "lighting_components",
+    "findings",
+    "target_schemes",
+    "performance_checklist"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "reviewer_id": {"const": "lighting_review"},
+    "summary": {"type": "string", "minLength": 1},
+    "lighting_components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "component_id",
+          "inference_type",
+          "normalized_rect",
+          "image_evidence",
+          "alternative_explanation",
+          "confidence",
+          "narrative_role",
+          "ue5_component_candidates"
+        ],
+        "properties": {
+          "component_id": {"type": "string", "minLength": 1},
+          "inference_type": {
+            "type": "string",
+            "enum": [
+              "key_light_area",
+              "fill_light_area",
+              "focus_area",
+              "shadow_area",
+              "overexposed_area",
+              "cool_space",
+              "warm_accent",
+              "silhouette_shaping",
+              "stage_separation",
+              "player_guidance_light",
+              "information_suppression_area"
+            ]
+          },
+          "normalized_rect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["x", "y", "width", "height"],
+            "properties": {
+              "x": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+              "y": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+              "width": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+              "height": {"type": "number", "minimum": 0.0, "maximum": 1.0}
+            }
+          },
+          "image_evidence": {"type": "string", "minLength": 1},
+          "alternative_explanation": {"type": "string"},
+          "confidence": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "narrative_role": {"type": "string", "minLength": 1},
+          "ue5_component_candidates": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "finding_id",
+          "observation",
+          "image_evidence",
+          "measurement_evidence",
+          "linked_region_ids",
+          "impact",
+          "recommended_action",
+          "priority",
+          "confidence",
+          "counterevidence_or_uncertainty",
+          "next_version_validation"
+        ],
+        "properties": {
+          "finding_id": {"type": "string", "minLength": 1},
+          "observation": {"type": "string", "minLength": 1},
+          "image_evidence": {"type": "string", "minLength": 1},
+          "measurement_evidence": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "linked_region_ids": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "impact": {"type": "string", "minLength": 1},
+          "recommended_action": {"type": "string", "minLength": 1},
+          "priority": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "counterevidence_or_uncertainty": {"type": "string"},
+          "next_version_validation": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "target_schemes": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "strategy",
+          "key_direction_and_altitude",
+          "key_softness",
+          "key_fill_relationship",
+          "colour_temperature_strategy",
+          "sky_and_indirect_light",
+          "exposure_direction",
+          "fog_and_atmospheric_perspective",
+          "volumetric_light",
+          "focus_emphasis",
+          "depth_separation",
+          "regions_to_darken_or_lift",
+          "ue53_execution_order",
+          "risks",
+          "validation",
+          "annotations"
+        ],
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "faithful_to_reference",
+              "heightened_drama",
+              "gameplay_readability"
+            ]
+          },
+          "key_direction_and_altitude": {"type": "string", "minLength": 1},
+          "key_softness": {"type": "string", "minLength": 1},
+          "key_fill_relationship": {"type": "string", "minLength": 1},
+          "colour_temperature_strategy": {"type": "string", "minLength": 1},
+          "sky_and_indirect_light": {"type": "string", "minLength": 1},
+          "exposure_direction": {"type": "string", "minLength": 1},
+          "fog_and_atmospheric_perspective": {"type": "string", "minLength": 1},
+          "volumetric_light": {"type": "string", "minLength": 1},
+          "focus_emphasis": {"type": "string", "minLength": 1},
+          "depth_separation": {"type": "string", "minLength": 1},
+          "regions_to_darken_or_lift": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "ue53_execution_order": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "risks": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "validation": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "annotations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "points", "label"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "light_arrow",
+                    "light_area",
+                    "view_flow",
+                    "visual_weight",
+                    "darken_area"
+                  ]
+                },
+                "points": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["x", "y"],
+                    "properties": {
+                      "x": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                      "y": {"type": "number", "minimum": 0.0, "maximum": 1.0}
+                    }
+                  }
+                },
+                "label": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        }
+      }
+    },
+    "performance_checklist": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

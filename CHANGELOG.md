@@ -4,6 +4,10 @@
 
 ### Added
 
+- 增加主美专项审阅与灯光专项审阅的严格 JSON Schema、最多五个核心问题限制和本地 Schema 校验错误路径。
+- 增加 AI 证据校验器，覆盖区域明暗、局部对比、高光、暗部、Oklab 冷暖及参考/当前差异，并在冲突时显式降低可信度。
+- 增加曝光伪色、明暗溢出警告、可调剪影、缩略图观察、明度模糊和灯光明度代理图纯分析能力。
+- 增加分维度 Quality Gate、新 Version 改善状态、保留来源与分歧的第二意见合并，以及不含本地路径的离线审阅包。
 - 增加 AI 主美 Pro 与游戏场景灯光分析竞品审查，明确许可证和独立实现边界。
 - 增加 schema v5 的 Evidence、Annotation、Task、DerivedArtifact、AIRun、
   SourceDocument、ReviewProfile 和 QualityGate 共享持久化。
@@ -46,6 +50,7 @@
 
 ### Validation
 
+- M2 专项审阅、严格 Schema、证据校验和灯光观察模式切片完整回归 108 项通过；默认测试无网络、无 API 消耗。
 - M1B.0 开发回归当前 40 项测试通过，包含真实子进程锁、schema v1 → v2
   迁移、字段覆盖保护、参考图哈希变化过期和预设加载。
 - Windows `onedir` 构建与内部烟测通过，模块预设配置已随包收集。
