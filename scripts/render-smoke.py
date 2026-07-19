@@ -1,4 +1,4 @@
-"""Render a deterministic offscreen M0.5 screenshot for visual QA."""
+"""Render a deterministic offscreen M1A project screenshot for visual QA."""
 
 from __future__ import annotations
 
@@ -14,6 +14,9 @@ from PySide6.QtCore import QTimer
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from scenelens.app import create_application
+from scenelens.storage.models import ArtBrief
+from scenelens.storage.project_store import ProjectStore
+from scenelens.storage.recent_projects import RecentProjects
 from scenelens.ui.main_window import MainWindow
 
 
@@ -44,16 +47,39 @@ def _create_test_images(folder: Path) -> tuple[Path, Path]:
 
 
 def main() -> int:
-    output_path = Path(sys.argv[1] if len(sys.argv) > 1 else "m05-smoke.png")
+    output_path = Path(sys.argv[1] if len(sys.argv) > 1 else "m1a-smoke.png")
     app = create_application([])
-    window = MainWindow()
-    window.resize(1500, 900)
-    window.show()
-
     temp_folder = Path(tempfile.mkdtemp(prefix="scenelens-中文-"))
     reference_path, current_path = _create_test_images(temp_folder)
-    window._load_path("reference", str(reference_path))
-    window._load_path("current", str(current_path))
+    store = ProjectStore.create(
+        temp_folder / "中世纪村庄.scenelens",
+        "中世纪村庄",
+    )
+    store.save_art_brief(
+        ArtBrief(
+            scene_type="中世纪村庄",
+            production_stage="灯光初版",
+            target_style="写实风格化",
+            time_weather="清晨薄雾",
+            target_mood="宁静、神秘",
+            primary_focus="村口钟楼",
+            secondary_focus="远山",
+            preserve_content="建筑剪影",
+            main_issues="焦点不够集中",
+            excluded_review="材质微细节",
+            constraints="仅使用现有资产",
+        )
+    )
+    shot = store.create_shot("村口固定机位")
+    store.import_reference(shot.id, reference_path)
+    store.add_version(shot.id, current_path, "灯光 v1")
+
+    window = MainWindow(
+        RecentProjects(temp_folder / "recent-projects.json")
+    )
+    window.resize(1500, 900)
+    window.show()
+    window.open_project(store.root)
 
     def capture_when_ready() -> None:
         ready = all(
@@ -73,4 +99,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

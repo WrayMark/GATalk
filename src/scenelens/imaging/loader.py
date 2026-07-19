@@ -23,6 +23,7 @@ class LoadedImage:
     source_format: str
     original_size: tuple[int, int]
     working_size: tuple[int, int]
+    exif_orientation: int | None
     exif_orientation_applied: bool
     icc_converted_to_srgb: bool
     assumed_srgb: bool
@@ -86,6 +87,9 @@ def load_image(path: str | Path) -> LoadedImage:
                 source_format=str(source_format),
                 original_size=original_size,
                 working_size=rgb_image.size,
+                exif_orientation=(
+                    int(orientation) if orientation is not None else None
+                ),
                 exif_orientation_applied=orientation_applied,
                 icc_converted_to_srgb=converted,
                 assumed_srgb=not converted,
@@ -95,4 +99,3 @@ def load_image(path: str | Path) -> LoadedImage:
         raise ValueError("无法识别该图片，文件可能已损坏或扩展名不正确。") from exc
     except OSError as exc:
         raise ValueError(f"无法读取图片：{exc}") from exc
-

@@ -116,6 +116,7 @@ class PaletteWidget(QWidget):
 class AnalysisSummaryWidget(QWidget):
     def __init__(self, empty_text: str, parent=None) -> None:
         super().__init__(parent)
+        self._empty_text = empty_text
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(8)
@@ -149,7 +150,19 @@ class AnalysisSummaryWidget(QWidget):
         layout.addWidget(self.sample_label)
         layout.addStretch(1)
 
-    def set_loaded_image(self, image: LoadedImage) -> None:
+    def clear(self, empty_text: str | None = None) -> None:
+        if empty_text is not None:
+            self._empty_text = empty_text
+        self.info_label.setText(self._empty_text)
+        self.histogram.set_values(())
+        self.palette.set_palette(())
+        self.sample_label.setText("")
+
+    def set_loaded_image(
+        self,
+        image: LoadedImage,
+        display_name: str | None = None,
+    ) -> None:
         colour_note = (
             "已根据嵌入 ICC 转换为 sRGB"
             if image.icc_converted_to_srgb
@@ -162,7 +175,7 @@ class AnalysisSummaryWidget(QWidget):
         if image.warnings:
             warning_text = "\n提示：" + "；".join(image.warnings)
         self.info_label.setText(
-            f"{image.source_path.name}\n"
+            f"{display_name or image.source_path.name}\n"
             f"{image.working_size[0]} × {image.working_size[1]} · "
             f"{image.source_format}\n"
             f"{orientation_note} · {colour_note}"
@@ -177,4 +190,3 @@ class AnalysisSummaryWidget(QWidget):
             f"色板采样 {measurements.sampled_pixel_count:,} 像素；"
             "结果不代表美术优劣。"
         )
-

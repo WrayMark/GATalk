@@ -35,6 +35,7 @@ def test_exif_orientation_is_applied_without_modifying_source(tmp_path: Path):
 
     assert loaded.original_size == (20, 30)
     assert loaded.working_size == (30, 20)
+    assert loaded.exif_orientation == 6
     assert loaded.exif_orientation_applied is True
     assert path.read_bytes() == before
 
@@ -56,4 +57,3 @@ def test_embedded_srgb_profile_is_detected_and_converted(tmp_path: Path):
         [40, 80, 120],
         abs=1,
     )
-

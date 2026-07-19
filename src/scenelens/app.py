@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PySide6.QtWidgets import QApplication
@@ -103,6 +105,7 @@ def create_application(argv: list[str] | None = None) -> QApplication:
 def _run_internal_smoke_check() -> None:
     from scenelens.analysis.models import RenderSettings
     from scenelens.analysis.pipeline import measure_image, render_image
+    from scenelens.storage.project_store import ProjectStore
 
     rgb = np.empty((64, 96, 3), dtype=np.uint8)
     rgb[:, :48] = (35, 75, 120)
@@ -111,6 +114,26 @@ def _run_internal_smoke_check() -> None:
     rendered = render_image(rgb, RenderSettings(mode="grayscale", blur_sigma=1.0))
     if len(measurements.palette) != 2 or rendered.shape != rgb.shape:
         raise RuntimeError("Internal image-analysis smoke check failed.")
+
+    with tempfile.TemporaryDirectory(prefix="scenelens-smoke-中文-") as temporary:
+        folder = Path(temporary)
+        source = folder / "输入 图片.png"
+        Image.fromarray(rgb).save(source)
+        store = ProjectStore.create(
+            folder / "烟测 项目.scenelens",
+            "烟测项目",
+        )
+        shot = store.create_shot("固定机位")
+        reference = store.import_reference(shot.id, source)
+        version = store.add_version(shot.id, source)
+        store.save_measurements(version.asset_id, measurements)
+        reopened = ProjectStore.open(store.root)
+        if (
+            reopened.get_shot(shot.id).reference_asset_id != reference.id
+            or reopened.get_version(version.id).asset_id != reference.id
+            or reopened.load_measurements(version.asset_id) is None
+        ):
+            raise RuntimeError("Internal project-storage smoke check failed.")
 
 
 def main() -> int:
