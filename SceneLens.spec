@@ -28,7 +28,7 @@ a = Analysis(
                 / 'modules'
                 / 'visual_review'
                 / 'schemas'
-                / 'reference_visual_brief.schema.json'
+                / '*.json'
             ),
             'scenelens/modules/visual_review/schemas',
         ),

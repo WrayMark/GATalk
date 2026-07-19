@@ -8,6 +8,14 @@ from scenelens.analysis.luminance import (
     luminance_histogram,
     quantize_luminance_with_thresholds,
 )
+from scenelens.analysis.lighting import (
+    clipping_warning,
+    exposure_false_colour,
+    lighting_luminance_proxy,
+    luminance_blur,
+    silhouette_map,
+    thumbnail_observation,
+)
 from scenelens.analysis.models import ImageMeasurements, RenderSettings, UInt8Image
 from scenelens.analysis.palette import extract_oklab_palette
 from scenelens.analysis.palette import (
@@ -54,6 +62,34 @@ def render_image(rgb: UInt8Image, settings: RenderSettings) -> UInt8Image:
         result = quantize_luminance_with_thresholds(
             working,
             settings.five_thresholds,
+        )
+    elif settings.mode == "exposure_false_colour":
+        result = exposure_false_colour(working)
+    elif settings.mode == "clipping_warning":
+        result = clipping_warning(
+            working,
+            shadow_threshold=settings.clipping_shadow_threshold,
+            highlight_threshold=settings.clipping_highlight_threshold,
+        )
+    elif settings.mode == "silhouette":
+        result = silhouette_map(
+            working,
+            threshold=settings.silhouette_threshold,
+        )
+    elif settings.mode == "thumbnail_observation":
+        result = thumbnail_observation(
+            working,
+            maximum_side=settings.thumbnail_maximum_side,
+        )
+    elif settings.mode == "luminance_blur":
+        result = luminance_blur(
+            rgb,
+            sigma=max(1.0, settings.blur_sigma),
+        )
+    elif settings.mode == "lighting_luminance_proxy":
+        result = lighting_luminance_proxy(
+            rgb,
+            sigma=max(1.0, settings.blur_sigma),
         )
     else:
         raise ValueError(f"Unsupported render mode: {settings.mode}")

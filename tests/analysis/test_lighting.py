@@ -1,5 +1,7 @@
 import numpy as np
 
+from scenelens.analysis.models import RenderSettings
+from scenelens.analysis.pipeline import render_image
 from scenelens.analysis.lighting import (
     clipping_warning,
     exposure_false_colour,
@@ -50,3 +52,24 @@ def test_lighting_proxy_is_not_a_material_removal_operation() -> None:
     result = lighting_luminance_proxy(source)
     assert np.array_equal(result[..., 0], result[..., 1])
     assert not np.shares_memory(result, source)
+
+
+def test_pipeline_exposes_all_lighting_observation_modes() -> None:
+    source = _gradient()
+    for mode in (
+        "exposure_false_colour",
+        "clipping_warning",
+        "silhouette",
+        "thumbnail_observation",
+        "luminance_blur",
+        "lighting_luminance_proxy",
+    ):
+        result = render_image(
+            source,
+            RenderSettings(
+                mode=mode,
+                blur_sigma=2.0,
+                silhouette_threshold=0.62,
+            ),
+        )
+        assert result.shape == source.shape

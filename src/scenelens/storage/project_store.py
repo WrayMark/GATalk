@@ -993,6 +993,7 @@ class ProjectStore:
             ab_role=row["ab_role"],
             sync_views=bool(row["sync_views"]),
             blur_sigma=float(row["blur_sigma"]),
+            silhouette_threshold=float(row["silhouette_threshold"]),
             three_threshold_low=float(row["three_threshold_low"]),
             three_threshold_high=float(row["three_threshold_high"]),
             five_thresholds=thresholds,  # type: ignore[arg-type]
@@ -1017,7 +1018,7 @@ class ProjectStore:
                 UPDATE workspace_state SET
                     current_shot_id = ?, current_version_id = ?,
                     display_mode = ?, comparison_mode = ?, ab_role = ?,
-                    sync_views = ?, blur_sigma = ?,
+                    sync_views = ?, blur_sigma = ?, silhouette_threshold = ?,
                     three_threshold_low = ?, three_threshold_high = ?,
                     five_thresholds_json = ?, palette_colours = ?,
                     palette_seed = ?, palette_max_samples = ?,
@@ -1032,6 +1033,7 @@ class ProjectStore:
                     state.ab_role,
                     int(state.sync_views),
                     float(state.blur_sigma),
+                    float(state.silhouette_threshold),
                     float(state.three_threshold_low),
                     float(state.three_threshold_high),
                     canonical_json(list(state.five_thresholds)),

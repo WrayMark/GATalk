@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SceneLens Second Opinion",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "reviewer_id", "critiques", "omissions"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "reviewer_id": {"const": "second_opinion"},
+    "critiques": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "finding_id",
+          "status",
+          "critique",
+          "missing_evidence"
+        ],
+        "properties": {
+          "finding_id": {"type": "string", "minLength": 1},
+          "status": {
+            "type": "string",
+            "enum": ["supported", "partial", "conflict", "unsupported"]
+          },
+          "critique": {"type": "string", "minLength": 1},
+          "missing_evidence": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "omissions": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

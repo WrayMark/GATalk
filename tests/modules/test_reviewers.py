@@ -163,6 +163,13 @@ def test_lighting_schema_forbids_pseudo_precise_fields() -> None:
         reviewer.validate_output(invalid)
 
 
+def test_lighting_output_requires_all_three_distinct_strategies() -> None:
+    invalid = _lighting_output()
+    invalid["target_schemes"][1]["strategy"] = "faithful_to_reference"
+    with pytest.raises(SchemaValidationError, match="必须各包含"):
+        LightingReview().validate_output(invalid)
+
+
 def test_workbench_and_example_contributions_register_explicitly() -> None:
     registry = WorkbenchRegistry()
     register_visual_review_workbench(registry)

@@ -8,7 +8,7 @@ from typing import Any
 
 MANIFEST_FORMAT = "scenelens.project"
 MANIFEST_FORMAT_VERSION = 1
-DATABASE_SCHEMA_VERSION = 5
+DATABASE_SCHEMA_VERSION = 6
 
 
 class BriefDocumentType(StrEnum):
@@ -198,6 +198,7 @@ class WorkspaceState:
     ab_role: str = "reference"
     sync_views: bool = True
     blur_sigma: float = 0.0
+    silhouette_threshold: float = 0.45
     three_threshold_low: float = 1.0 / 3.0
     three_threshold_high: float = 2.0 / 3.0
     five_thresholds: tuple[float, float, float, float] = (0.2, 0.4, 0.6, 0.8)

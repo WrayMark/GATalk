@@ -113,6 +113,20 @@ def _run_internal_smoke_check() -> None:
     from scenelens.modules.visual_review.region_store import RegionStore
     from scenelens.modules.visual_review.regions import NormalizedRect
     from scenelens.storage.project_store import ProjectStore
+    from scenelens.modules.visual_review.review_coordinator import (
+        ReviewCoordinator,
+        ReviewRunOptions,
+    )
+    from scenelens.modules.visual_review.reviews import (
+        ArtDirectorReview,
+        ReviewContext,
+    )
+    from scenelens.providers.contracts import (
+        CancellationToken,
+        ProviderImage,
+    )
+    from scenelens.providers.mock import MockProvider
+    from scenelens.providers.registry import ProviderRegistry
 
     rgb = np.empty((64, 96, 3), dtype=np.uint8)
     rgb[:, :48] = (35, 75, 120)
@@ -121,6 +135,35 @@ def _run_internal_smoke_check() -> None:
     rendered = render_image(rgb, RenderSettings(mode="grayscale", blur_sigma=1.0))
     if len(measurements.palette) != 2 or rendered.shape != rgb.shape:
         raise RuntimeError("Internal image-analysis smoke check failed.")
+
+    provider_registry = ProviderRegistry()
+    provider_registry.register(MockProvider())
+    coordinator = ReviewCoordinator(
+        provider_registry,
+        {"art_director_review": ArtDirectorReview()},
+    )
+    review = coordinator.run(
+        options=ReviewRunOptions("art_director_review", "mock"),
+        context=ReviewContext(
+            project_id="smoke",
+            shot_id="smoke",
+            version_id="smoke",
+            creative_intent={},
+            reference_visual_brief={},
+            global_measurements={},
+        ),
+        images=(
+            ProviderImage("reference", "image/png", b"smoke-reference"),
+            ProviderImage("current", "image/png", b"smoke-current"),
+        ),
+        current_rgb=rgb,
+        reference_rgb=rgb,
+        credentials={},
+        cancellation=CancellationToken(),
+    )
+    coordinator.close()
+    if review.output.get("reviewer_id") != "art_director_review":
+        raise RuntimeError("Internal offline AI review smoke check failed.")
 
     with tempfile.TemporaryDirectory(prefix="scenelens-smoke-中文-") as temporary:
         folder = Path(temporary)

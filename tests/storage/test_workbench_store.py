@@ -187,7 +187,9 @@ def test_schema_four_migrates_to_workbench_core_with_backup(tmp_path: Path):
     with sqlite3.connect(root / "project.db") as connection:
         for table in tables:
             connection.execute(f"DROP TABLE {table}")
-        connection.execute("DELETE FROM schema_migrations WHERE version = 5")
+        connection.execute(
+            "DELETE FROM schema_migrations WHERE version IN (5, 6)"
+        )
         connection.execute("PRAGMA user_version = 4")
         connection.commit()
     manifest = load_json(root / "project.json")
@@ -208,7 +210,36 @@ def test_schema_four_migrates_to_workbench_core_with_backup(tmp_path: Path):
 
     assert actual == set(tables)
     assert len(
-        list((root / "backups").glob("pre-migration_0004_to_0005_*"))
+        list((root / "backups").glob("pre-migration_0004_to_0006_*"))
     ) == 1
     migrated.close()
 
+
+def test_schema_five_migrates_lighting_observation_state_with_backup(
+    tmp_path: Path,
+):
+    project = ProjectStore.create(
+        tmp_path / "schema5-lighting.scenelens",
+        "schema5",
+    )
+    root = project.root
+    project.close()
+    with sqlite3.connect(root / "project.db") as connection:
+        connection.execute(
+            "ALTER TABLE workspace_state DROP COLUMN silhouette_threshold"
+        )
+        connection.execute(
+            "DELETE FROM schema_migrations WHERE version = 6"
+        )
+        connection.execute("PRAGMA user_version = 5")
+        connection.commit()
+    manifest = load_json(root / "project.json")
+    manifest["database"]["schema_version"] = 5
+    atomic_write_json(root / "project.json", manifest)
+
+    migrated = ProjectStore.open(root)
+    assert migrated.get_workspace_state().silhouette_threshold == 0.45
+    migrated.close()
+    assert len(
+        list((root / "backups").glob("pre-migration_0005_to_0006_*"))
+    ) == 1

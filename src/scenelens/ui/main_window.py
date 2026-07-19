@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import hashlib
+import uuid
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -47,7 +48,22 @@ from scenelens.analysis.shared_palette import (
     render_palette_source_mask,
 )
 from scenelens.core.analyzers import AnalyzerRequest
+from scenelens.core.domain import (
+    AIRun,
+    AIRunStatus,
+    Annotation,
+    Evidence,
+    EvidenceSource,
+    EvidenceType,
+    Task,
+    TaskPriority,
+    TaskStatus,
+)
 from scenelens.imaging.loader import LoadedImage, load_image
+from scenelens.imaging.provider_export import (
+    ProviderImageExportOptions,
+    prepare_provider_image,
+)
 from scenelens.imaging.qt import numpy_to_qimage
 from scenelens.modules.visual_review import MODULE_ID
 from scenelens.modules.visual_review.analyzers import (
@@ -70,8 +86,28 @@ from scenelens.modules.visual_review.region_results import (
     paired_region_from_payload,
     paired_region_to_payload,
 )
+from scenelens.modules.visual_review.review_coordinator import (
+    ReviewCoordinator,
+    ReviewRunOutcome,
+)
+from scenelens.modules.visual_review.review_pack_io import (
+    write_offline_review_pack,
+)
+from scenelens.modules.visual_review.review_services import (
+    build_offline_review_pack,
+)
+from scenelens.modules.visual_review.reviews import (
+    ArtDirectorReview,
+    LightingReview,
+    ReviewContext,
+)
 from scenelens.modules.visual_review.registry import (
     create_visual_review_registry,
+)
+from scenelens.modules.visual_review.ui.ai_review_panel import (
+    AIReviewPanel,
+    DataDisclosureDialog,
+    ReviewPanelOptions,
 )
 from scenelens.modules.visual_review.ui.region_controller import (
     RegionController,
@@ -93,6 +129,17 @@ from scenelens.storage.project_store import (
     utc_now,
 )
 from scenelens.storage.recent_projects import RecentProjects
+from scenelens.storage.workbench_store import WorkbenchStore
+from scenelens.providers.contracts import (
+    CancellationToken,
+    ProviderCapability,
+    disclosure_preview,
+)
+from scenelens.providers.credentials import (
+    MemoryCredentialStore,
+    WindowsCredentialStore,
+)
+from scenelens.providers.factory import create_default_provider_registry
 from scenelens.ui.analysis_widgets import AnalysisSummaryWidget
 from scenelens.ui.brief_widgets import (
     CREATIVE_INTENT_FIELDS,
@@ -100,7 +147,10 @@ from scenelens.ui.brief_widgets import (
     ReferenceVisualBriefDialog,
 )
 from scenelens.ui.comparison_widgets import ComparisonPanel
-from scenelens.ui.image_canvas import ImageCanvas
+from scenelens.ui.image_canvas import (
+    AnnotationOverlaySpec,
+    ImageCanvas,
+)
 from scenelens.ui.project_widgets import ProjectNavigator
 from scenelens.ui.workers import FunctionWorker
 
@@ -130,7 +180,7 @@ class ImagePane(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self, recent_projects: RecentProjects | None = None) -> None:
         super().__init__()
-        self.setWindowTitle("SceneLens — M1B.2")
+        self.setWindowTitle("SceneLens — M2 AI 主美控制台")
         self.resize(1550, 900)
         self.setMinimumSize(1050, 650)
 
@@ -148,6 +198,10 @@ class MainWindow(QMainWindow):
         self._comparison_generation = 0
         self._region_analysis_generation = 0
         self._mask_generation = 0
+        self._ai_review_generation = 0
+        self._ai_cancellation: CancellationToken | None = None
+        self._active_ai_run: AIRun | None = None
+        self._last_review_outcome: ReviewRunOutcome | None = None
         self._active_mask: tuple[str, int] | None = None
         self._shared_palette_result: SharedPaletteResult | None = None
         self._active_region_analysis: (
@@ -191,6 +245,22 @@ class MainWindow(QMainWindow):
             PAIRED_REGION_ANALYZER_ID,
         )
         self._presets = load_visual_review_presets()
+        self._provider_registry = create_default_provider_registry()
+        self._reviewers = {
+            "art_director_review": ArtDirectorReview(),
+            "lighting_review": LightingReview(),
+        }
+        self._review_coordinator = ReviewCoordinator(
+            self._provider_registry,
+            self._reviewers,
+        )
+        try:
+            self._credential_store = WindowsCredentialStore()
+        except OSError:
+            LOGGER.warning(
+                "Windows Credential Manager unavailable; using session memory."
+            )
+            self._credential_store = MemoryCredentialStore()
 
         self._thread_pool = QThreadPool(self)
         ideal = max(2, QThread.idealThreadCount())
@@ -287,6 +357,18 @@ class MainWindow(QMainWindow):
         self.mode_combo.addItem("灰度", "grayscale")
         self.mode_combo.addItem("三阶明度", "three_value")
         self.mode_combo.addItem("五阶明度", "five_value")
+        self.mode_combo.addItem("曝光伪色（非真实 EV）", "exposure_false_colour")
+        self.mode_combo.addItem("高光 / 暗部溢出", "clipping_warning")
+        self.mode_combo.addItem("可调剪影", "silhouette")
+        self.mode_combo.addItem("缩略图观察", "thumbnail_observation")
+        self.mode_combo.addItem("明度模糊", "luminance_blur")
+        self.mode_combo.addItem(
+            "灯光明度代理图（非灰模）",
+            "lighting_luminance_proxy",
+        )
+        self.mode_combo.setToolTip(
+            "灯光明度代理图只能减弱色彩和细节干扰，不能从截图剥离材质与纹理。"
+        )
         self.mode_combo.currentIndexChanged.connect(self._display_mode_changed)
         toolbar.addWidget(self.mode_combo)
 
@@ -301,6 +383,20 @@ class MainWindow(QMainWindow):
         self.blur_label = QLabel("0.0")
         self.blur_label.setMinimumWidth(34)
         toolbar.addWidget(self.blur_label)
+
+        toolbar.addWidget(QLabel("剪影阈值："))
+        self.silhouette_slider = QSlider(Qt.Orientation.Horizontal)
+        self.silhouette_slider.setRange(5, 95)
+        self.silhouette_slider.setValue(45)
+        self.silhouette_slider.setFixedWidth(100)
+        self.silhouette_slider.setEnabled(False)
+        self.silhouette_slider.valueChanged.connect(
+            self._silhouette_threshold_changed
+        )
+        toolbar.addWidget(self.silhouette_slider)
+        self.silhouette_label = QLabel("0.45")
+        self.silhouette_label.setMinimumWidth(34)
+        toolbar.addWidget(self.silhouette_label)
         toolbar.addSeparator()
 
         toolbar.addWidget(QLabel("对比："))
@@ -370,10 +466,34 @@ class MainWindow(QMainWindow):
         self.region_panel = RegionPairPanel()
         self.comparison_panel.set_region_panel(self.region_panel)
         self.analysis_tabs.addTab(self.comparison_panel, "对比分析")
-        self.analysis_tabs.addTab(
-            self._placeholder_panel("修改任务将在后续纵向功能中实现。"),
-            "审阅任务",
+        self.ai_review_panel = AIReviewPanel(
+            self._provider_registry.manifests()
         )
+        self.ai_review_panel.review_requested.connect(
+            self._start_ai_review
+        )
+        self.ai_review_panel.cancel_requested.connect(
+            self._cancel_ai_review
+        )
+        self.ai_review_panel.credential_save_requested.connect(
+            self._save_provider_credential
+        )
+        self.ai_review_panel.credential_delete_requested.connect(
+            self._delete_provider_credential
+        )
+        self.ai_review_panel.task_requested.connect(
+            self._confirm_review_task
+        )
+        self.ai_review_panel.annotations_selected.connect(
+            self._show_lighting_annotations
+        )
+        self.ai_review_panel.annotation_tasks_requested.connect(
+            self._confirm_annotation_tasks
+        )
+        self.ai_review_panel.offline_export_requested.connect(
+            self._export_offline_review_pack
+        )
+        self.analysis_tabs.addTab(self.ai_review_panel, "AI 审阅与任务")
         self.analysis_tabs.currentChanged.connect(
             self._analysis_tab_changed
         )
@@ -614,6 +734,15 @@ class MainWindow(QMainWindow):
             self.blur_slider.setValue(
                 max(0, min(200, int(round(state.blur_sigma * 10.0))))
             )
+            self.silhouette_slider.setValue(
+                max(
+                    5,
+                    min(
+                        95,
+                        int(round(state.silhouette_threshold * 100.0)),
+                    ),
+                )
+            )
             self.sync_checkbox.setChecked(state.sync_views)
             self.comparison_panel.set_thresholds(
                 state.three_threshold_low,
@@ -632,6 +761,7 @@ class MainWindow(QMainWindow):
             self._clear_role("current")
             self._refresh_project_navigator()
             self._load_active_project_images()
+            self._refresh_workbench_tasks()
         finally:
             self._restoring_workspace = False
             self._workspace_dirty = False
@@ -1032,6 +1162,22 @@ class MainWindow(QMainWindow):
         generation: int,
         result: object,
     ) -> None:
+        if kind == "ai_review":
+            if generation != self._ai_review_generation:
+                return
+            self._ai_cancellation = None
+            if not isinstance(result, ReviewRunOutcome):
+                return
+            self._last_review_outcome = result
+            self._persist_review_annotations(result)
+            self.ai_review_panel.show_outcome(result)
+            self._finish_ai_run(
+                status=AIRunStatus.COMPLETE,
+                output=dict(result.output),
+            )
+            self._refresh_workbench_tasks()
+            return
+
         if kind in {"import_reference", "import_version"}:
             if generation != self._import_generation[role]:
                 return
@@ -1196,7 +1342,9 @@ class MainWindow(QMainWindow):
         message: str,
         details: str,
     ) -> None:
-        if kind in {"import_reference", "import_version"}:
+        if kind == "ai_review":
+            expected = self._ai_review_generation
+        elif kind in {"import_reference", "import_version"}:
             expected = self._import_generation[role]
         elif kind == "reference_brief":
             expected = self._brief_generation
@@ -1214,6 +1362,23 @@ class MainWindow(QMainWindow):
             }[kind][role]
         if generation != expected:
             return
+        if kind == "ai_review":
+            self._ai_cancellation = None
+            self.ai_review_panel.show_error(message)
+            status = (
+                AIRunStatus.CANCELLED
+                if "取消" in message or "cancel" in message.lower()
+                else AIRunStatus.FAILED
+            )
+            self._finish_ai_run(
+                status=status,
+                error_code=(
+                    "cancelled"
+                    if status == AIRunStatus.CANCELLED
+                    else "provider_error"
+                ),
+                error_message=message,
+            )
         LOGGER.error("%s %s failed:\n%s", role, kind, details)
         title = {
             "load": "图片读取失败",
@@ -1225,6 +1390,7 @@ class MainWindow(QMainWindow):
             "comparison": "对比分析失败",
             "region_analysis": "成对区域分析失败",
             "mask": "颜色来源遮罩失败",
+            "ai_review": "AI 专项审阅失败",
         }.get(kind, "SceneLens 操作失败")
         QMessageBox.warning(
             self,
@@ -1261,6 +1427,655 @@ class MainWindow(QMainWindow):
         self._active_jobs += 1
         self.progress.setVisible(True)
         self._thread_pool.start(worker)
+
+    def _start_ai_review(self, raw_options: object) -> None:
+        if not isinstance(raw_options, ReviewPanelOptions):
+            return
+        store = self._project_store
+        if (
+            store is None
+            or self._active_shot_id is None
+            or self._active_version_id is None
+        ):
+            QMessageBox.information(
+                self,
+                "AI 专项审阅",
+                "请先打开项目，并选择包含参考图和当前 Version 的 Shot。",
+            )
+            return
+        if not {"reference", "current"}.issubset(self._images):
+            QMessageBox.information(
+                self,
+                "AI 专项审阅",
+                "专项审阅需要参考图和当前截图。",
+            )
+            return
+        run_options = raw_options.run
+        if (
+            run_options.second_opinion_provider_id
+            == run_options.provider_id
+        ):
+            QMessageBox.information(
+                self,
+                "第二意见",
+                "第二意见需要选择不同于主模型的供应商。",
+            )
+            return
+        try:
+            provider_images = self._prepare_review_images(raw_options)
+            context = self._build_review_context()
+            reviewer = self._reviewers[run_options.reviewer_id]
+            preview_request = reviewer.create_request(
+                context,
+                provider_images,
+                model_id=run_options.model_id,
+            )
+            manifest = self._provider_registry.manifest(
+                run_options.provider_id
+            )
+            preview = disclosure_preview(manifest, preview_request)
+        except (OSError, ValueError, StorageError) as exc:
+            QMessageBox.warning(self, "准备审阅失败", str(exc))
+            return
+        dialog = DataDisclosureDialog(
+            preview,
+            second_opinion=bool(
+                run_options.second_opinion_provider_id
+            ),
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.statusBar().showMessage("已取消 AI 发送")
+            return
+
+        credentials: dict[str, str] = {}
+        provider_ids = [run_options.provider_id]
+        if run_options.second_opinion_provider_id:
+            provider_ids.append(run_options.second_opinion_provider_id)
+        for provider_id in provider_ids:
+            if provider_id == "mock":
+                credentials[provider_id] = ""
+                continue
+            provider_manifest = self._provider_registry.manifest(provider_id)
+            try:
+                credential = self._credential_store.get(
+                    provider_manifest.credential_target
+                )
+            except OSError as exc:
+                QMessageBox.warning(
+                    self,
+                    "读取系统凭据失败",
+                    f"{provider_manifest.display_name}：{exc}",
+                )
+                return
+            if not credential:
+                QMessageBox.information(
+                    self,
+                    "缺少 API Key",
+                    f"请先为 {provider_manifest.display_name} 保存 API Key。",
+                )
+                return
+            credentials[provider_id] = credential
+
+        self._ai_review_generation += 1
+        generation = self._ai_review_generation
+        cancellation = CancellationToken()
+        self._ai_cancellation = cancellation
+        request_hash = hashlib.sha256(
+            canonical_json(
+                {
+                    "reviewer_id": run_options.reviewer_id,
+                    "provider_id": run_options.provider_id,
+                    "model_id": preview.model_id,
+                    "context": context.to_payload(),
+                    "images": [
+                        {
+                            "role": image.role,
+                            "sha256": image.sha256,
+                            "media_type": image.media_type,
+                        }
+                        for image in provider_images
+                    ],
+                }
+            ).encode("utf-8")
+        ).hexdigest()
+        self._active_ai_run = AIRun(
+            id=str(uuid.uuid4()),
+            module_id=MODULE_ID,
+            reviewer_id=run_options.reviewer_id,
+            provider_id=run_options.provider_id,
+            model_id=preview.model_id,
+            capability=ProviderCapability.VISION_REVIEW.value,
+            request_hash=request_hash,
+            input_manifest={
+                "payload_fields": list(preview.payload_fields),
+                "images": [
+                    {
+                        "role": image.role,
+                        "sha256": image.sha256,
+                        "media_type": image.media_type,
+                        "byte_size": len(image.data),
+                    }
+                    for image in provider_images
+                ],
+                "privacy": {
+                    "remove_metadata": raw_options.remove_metadata,
+                    "maximum_side": raw_options.maximum_side,
+                },
+                "second_opinion_provider_id": (
+                    run_options.second_opinion_provider_id
+                ),
+            },
+            status=AIRunStatus.RUNNING,
+            created_at=utc_now(),
+        )
+        self._persist_ai_run(self._active_ai_run)
+        self.ai_review_panel.set_running(True)
+        self.statusBar().showMessage("AI 专项审阅已在后台启动")
+        self._start_worker(
+            "ai",
+            "ai_review",
+            generation,
+            lambda: self._review_coordinator.run(
+                options=run_options,
+                context=context,
+                images=provider_images,
+                current_rgb=self._images["current"].rgb,
+                reference_rgb=self._images["reference"].rgb,
+                credentials=credentials,
+                cancellation=cancellation,
+            ),
+        )
+
+    def _prepare_review_images(
+        self,
+        options: ReviewPanelOptions,
+    ):
+        export_options = ProviderImageExportOptions(
+            remove_metadata=options.remove_metadata,
+            maximum_side=options.maximum_side,
+        )
+        return tuple(
+            prepare_provider_image(
+                self._images[role],
+                role,
+                export_options,
+            )
+            for role in ("reference", "current")
+        )
+
+    def _build_review_context(self) -> ReviewContext:
+        store = self._project_store
+        if (
+            store is None
+            or self._active_shot_id is None
+            or self._active_version_id is None
+        ):
+            raise ValueError("当前没有可审阅的项目上下文。")
+
+        creative: dict[str, object] = {}
+        for shot_id in (None, self._active_shot_id):
+            document = store.get_creative_intent_document(shot_id)
+            if document is not None:
+                creative.update(
+                    self._brief_fields_payload(
+                        store.list_brief_fields(document.id)
+                    )
+                )
+        reference_brief: dict[str, object] = {}
+        reference_document = store.get_reference_visual_brief(
+            self._active_shot_id
+        )
+        if reference_document is not None:
+            reference_brief = self._brief_fields_payload(
+                store.list_brief_fields(reference_document.id)
+            )
+
+        measurements: dict[str, object] = {
+            "three_value_thresholds": (
+                list(self.comparison_panel.thresholds())
+            ),
+        }
+        for role in ("reference", "current"):
+            value = self._measurements.get(role)
+            if value is None:
+                continue
+            measurements[role] = {
+                "palette": [
+                    {
+                        "hex": colour.hex_colour,
+                        "oklab": list(colour.oklab),
+                        "proportion": colour.proportion,
+                    }
+                    for colour in value.palette
+                ],
+                "luminance_histogram": (
+                    value.luminance_histogram.tolist()
+                ),
+                "sampled_pixel_count": value.sampled_pixel_count,
+            }
+        if self._shared_palette_result is not None:
+            measurements["shared_palette"] = [
+                {
+                    "hex": colour.hex_colour,
+                    "oklab": list(colour.oklab),
+                    "reference_proportion": colour.reference_proportion,
+                    "current_proportion": colour.current_proportion,
+                }
+                for colour in self._shared_palette_result.colours
+            ]
+        paired = ()
+        if self._active_region_analysis is not None:
+            pair_id, analysis = self._active_region_analysis
+            paired = (
+                {
+                    "pair_id": pair_id,
+                    "analysis": paired_region_to_payload(analysis),
+                },
+            )
+        history = tuple(
+            {
+                "version_id": version.id,
+                "ordinal": version.ordinal,
+                "name": version.name,
+                "created_at": version.created_at,
+            }
+            for version in store.list_versions(self._active_shot_id)
+        )
+        locked = tuple(
+            str(creative[key]["value"])
+            for key in (
+                "primary_focus",
+                "secondary_focus",
+                "preserve_content",
+            )
+            if isinstance(creative.get(key), dict)
+            and creative[key].get("value")
+        )
+        constraints = creative.get("constraints", {})
+        return ReviewContext(
+            project_id=store.manifest.project_id,
+            shot_id=self._active_shot_id,
+            version_id=self._active_version_id,
+            creative_intent=creative,
+            reference_visual_brief=reference_brief,
+            global_measurements=measurements,
+            paired_region_measurements=paired,
+            version_history=history,
+            locked_goals=locked,
+            production_context={
+                "constraints": (
+                    constraints.get("value")
+                    if isinstance(constraints, dict)
+                    else constraints
+                )
+            },
+        )
+
+    @staticmethod
+    def _brief_fields_payload(fields: dict[str, BriefFieldValue]) -> dict:
+        return {
+            key: {
+                "value": field.value,
+                "source": field.source.value,
+                "confidence": field.confidence,
+                "evidence": field.evidence,
+                "user_confirmed": field.user_confirmed,
+                "updated_at": field.updated_at,
+            }
+            for key, field in fields.items()
+        }
+
+    def _cancel_ai_review(self) -> None:
+        if self._ai_cancellation is not None:
+            self._ai_cancellation.cancel()
+            self.ai_review_panel.status_label.setText("正在取消 AI 审阅…")
+
+    def _save_provider_credential(
+        self,
+        provider_id: str,
+        secret: str,
+    ) -> None:
+        try:
+            manifest = self._provider_registry.manifest(provider_id)
+            self._credential_store.set(
+                manifest.credential_target,
+                secret,
+            )
+            self.statusBar().showMessage(
+                f"{manifest.display_name} API Key 已存入 Windows 系统凭据"
+            )
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "保存系统凭据失败", str(exc))
+
+    def _delete_provider_credential(self, provider_id: str) -> None:
+        try:
+            manifest = self._provider_registry.manifest(provider_id)
+            self._credential_store.delete(manifest.credential_target)
+            self.statusBar().showMessage(
+                f"{manifest.display_name} API Key 已从系统凭据删除"
+            )
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "删除系统凭据失败", str(exc))
+
+    def _persist_ai_run(self, run: AIRun) -> None:
+        store = self._project_store
+        if store is None or store.read_only:
+            return
+        try:
+            WorkbenchStore(store).save_ai_run(run)
+        except (StorageError, OSError, ValueError):
+            LOGGER.exception("Failed to persist AI run")
+            self.statusBar().showMessage("AI 审阅继续运行，但运行记录保存失败")
+
+    def _finish_ai_run(
+        self,
+        *,
+        status: AIRunStatus,
+        output: dict | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        run = self._active_ai_run
+        if run is None:
+            return
+        finished = replace(
+            run,
+            status=status,
+            output=output,
+            error_code=error_code,
+            error_message=(
+                None
+                if error_message is None
+                else str(error_message)[:2000]
+            ),
+            completed_at=utc_now(),
+        )
+        self._persist_ai_run(finished)
+        self._active_ai_run = None
+
+    def _confirm_review_task(self, finding: object) -> None:
+        if not isinstance(finding, dict):
+            return
+        store = self._project_store
+        if store is None or store.read_only:
+            QMessageBox.information(
+                self,
+                "修改任务",
+                "当前项目为只读，不能保存任务。",
+            )
+            return
+        if (
+            QMessageBox.question(
+                self,
+                "确认修改任务",
+                "将选中的 AI 发现确认为修改任务？\n"
+                "AI 原文和来源会作为证据保留。",
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        now = utc_now()
+        evidence_id = str(uuid.uuid4())
+        source = self._last_review_outcome
+        evidence = Evidence(
+            id=evidence_id,
+            module_id=MODULE_ID,
+            shot_id=self._active_shot_id,
+            version_id=self._active_version_id,
+            evidence_type=EvidenceType.ART_JUDGMENT,
+            source=EvidenceSource.AI_PROVIDER,
+            subject_type="review_finding",
+            subject_id=str(finding.get("finding_id", evidence_id)),
+            payload={
+                "finding": dict(finding),
+                "provider_id": (
+                    None if source is None else source.provider_id
+                ),
+                "model_id": None if source is None else source.model_id,
+                "user_confirmed": True,
+            },
+            created_at=now,
+        )
+        try:
+            priority = TaskPriority(str(finding.get("priority", "medium")))
+        except ValueError:
+            priority = TaskPriority.MEDIUM
+        task = Task(
+            id=str(uuid.uuid4()),
+            module_id=MODULE_ID,
+            shot_id=self._active_shot_id,
+            version_id=self._active_version_id,
+            source_evidence_id=evidence.id,
+            title=str(finding.get("observation", "AI 审阅任务")),
+            description=(
+                f"{finding.get('recommended_action', '')}\n"
+                f"影响：{finding.get('impact', '')}"
+            ).strip(),
+            priority=priority,
+            status=TaskStatus.OPEN,
+            verification={
+                "next_version_validation": finding.get(
+                    "next_version_validation", ""
+                )
+            },
+            created_at=now,
+            updated_at=now,
+        )
+        try:
+            workbench = WorkbenchStore(store)
+            workbench.save_evidence(evidence)
+            workbench.save_task(task)
+        except (StorageError, OSError, ValueError) as exc:
+            QMessageBox.warning(self, "保存任务失败", str(exc))
+            return
+        self._refresh_workbench_tasks()
+        self.statusBar().showMessage("AI 发现已由用户确认为修改任务")
+
+    def _show_lighting_annotations(self, scheme: object) -> None:
+        if not isinstance(scheme, dict):
+            return
+        specs = []
+        for index, annotation in enumerate(
+            scheme.get("annotations", [])
+        ):
+            points = tuple(
+                (float(point["x"]), float(point["y"]))
+                for point in annotation.get("points", [])
+                if isinstance(point, dict)
+                and "x" in point
+                and "y" in point
+            )
+            if not points:
+                continue
+            specs.append(
+                AnnotationOverlaySpec(
+                    annotation_id=f"preview-{index}",
+                    kind=str(annotation.get("kind", "light_area")),
+                    points=points,
+                    label=str(annotation.get("label", "灯光标注")),
+                )
+            )
+        self.reference_pane.canvas.clear_annotation_overlays()
+        self.current_pane.canvas.set_annotation_overlays(specs)
+        if specs:
+            self.statusBar().showMessage(
+                f"正在显示 {scheme.get('strategy', '')} 灯光方案标注 · "
+                "Esc 退出"
+            )
+
+    def _persist_review_annotations(
+        self,
+        outcome: ReviewRunOutcome,
+    ) -> None:
+        store = self._project_store
+        if store is None or store.read_only:
+            return
+        workbench = WorkbenchStore(store)
+        now = utc_now()
+        try:
+            for scheme in outcome.output.get("target_schemes", []):
+                strategy = str(scheme.get("strategy", ""))
+                for item in scheme.get("annotations", []):
+                    workbench.save_annotation(
+                        Annotation(
+                            id=str(uuid.uuid4()),
+                            module_id=MODULE_ID,
+                            shot_id=self._active_shot_id,
+                            version_id=self._active_version_id,
+                            evidence_id=None,
+                            annotation_type=str(
+                                item.get("kind", "light_area")
+                            ),
+                            geometry={
+                                "points": list(item.get("points", [])),
+                                "strategy": strategy,
+                            },
+                            label=str(item.get("label", "灯光标注")),
+                            style={
+                                "source": "ai_provider",
+                                "provider_id": outcome.provider_id,
+                                "model_id": outcome.model_id,
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+        except (StorageError, OSError, ValueError):
+            LOGGER.exception("Failed to persist lighting annotations")
+            self.statusBar().showMessage("审阅完成，但灯光标注保存失败")
+
+    def _confirm_annotation_tasks(self, scheme: object) -> None:
+        if not isinstance(scheme, dict):
+            return
+        annotations = list(scheme.get("annotations", []))
+        if not annotations:
+            QMessageBox.information(
+                self,
+                "灯光标注任务",
+                "当前方案没有可转换的标注。",
+            )
+            return
+        store = self._project_store
+        if store is None or store.read_only:
+            QMessageBox.information(
+                self,
+                "灯光标注任务",
+                "当前项目为只读，不能保存任务。",
+            )
+            return
+        if (
+            QMessageBox.question(
+                self,
+                "确认灯光标注任务",
+                f"将当前方案的 {len(annotations)} 条标注确认为修改任务？",
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        now = utc_now()
+        workbench = WorkbenchStore(store)
+        try:
+            for item in annotations:
+                workbench.save_task(
+                    Task(
+                        id=str(uuid.uuid4()),
+                        module_id=MODULE_ID,
+                        shot_id=self._active_shot_id,
+                        version_id=self._active_version_id,
+                        title=str(item.get("label", "灯光方案标注")),
+                        description=(
+                            f"方案：{scheme.get('strategy', '')}\n"
+                            f"标注类型：{item.get('kind', '')}"
+                        ),
+                        priority=TaskPriority.MEDIUM,
+                        status=TaskStatus.OPEN,
+                        verification={
+                            "annotation_geometry": list(
+                                item.get("points", [])
+                            )
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+        except (StorageError, OSError, ValueError) as exc:
+            QMessageBox.warning(self, "保存灯光任务失败", str(exc))
+            return
+        self._refresh_workbench_tasks()
+        self.statusBar().showMessage("灯光方案标注已由用户确认为修改任务")
+
+    def _refresh_workbench_tasks(self) -> None:
+        store = self._project_store
+        if store is None:
+            self.ai_review_panel.show_tasks(())
+            return
+        try:
+            tasks = WorkbenchStore(store).list_tasks(
+                MODULE_ID,
+                shot_id=self._active_shot_id,
+                version_id=self._active_version_id,
+            )
+        except (StorageError, OSError):
+            LOGGER.exception("Failed to load workbench tasks")
+            return
+        self.ai_review_panel.show_tasks(tasks)
+
+    def _export_offline_review_pack(self) -> None:
+        if (
+            self._project_store is None
+            or not {"reference", "current"}.issubset(self._images)
+        ):
+            QMessageBox.information(
+                self,
+                "离线审阅包",
+                "请先打开项目并加载参考图和当前截图。",
+            )
+            return
+        options = self.ai_review_panel.options()
+        try:
+            images = self._prepare_review_images(options)
+            context = self._build_review_context()
+            reviewer = self._reviewers[options.run.reviewer_id]
+            pack = build_offline_review_pack(
+                reviewer_id=options.run.reviewer_id,
+                context=context.to_payload(),
+                image_manifest=tuple(
+                    {
+                        "role": image.role,
+                        "sha256": image.sha256,
+                        "media_type": image.media_type,
+                        "filename": f"{image.role}.png",
+                    }
+                    for image in images
+                ),
+                output_schema=reviewer.output_schema,
+            )
+        except (OSError, ValueError, StorageError) as exc:
+            QMessageBox.warning(self, "导出准备失败", str(exc))
+            return
+        default = (
+            self._project_store.root
+            / self._project_store.manifest.exports_path
+            / f"{self._active_shot_id}-{self._active_version_id}-review.zip"
+        )
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出离线 AI 审阅包",
+            str(default),
+            "SceneLens 审阅包 (*.zip)",
+        )
+        if not path:
+            return
+        try:
+            destination = Path(path)
+            if destination.suffix.lower() != ".zip":
+                destination = destination.with_suffix(".zip")
+            write_offline_review_pack(destination, pack, images)
+        except OSError as exc:
+            QMessageBox.warning(self, "导出失败", str(exc))
+            return
+        self.statusBar().showMessage(f"离线审阅包已导出：{destination}")
 
     def _start_measurement(self, role: str) -> None:
         loaded = self._images.get(role)
@@ -2150,6 +2965,14 @@ class MainWindow(QMainWindow):
         if self._active_mask is not None:
             self._clear_palette_mask()
             return
+        if (
+            self.reference_pane.canvas.annotation_overlay_count
+            or self.current_pane.canvas.annotation_overlay_count
+        ):
+            self.reference_pane.canvas.clear_annotation_overlays()
+            self.current_pane.canvas.clear_annotation_overlays()
+            self.statusBar().showMessage("已退出灯光方案标注")
+            return
         if self.region_controller.escape():
             self.statusBar().showMessage("已退出区域模式")
 
@@ -2159,6 +2982,7 @@ class MainWindow(QMainWindow):
             blur_sigma=self.blur_slider.value() / 10.0,
             three_thresholds=self.comparison_panel.thresholds(),
             five_thresholds=self._workspace_template.five_thresholds,
+            silhouette_threshold=self.silhouette_slider.value() / 100.0,
         )
 
     def _start_render(self, role: str) -> None:
@@ -2184,6 +3008,9 @@ class MainWindow(QMainWindow):
         )
 
     def _display_mode_changed(self, _value=None) -> None:
+        self.silhouette_slider.setEnabled(
+            self.mode_combo.currentData() == "silhouette"
+        )
         self._schedule_render()
         self._mark_workspace_dirty()
 
@@ -2198,6 +3025,12 @@ class MainWindow(QMainWindow):
     def _blur_changed(self, value: int) -> None:
         self.blur_label.setText(f"{value / 10.0:.1f}")
         self._schedule_render()
+        self._mark_workspace_dirty()
+
+    def _silhouette_threshold_changed(self, value: int) -> None:
+        self.silhouette_label.setText(f"{value / 100.0:.2f}")
+        if self.mode_combo.currentData() == "silhouette":
+            self._schedule_render()
         self._mark_workspace_dirty()
 
     def _comparison_mode_changed(self, _index: int) -> None:
@@ -2276,6 +3109,7 @@ class MainWindow(QMainWindow):
             ab_role=self._ab_role,
             sync_views=self.sync_checkbox.isChecked(),
             blur_sigma=self.blur_slider.value() / 10.0,
+            silhouette_threshold=self.silhouette_slider.value() / 100.0,
             three_threshold_low=self.comparison_panel.thresholds()[0],
             three_threshold_high=self.comparison_panel.thresholds()[1],
             active_analysis_tab=(
@@ -2357,6 +3191,12 @@ class MainWindow(QMainWindow):
         )
 
     def _invalidate_image_jobs(self) -> None:
+        if self._ai_cancellation is not None:
+            self._ai_cancellation.cancel()
+            self._ai_cancellation = None
+        self._ai_review_generation += 1
+        if hasattr(self, "ai_review_panel"):
+            self.ai_review_panel.set_running(False)
         self._brief_generation += 1
         self._comparison_generation += 1
         self._region_analysis_generation += 1
@@ -2400,6 +3240,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._flush_autosave(show_error=False):
+            self._cancel_ai_review()
+            self._review_coordinator.close()
             if self._project_store is not None:
                 self._project_store.close()
             event.accept()
@@ -2415,12 +3257,16 @@ class MainWindow(QMainWindow):
         )
         if choice == QMessageBox.StandardButton.Retry:
             if self._flush_autosave(show_error=True):
+                self._cancel_ai_review()
+                self._review_coordinator.close()
                 if self._project_store is not None:
                     self._project_store.close()
                 event.accept()
             else:
                 event.ignore()
         elif choice == QMessageBox.StandardButton.Discard:
+            self._cancel_ai_review()
+            self._review_coordinator.close()
             if self._project_store is not None:
                 self._project_store.close()
             event.accept()

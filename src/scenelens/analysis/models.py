@@ -65,3 +65,7 @@ class RenderSettings:
     blur_sigma: float = 0.0
     three_thresholds: tuple[float, float] = (1.0 / 3.0, 2.0 / 3.0)
     five_thresholds: tuple[float, float, float, float] = (0.2, 0.4, 0.6, 0.8)
+    silhouette_threshold: float = 0.45
+    clipping_shadow_threshold: float = 0.02
+    clipping_highlight_threshold: float = 0.98
+    thumbnail_maximum_side: int = 160

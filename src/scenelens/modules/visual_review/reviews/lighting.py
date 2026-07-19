@@ -1,8 +1,16 @@
 from __future__ import annotations
 
 from scenelens.core.workspaces import ReviewerDescriptor
+from scenelens.core.schema_validation import (
+    SchemaIssue,
+    SchemaValidationError,
+)
 
-from .base import StructuredVisionReviewer, load_review_schema
+from .base import (
+    StructuredVisionReviewer,
+    ValidatedReview,
+    load_review_schema,
+)
 
 
 class LightingReview(StructuredVisionReviewer):
@@ -32,3 +40,25 @@ class LightingReview(StructuredVisionReviewer):
         ),
         output_schema=load_review_schema("lighting_review.schema.json"),
     )
+
+    def validate_output(self, output) -> ValidatedReview:
+        validated = super().validate_output(output)
+        strategies = {
+            str(item["strategy"])
+            for item in validated.output["target_schemes"]
+        }
+        expected = {
+            "faithful_to_reference",
+            "heightened_drama",
+            "gameplay_readability",
+        }
+        if strategies != expected:
+            raise SchemaValidationError(
+                (
+                    SchemaIssue(
+                        "$.target_schemes",
+                        "必须各包含一套忠于参考、强化戏剧性和优先游戏可读性方案",
+                    ),
+                )
+            )
+        return validated

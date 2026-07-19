@@ -805,12 +805,31 @@ def _migration_5(connection: sqlite3.Connection, project_id: str, now: str) -> N
         connection.execute(statement)
 
 
+def _migration_6(connection: sqlite3.Connection, project_id: str, now: str) -> None:
+    del project_id, now
+    columns = {
+        str(row["name"])
+        for row in connection.execute(
+            "PRAGMA table_info(workspace_state)"
+        ).fetchall()
+    }
+    if "silhouette_threshold" in columns:
+        return
+    connection.execute(
+        """
+        ALTER TABLE workspace_state
+        ADD COLUMN silhouette_threshold REAL NOT NULL DEFAULT 0.45
+        """
+    )
+
+
 MIGRATIONS: dict[int, tuple[str, Migration]] = {
     1: ("initial_m1a_schema", _migration_1),
     2: ("m1b_visual_review_module_schema", _migration_2),
     3: ("m1b_comparison_analysis_cache", _migration_3),
     4: ("m1b_paired_regions", _migration_4),
     5: ("m2_workbench_core_entities", _migration_5),
+    6: ("m2_lighting_observation_state", _migration_6),
 }
 
 

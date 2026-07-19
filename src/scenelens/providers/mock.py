@@ -41,7 +41,7 @@ class MockProvider:
             optional=False,
             mainland_priority=0,
         )
-        self.output = dict(output or {"findings": []})
+        self.output = None if output is None else dict(output)
         self.image_bytes = bytes(image_bytes)
 
     def review(
@@ -59,7 +59,13 @@ class MockProvider:
                 ProviderCapability.VISION_REVIEW,
                 request.model_id,
             ),
-            output=json.loads(json.dumps(self.output)),
+            output=json.loads(
+                json.dumps(
+                    self.output
+                    if self.output is not None
+                    else _default_mock_output(request.output_schema)
+                )
+            ),
         )
 
     def generate_structured(
@@ -77,7 +83,13 @@ class MockProvider:
                 ProviderCapability.STRUCTURED_OUTPUT,
                 request.model_id,
             ),
-            output=json.loads(json.dumps(self.output)),
+            output=json.loads(
+                json.dumps(
+                    self.output
+                    if self.output is not None
+                    else _default_mock_output(request.output_schema)
+                )
+            ),
         )
 
     def edit_image(
@@ -100,3 +112,59 @@ class MockProvider:
             metadata={"change_budget": request.change_budget},
         )
 
+
+def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
+    title = str(schema.get("title", ""))
+    if title == "SceneLens Art Director Review":
+        return {
+            "schema_version": "1.0",
+            "reviewer_id": "art_director_review",
+            "summary": "离线 Mock：结构化审阅流程可用，未生成真实美术结论。",
+            "dimension_states": [],
+            "findings": [],
+            "quality_gate_results": [],
+        }
+    if title == "SceneLens Lighting Review":
+        schemes = []
+        for strategy in (
+            "faithful_to_reference",
+            "heightened_drama",
+            "gameplay_readability",
+        ):
+            schemes.append(
+                {
+                    "strategy": strategy,
+                    "key_direction_and_altitude": "Mock 未分析",
+                    "key_softness": "Mock 未分析",
+                    "key_fill_relationship": "Mock 未分析",
+                    "colour_temperature_strategy": "Mock 未分析",
+                    "sky_and_indirect_light": "Mock 未分析",
+                    "exposure_direction": "Mock 未分析",
+                    "fog_and_atmospheric_perspective": "Mock 未分析",
+                    "volumetric_light": "Mock 未分析",
+                    "focus_emphasis": "Mock 未分析",
+                    "depth_separation": "Mock 未分析",
+                    "regions_to_darken_or_lift": [],
+                    "ue53_execution_order": ["连接真实 Provider 后生成"],
+                    "risks": [],
+                    "validation": ["仅验证结构化流程"],
+                    "annotations": [],
+                }
+            )
+        return {
+            "schema_version": "1.0",
+            "reviewer_id": "lighting_review",
+            "summary": "离线 Mock：结构化灯光审阅流程可用。",
+            "lighting_components": [],
+            "findings": [],
+            "target_schemes": schemes,
+            "performance_checklist": [],
+        }
+    if title == "SceneLens Second Opinion":
+        return {
+            "schema_version": "1.0",
+            "reviewer_id": "second_opinion",
+            "critiques": [],
+            "omissions": [],
+        }
+    return {"findings": []}

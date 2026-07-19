@@ -12,7 +12,9 @@ from PySide6.QtGui import (
     QImage,
     QMouseEvent,
     QPainter,
+    QPainterPath,
     QPen,
+    QPolygonF,
     QPixmap,
     QResizeEvent,
     QTransform,
@@ -21,7 +23,10 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsItem,
+    QGraphicsEllipseItem,
     QGraphicsPixmapItem,
+    QGraphicsPathItem,
+    QGraphicsPolygonItem,
     QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsSimpleTextItem,
@@ -40,6 +45,15 @@ class RegionOverlaySpec:
     colour: str
     selected: bool = False
     muted: bool = False
+
+
+@dataclass(frozen=True)
+class AnnotationOverlaySpec:
+    annotation_id: str
+    kind: str
+    points: tuple[tuple[float, float], ...]
+    label: str
+    colour: str = "#FFD166"
 
 
 class _RegionOverlayItem(QGraphicsRectItem):
@@ -272,6 +286,7 @@ class ImageCanvas(QGraphicsView):
         self._region_mode = False
         self._regions_visible = True
         self._region_items: dict[str, _RegionOverlayItem] = {}
+        self._annotation_items: list[QGraphicsItem] = []
         self._region_drag_start: QPointF | None = None
         self._region_rubber_band: QGraphicsRectItem | None = None
         self._zoom_factor = 1.0
@@ -325,6 +340,7 @@ class ImageCanvas(QGraphicsView):
         self._pixmap_item.setVisible(False)
         self.clear_overlay()
         self.clear_region_overlays()
+        self.clear_annotation_overlays()
         self._placeholder.setVisible(True)
         self._scene.setSceneRect(QRectF(0.0, 0.0, 640.0, 480.0))
         self._has_image = False
@@ -401,6 +417,105 @@ class ImageCanvas(QGraphicsView):
         for item in self._region_items.values():
             self._scene.removeItem(item)
         self._region_items.clear()
+
+    def set_annotation_overlays(
+        self,
+        specs: tuple[AnnotationOverlaySpec, ...]
+        | list[AnnotationOverlaySpec],
+    ) -> None:
+        self.clear_annotation_overlays()
+        if not self._has_image:
+            return
+        bounds = self.image_scene_rect()
+        for spec in specs:
+            points = [
+                QPointF(
+                    max(0.0, min(1.0, x)) * bounds.width(),
+                    max(0.0, min(1.0, y)) * bounds.height(),
+                )
+                for x, y in spec.points
+            ]
+            if not points:
+                continue
+            colour = QColor(spec.colour)
+            pen = QPen(colour)
+            pen.setCosmetic(True)
+            pen.setWidth(3 if spec.kind == "light_arrow" else 2)
+            if (
+                spec.kind
+                in {"light_area", "darken_area", "visual_weight"}
+                and len(points) >= 2
+            ):
+                rect = QRectF(points[0], points[-1]).normalized()
+                if spec.kind == "visual_weight":
+                    area_item = QGraphicsEllipseItem(rect)
+                else:
+                    area_item = QGraphicsRectItem(rect)
+                fill = QColor(colour)
+                fill.setAlpha(35 if spec.kind != "darken_area" else 75)
+                area_item.setBrush(QBrush(fill))
+                area_item.setPen(pen)
+                area_item.setZValue(30.0)
+                area_item.setToolTip(spec.label)
+                self._scene.addItem(area_item)
+                self._annotation_items.append(area_item)
+                label = QGraphicsSimpleTextItem(spec.label)
+                label.setBrush(QBrush(colour))
+                label.setPos(rect.topLeft() + QPointF(5.0, 5.0))
+                label.setZValue(32.0)
+                self._scene.addItem(label)
+                self._annotation_items.append(label)
+                continue
+            path = QPainterPath(points[0])
+            for point in points[1:]:
+                path.lineTo(point)
+            path_item = QGraphicsPathItem(path)
+            path_item.setPen(pen)
+            path_item.setZValue(30.0)
+            path_item.setToolTip(spec.label)
+            self._scene.addItem(path_item)
+            self._annotation_items.append(path_item)
+
+            if spec.kind == "light_arrow" and len(points) >= 2:
+                start, end = points[-2], points[-1]
+                direction = start - end
+                length = max(
+                    1.0,
+                    (direction.x() ** 2 + direction.y() ** 2) ** 0.5,
+                )
+                unit_x = direction.x() / length
+                unit_y = direction.y() / length
+                scale = 16.0
+                left = QPointF(
+                    end.x() + (unit_x - unit_y * 0.55) * scale,
+                    end.y() + (unit_y + unit_x * 0.55) * scale,
+                )
+                right = QPointF(
+                    end.x() + (unit_x + unit_y * 0.55) * scale,
+                    end.y() + (unit_y - unit_x * 0.55) * scale,
+                )
+                arrow = QGraphicsPolygonItem(QPolygonF([end, left, right]))
+                arrow.setBrush(QBrush(colour))
+                arrow.setPen(QPen(Qt.PenStyle.NoPen))
+                arrow.setZValue(31.0)
+                self._scene.addItem(arrow)
+                self._annotation_items.append(arrow)
+
+            label = QGraphicsSimpleTextItem(spec.label)
+            label.setBrush(QBrush(colour))
+            label.setPos(points[0] + QPointF(5.0, 5.0))
+            label.setZValue(32.0)
+            self._scene.addItem(label)
+            self._annotation_items.append(label)
+
+    def clear_annotation_overlays(self) -> None:
+        for item in self._annotation_items:
+            self._scene.removeItem(item)
+        self._annotation_items.clear()
+
+    @property
+    def annotation_overlay_count(self) -> int:
+        return len(self._annotation_items)
 
     def select_region(self, region_id: str | None) -> None:
         for item_id, item in self._region_items.items():
