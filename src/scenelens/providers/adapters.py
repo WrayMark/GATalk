@@ -14,7 +14,11 @@ from scenelens.providers.contracts import (
     VisionReviewRequest,
     require_user_approval,
 )
-from scenelens.providers.schema_adapters import gemini_compatible_schema
+from scenelens.providers.schema_adapters import (
+    gemini_compact_schema,
+    gemini_compatible_schema,
+    gemini_schema_profile,
+)
 from scenelens.providers.transport import (
     JsonTransport,
     JsonTransportRequest,
@@ -52,6 +56,35 @@ def _parse_json_text(value: str) -> Mapping[str, Any]:
             retryable=False,
         )
     return result
+
+
+def _structured_schema_prompt(schema: Mapping[str, Any]) -> str:
+    serialized = json.dumps(
+        dict(schema),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return (
+        "SCENELENS_OUTPUT_JSON_SCHEMA="
+        f"{serialized}\n"
+        "只返回一个符合该 Schema 的 JSON 对象，不要使用 Markdown 代码围栏。"
+    )
+
+
+def _is_gemini_schema_rejection(
+    error: ProviderError,
+    wire: JsonTransportRequest,
+) -> bool:
+    if error.code != "http_400":
+        return False
+    try:
+        text_format = wire.body["generationConfig"]["responseFormat"][
+            "text"
+        ]
+    except (KeyError, TypeError):
+        return False
+    return isinstance(text_format, Mapping) and "schema" in text_format
 
 
 def _vision_from_structured(
@@ -128,6 +161,14 @@ class OpenAICompatibleChatProvider:
             system_instruction = (
                 f"{system_instruction}\nReturn JSON only and do not wrap it "
                 "in Markdown."
+            )
+            content.append(
+                {
+                    "type": "text",
+                    "text": _structured_schema_prompt(
+                        request.output_schema
+                    ),
+                }
             )
         body: dict[str, Any] = {
             "model": model,
@@ -325,6 +366,19 @@ class GeminiVisionProvider:
         request: VisionReviewRequest,
         credential: str,
     ) -> JsonTransportRequest:
+        return self._build_request(
+            request,
+            credential,
+            schema_mode="auto",
+        )
+
+    def _build_request(
+        self,
+        request: VisionReviewRequest,
+        credential: str,
+        *,
+        schema_mode: str,
+    ) -> JsonTransportRequest:
         require_user_approval(request)
         model = self.manifest.model_for(
             ProviderCapability.VISION_REVIEW,
@@ -342,20 +396,43 @@ class GeminiVisionProvider:
                 }
             )
         parts.append({"text": request.canonical_payload()})
-        generation_config: dict[str, Any] = {
-            "responseFormat": {
-                "text": {
-                    # generateContent exposes this field as the
-                    # TextResponseFormat.MimeType enum.  The REST
-                    # documentation also shows the MIME spelling in
-                    # some examples, but the v1beta endpoint rejects
-                    # it and accepts the enum wire value.
-                    "mimeType": "APPLICATION_JSON",
-                    "schema": gemini_compatible_schema(
+        compatible_schema = gemini_compatible_schema(
+            request.output_schema
+        )
+        if schema_mode == "auto":
+            schema_mode = (
+                "compact"
+                if gemini_schema_profile(
+                    request.output_schema
+                ).requires_compact_mode
+                else "full"
+            )
+        if schema_mode not in {"full", "compact", "prompt"}:
+            raise ValueError(f"Unknown Gemini schema mode: {schema_mode}")
+        if schema_mode in {"compact", "prompt"}:
+            parts.append(
+                {
+                    "text": _structured_schema_prompt(
                         request.output_schema
-                    ),
+                    )
                 }
-            },
+            )
+        text_format: dict[str, Any] = {
+            # generateContent exposes this field as the
+            # TextResponseFormat.MimeType enum.  The REST
+            # documentation also shows the MIME spelling in
+            # some examples, but the current v1beta endpoint
+            # accepts the enum wire value used here.
+            "mimeType": "APPLICATION_JSON",
+        }
+        if schema_mode == "full":
+            text_format["schema"] = compatible_schema
+        elif schema_mode == "compact":
+            text_format["schema"] = gemini_compact_schema(
+                request.output_schema
+            )
+        generation_config: dict[str, Any] = {
+            "responseFormat": {"text": text_format},
         }
         if request.max_output_tokens is not None:
             generation_config["maxOutputTokens"] = (
@@ -386,7 +463,18 @@ class GeminiVisionProvider:
         cancellation: CancellationToken,
     ) -> ProviderResponse:
         wire = self.build_request(request, credential)
-        response = self.transport.send(wire, cancellation)
+        try:
+            response = self.transport.send(wire, cancellation)
+        except ProviderError as exc:
+            if not _is_gemini_schema_rejection(exc, wire):
+                raise
+            cancellation.raise_if_cancelled()
+            wire = self._build_request(
+                request,
+                credential,
+                schema_mode="prompt",
+            )
+            response = self.transport.send(wire, cancellation)
         try:
             parts = response["candidates"][0]["content"]["parts"]
             text = next(part["text"] for part in parts if "text" in part)

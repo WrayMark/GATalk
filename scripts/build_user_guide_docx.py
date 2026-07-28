@@ -182,7 +182,7 @@ def build() -> None:
     metadata.paragraph_format.space_after = Pt(14)
     set_font(
         metadata.add_run(
-            "适用版本：0.5.0a0（M4 深度主美审阅与构图诊断候选）"
+            "适用版本：0.5.0a1（M4 深度主美审阅接口修复候选）"
             "　更新日期：2026-07-28"
         ),
         size=9.5,
@@ -298,7 +298,7 @@ def build() -> None:
         add_list_item(document, text, bullet_id)
     add_heading(document, "AI 接口失败时", 2)
     for text in (
-        "http_400：请求参数或模型不兼容；先恢复供应商默认模型后重试。",
+        "http_400：请求参数或模型不兼容。新版会自动处理 Gemini 深度审阅的复杂 Schema；仍失败时先确认正在运行 0.5.0a1，再恢复默认模型重试。",
         "若错误包含 generation_config.response_format.text.mime_type，说明仍在运行旧版；关闭旧程序后改用本次 Gemini 接口修正版。",
         "http_401：Key 错误、过期或不属于该供应商。",
         "http_403：检查模型权限、服务开通、地域和 Key 所属工作区。",
