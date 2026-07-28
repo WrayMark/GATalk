@@ -823,6 +823,28 @@ def _migration_6(connection: sqlite3.Connection, project_id: str, now: str) -> N
     )
 
 
+def _migration_7(
+    connection: sqlite3.Connection,
+    project_id: str,
+    now: str,
+) -> None:
+    del project_id, now
+    columns = {
+        str(row["name"])
+        for row in connection.execute(
+            "PRAGMA table_info(workspace_state)"
+        ).fetchall()
+    }
+    if "composition_guide" in columns:
+        return
+    connection.execute(
+        """
+        ALTER TABLE workspace_state
+        ADD COLUMN composition_guide TEXT NOT NULL DEFAULT 'none'
+        """
+    )
+
+
 MIGRATIONS: dict[int, tuple[str, Migration]] = {
     1: ("initial_m1a_schema", _migration_1),
     2: ("m1b_visual_review_module_schema", _migration_2),
@@ -830,6 +852,7 @@ MIGRATIONS: dict[int, tuple[str, Migration]] = {
     4: ("m1b_paired_regions", _migration_4),
     5: ("m2_workbench_core_entities", _migration_5),
     6: ("m2_lighting_observation_state", _migration_6),
+    7: ("m4_composition_guide_state", _migration_7),
 }
 
 

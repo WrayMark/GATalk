@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from scenelens.analysis.luminance import quantize_three_value_with_thresholds
+from scenelens import __version__
 from scenelens.analysis.grading import SafeGradeRecipe, apply_safe_grade
 from scenelens.analysis.match_profile import MatchProfile, build_match_profile
 from scenelens.analysis.models import (
@@ -90,6 +91,10 @@ from scenelens.modules.visual_review.comparison_results import (
     shared_palette_from_payload,
     shared_palette_to_payload,
 )
+from scenelens.modules.visual_review.composition_guides import (
+    COMPOSITION_GUIDES,
+    composition_guide,
+)
 from scenelens.modules.visual_review.presets import load_visual_review_presets
 from scenelens.modules.visual_review.grading_io import (
     write_cube_lut,
@@ -99,6 +104,9 @@ from scenelens.modules.visual_review.grading_io import (
 from scenelens.modules.visual_review.preview_instructions import (
     PreviewProtectionControls,
     build_structured_preview_instruction,
+)
+from scenelens.modules.visual_review.review_evidence import (
+    build_review_evidence_digest,
 )
 from scenelens.modules.visual_review.region_results import (
     paired_region_from_payload,
@@ -116,6 +124,7 @@ from scenelens.modules.visual_review.review_services import (
 )
 from scenelens.modules.visual_review.reviews import (
     ArtDirectorReview,
+    DeepArtDirectorReview,
     LightingReview,
     ReviewContext,
 )
@@ -173,6 +182,7 @@ from scenelens.ui.brief_widgets import (
 from scenelens.ui.comparison_widgets import ComparisonPanel
 from scenelens.ui.image_canvas import (
     AnnotationOverlaySpec,
+    GuideOverlaySpec,
     ImageCanvas,
 )
 from scenelens.ui.project_widgets import ProjectNavigator
@@ -289,6 +299,7 @@ class MainWindow(QMainWindow):
         self._presets = load_visual_review_presets()
         self._provider_registry = create_default_provider_registry()
         self._reviewers = {
+            "deep_art_director_review": DeepArtDirectorReview(),
             "art_director_review": ArtDirectorReview(),
             "lighting_review": LightingReview(),
         }
@@ -463,6 +474,32 @@ class MainWindow(QMainWindow):
         reset_button = QPushButton("重置视图")
         reset_button.clicked.connect(self._reset_views)
         toolbar.addWidget(reset_button)
+
+        toolbar.addSeparator()
+        toolbar.addWidget(QLabel("构图辅助："))
+        self.composition_guide_combo = QComboBox()
+        self.composition_guide_combo.addItem("关闭", "none")
+        for guide_id in (
+            "thirds",
+            "golden_ratio",
+            "diagonals",
+            "center",
+            "triangle",
+            "one_point_perspective",
+            "two_point_perspective",
+        ):
+            guide = COMPOSITION_GUIDES[guide_id]
+            self.composition_guide_combo.addItem(
+                guide.display_name,
+                guide.guide_id,
+            )
+        self.composition_guide_combo.setToolTip(
+            "在左右画布叠加观察线；它是人工构图辅助，不是自动构图判断。"
+        )
+        self.composition_guide_combo.currentIndexChanged.connect(
+            self._composition_guide_changed
+        )
+        toolbar.addWidget(self.composition_guide_combo)
 
     def _build_central_ui(self) -> None:
         self.reference_pane = ImagePane(
@@ -731,7 +768,7 @@ class MainWindow(QMainWindow):
         self.save_project_action.setEnabled(False)
         self.reference_button.setEnabled(True)
         self.current_button.setEnabled(True)
-        self.setWindowTitle("SceneLens — M1B.2")
+        self.setWindowTitle(f"SceneLens — {__version__} M4")
         return True
 
     def _offer_read_only_open(
@@ -803,6 +840,11 @@ class MainWindow(QMainWindow):
                 self.comparison_combo,
                 state.comparison_mode,
                 "split",
+            )
+            self._set_combo_data(
+                self.composition_guide_combo,
+                state.composition_guide,
+                "none",
             )
             self.blur_slider.setValue(
                 max(0, min(200, int(round(state.blur_sigma * 10.0))))
@@ -2407,15 +2449,54 @@ class MainWindow(QMainWindow):
                 }
                 for colour in self._shared_palette_result.colours
             ]
-        paired = ()
-        if self._active_region_analysis is not None:
-            pair_id, analysis = self._active_region_analysis
-            paired = (
-                {
-                    "pair_id": pair_id,
-                    "analysis": paired_region_to_payload(analysis),
-                },
-            )
+        paired_values: list[dict[str, object]] = []
+        region_store = self.region_controller.store
+        if region_store is not None:
+            for view in self.region_controller.pair_views():
+                record = region_store.latest_analysis(view.pair.id)
+                item: dict[str, object] = {
+                    "pair_id": view.pair.id,
+                    "name": view.pair.name,
+                    "semantic_type": view.pair.semantic_type,
+                    "notes": view.pair.notes,
+                    "reference_region": {
+                        "region_id": view.reference_region.id,
+                        "name": view.reference_region.name,
+                        "semantic_type": (
+                            view.reference_region.semantic_type
+                        ),
+                        "normalized_rect": (
+                            view.reference_region.normalized_rect.to_dict()
+                        ),
+                    },
+                    "current_region": {
+                        "region_id": view.current_region.id,
+                        "name": view.current_region.name,
+                        "semantic_type": view.current_region.semantic_type,
+                        "normalized_rect": (
+                            view.current_region.normalized_rect.to_dict()
+                        ),
+                    },
+                    "analysis_status": view.analysis_status,
+                }
+                if record is not None:
+                    item["analysis_status"] = record.status
+                    item["analysis"] = dict(record.result)
+                    item["analyzer"] = {
+                        "analyzer_id": record.analyzer_id,
+                        "analyzer_version": record.analyzer_version,
+                        "parameters": dict(record.parameters),
+                    }
+                paired_values.append(item)
+        paired = tuple(paired_values)
+        low_threshold, high_threshold = self.comparison_panel.thresholds()
+        evidence_digest = build_review_evidence_digest(
+            self._images["reference"].rgb,
+            self._images["current"].rgb,
+            low_threshold=low_threshold,
+            high_threshold=high_threshold,
+            measurements=self._measurements,
+        )
         history = tuple(
             {
                 "version_id": version.id,
@@ -2443,6 +2524,7 @@ class MainWindow(QMainWindow):
             creative_intent=creative,
             reference_visual_brief=reference_brief,
             global_measurements=measurements,
+            local_evidence_digest=evidence_digest,
             paired_region_measurements=paired,
             version_history=history,
             locked_goals=locked,
@@ -3743,6 +3825,14 @@ class MainWindow(QMainWindow):
             return
         if self.region_controller.escape():
             self.statusBar().showMessage("已退出区域模式")
+            return
+        if self.composition_guide_combo.currentData() != "none":
+            self._set_combo_data(
+                self.composition_guide_combo,
+                "none",
+                "none",
+            )
+            self.statusBar().showMessage("已关闭构图辅助线")
 
     def _current_render_settings(self) -> RenderSettings:
         return RenderSettings(
@@ -3850,6 +3940,23 @@ class MainWindow(QMainWindow):
         self.current_pane.canvas.reset_view()
         self._mark_workspace_dirty()
 
+    def _composition_guide_changed(self, _index: int = -1) -> None:
+        guide = composition_guide(
+            str(self.composition_guide_combo.currentData() or "none")
+        )
+        spec = (
+            None
+            if guide is None
+            else GuideOverlaySpec(
+                guide_id=guide.guide_id,
+                label=guide.display_name,
+                lines=guide.lines,
+            )
+        )
+        self.reference_pane.canvas.set_guide_overlay(spec)
+        self.current_pane.canvas.set_guide_overlay(spec)
+        self._mark_workspace_dirty()
+
     def _mark_workspace_dirty(self, _value=None) -> None:
         if (
             self._project_store is None
@@ -3878,6 +3985,9 @@ class MainWindow(QMainWindow):
             sync_views=self.sync_checkbox.isChecked(),
             blur_sigma=self.blur_slider.value() / 10.0,
             silhouette_threshold=self.silhouette_slider.value() / 100.0,
+            composition_guide=str(
+                self.composition_guide_combo.currentData() or "none"
+            ),
             three_threshold_low=self.comparison_panel.thresholds()[0],
             three_threshold_high=self.comparison_panel.thresholds()[1],
             active_analysis_tab=(

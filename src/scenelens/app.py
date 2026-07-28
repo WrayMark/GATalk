@@ -118,6 +118,12 @@ def _run_internal_smoke_check() -> None:
     from scenelens.analysis.models import RenderSettings
     from scenelens.analysis.pipeline import measure_image, render_image
     from scenelens.modules.visual_review.analyzers import PairedRegionAnalyzer
+    from scenelens.modules.visual_review.composition_guides import (
+        composition_guide,
+    )
+    from scenelens.modules.visual_review.review_evidence import (
+        build_review_evidence_digest,
+    )
     from scenelens.modules.visual_review.region_results import (
         paired_region_to_payload,
     )
@@ -129,7 +135,7 @@ def _run_internal_smoke_check() -> None:
         ReviewRunOptions,
     )
     from scenelens.modules.visual_review.reviews import (
-        ArtDirectorReview,
+        DeepArtDirectorReview,
         ReviewContext,
     )
     from scenelens.providers.contracts import (
@@ -170,12 +176,23 @@ def _run_internal_smoke_check() -> None:
 
     provider_registry = ProviderRegistry()
     provider_registry.register(MockProvider())
+    deep_reviewer = DeepArtDirectorReview()
     coordinator = ReviewCoordinator(
         provider_registry,
-        {"art_director_review": ArtDirectorReview()},
+        {"deep_art_director_review": deep_reviewer},
+    )
+    evidence_digest = build_review_evidence_digest(
+        rgb,
+        rgb,
+        low_threshold=1.0 / 3.0,
+        high_threshold=2.0 / 3.0,
+        measurements={
+            "reference": measurements,
+            "current": measurements,
+        },
     )
     review = coordinator.run(
-        options=ReviewRunOptions("art_director_review", "mock"),
+        options=ReviewRunOptions("deep_art_director_review", "mock"),
         context=ReviewContext(
             project_id="smoke",
             shot_id="smoke",
@@ -183,6 +200,7 @@ def _run_internal_smoke_check() -> None:
             creative_intent={},
             reference_visual_brief={},
             global_measurements={},
+            local_evidence_digest=evidence_digest,
         ),
         images=(
             ProviderImage("reference", "image/png", b"smoke-reference"),
@@ -193,7 +211,14 @@ def _run_internal_smoke_check() -> None:
         credentials={},
         cancellation=CancellationToken(),
     )
-    if review.output.get("reviewer_id") != "art_director_review":
+    thirds = composition_guide("thirds")
+    if (
+        review.output.get("reviewer_id")
+        != "deep_art_director_review"
+        or len(review.output.get("dimension_reviews", [])) != 8
+        or thirds is None
+        or len(thirds.lines) != 4
+    ):
         raise RuntimeError("Internal offline AI review smoke check failed.")
     image_buffer = BytesIO()
     Image.fromarray(rgb).save(image_buffer, format="PNG")

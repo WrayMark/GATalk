@@ -130,6 +130,54 @@ def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
             "findings": [],
             "quality_gate_results": [],
         }
+    if title == "SceneLens Deep Art Director Review":
+        dimensions = (
+            "composition",
+            "visual_guidance",
+            "focus_hierarchy",
+            "colour_design",
+            "value_structure",
+            "lighting_atmosphere",
+            "material_readability",
+            "world_design_narrative",
+        )
+        return {
+            "schema_version": "2.0",
+            "reviewer_id": "deep_art_director_review",
+            "executive_summary": (
+                "离线 Mock：八维结构、证据字段和执行顺序可用；"
+                "未生成真实美术结论。"
+            ),
+            "target_readback": {
+                "production_stage": "Mock 未分析",
+                "target_style": "Mock 未分析",
+                "target_mood": "Mock 未分析",
+                "primary_focus": "Mock 未分析",
+                "protected_content": [],
+                "review_exclusions": [],
+            },
+            "dimension_reviews": [
+                {
+                    "dimension_id": dimension,
+                    "status": "insufficient_evidence",
+                    "intent_target": "连接真实视觉 Provider 后分析",
+                    "reference_read": "Mock 不读取图片语义",
+                    "current_read": "Mock 不读取图片语义",
+                    "evidence_summary": ["仅验证结构化流程"],
+                    "strengths": [],
+                    "risks": [],
+                    "linked_finding_ids": [],
+                    "confidence": 0.0,
+                    "uncertainty": "离线 Mock 不执行本地或模型推理",
+                }
+                for dimension in dimensions
+            ],
+            "findings": [],
+            "preserve_items": [],
+            "action_plan": [],
+            "quality_gate_results": [],
+            "confidence_notes": ["Mock 输出不能作为美术结论。"],
+        }
     if title == "SceneLens Lighting Review":
         schemes = []
         for strategy in (

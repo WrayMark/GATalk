@@ -325,7 +325,8 @@ def test_schema_three_migrates_to_four_with_pre_migration_backup(tmp_path: Path)
             (MODULE_ID,),
         )
         connection.execute(
-                "DELETE FROM schema_migrations WHERE version IN (4, 5, 6)"
+                    "DELETE FROM schema_migrations "
+                    "WHERE version IN (4, 5, 6, 7)"
         )
         connection.execute("PRAGMA user_version = 3")
         connection.commit()
@@ -358,5 +359,7 @@ def test_schema_three_migrates_to_four_with_pre_migration_backup(tmp_path: Path)
         "visual_review_region_analyses",
     }
     assert module_version == 3
-    assert len(list((root / "backups").glob("pre-migration_0003_to_0006_*"))) == 1
+    assert len(
+        list((root / "backups").glob("pre-migration_0003_to_0007_*"))
+    ) == 1
     migrated.close()

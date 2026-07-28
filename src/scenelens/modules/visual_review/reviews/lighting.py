@@ -15,6 +15,7 @@ from .base import (
 
 class LightingReview(StructuredVisionReviewer):
     schema_filename = "lighting_review.schema.json"
+    max_output_tokens = 8000
     system_instruction = (
         "你是 UE5 游戏场景灯光审片器。所有灯光位置和组件均是基于截图的"
         "推断，必须提供画面证据、替代解释和可信度。不得声称得到真实 Lux、"

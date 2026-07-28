@@ -4,6 +4,12 @@
 
 ### Added
 
+- 增加 M4“深度主美审阅（八维）”，逐项呈现制作目标、参考呈现、当前效果、
+  证据摘要、已有优点、风险、可信度和不确定性。
+- 增加最多五个跨维度核心问题、需要保留内容及带依赖顺序的 UE 执行计划。
+- 增加有界九宫格本地证据摘要，并将主美审阅中的可测声明接入本地证据校验器。
+- 增加三分法、黄金分割、对角线、中心、三角形、单点透视和两点透视构图辅助线。
+- 增加 schema v7，使构图辅助选择随项目保存恢复并保留迁移前备份。
 - 增加供应商 HTTP 错误状态和脱敏原因显示，区分参数、认证、权限、模型、
   请求大小、额度和服务端错误。
 - 增加 Gemini JSON Schema 兼容转换、万相/OpenAI/Grok 远程结果图片安全
@@ -63,6 +69,11 @@
 
 ### Changed
 
+- 视觉审阅请求现在逐张显式标记 reference/current 图片角色；深度主美与灯光
+  审阅分别配置结构化输出预算。
+- 深度审阅上下文从“当前选中区域”扩展为当前 Version 的全部成对区域及其最新
+  分析记录。
+- 项目版本进入 `0.5.0a0`；M4 形成新的真实项目试用候选。
 - Gemini `generateContent` 的 `responseFormat.text.mimeType` 改用服务端要求的
   `APPLICATION_JSON` 枚举值；此前的 `application/json` 会被 v1beta 端点以
   `INVALID_ARGUMENT` 拒绝。
@@ -85,6 +96,11 @@
 
 ### Validation
 
+- M4 候选完整离线回归 156 项通过；源码和打包内 `--smoke-test` 退出码均为 0。
+- M4 Windows `onedir` 构建成功，目录为 `dist-m4/SceneLens/`，224 个文件，
+  266,553,088 bytes（约 254.2 MiB），包含新版 Word 使用手册。
+- Word 手册结构检查为 96 段、1 节、无替换字符；本机未安装 LibreOffice，
+  因此标准逐页渲染检查未完成。
 - Gemini MIME 枚举回归测试与完整离线回归共 149 项通过。
 - Gemini 接口修复候选 `dist-gemini-fix/SceneLens/` 构建成功，包含简明
   Word 使用手册；目录总大小 266,520,924 bytes（约 254.2 MiB），包内

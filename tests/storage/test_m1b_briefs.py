@@ -228,7 +228,8 @@ def test_schema_two_project_migrates_to_comparison_cache_with_backup(
             """
         )
         connection.execute(
-                "DELETE FROM schema_migrations WHERE version IN (3, 4, 5, 6)"
+                "DELETE FROM schema_migrations "
+                "WHERE version IN (3, 4, 5, 6, 7)"
         )
         connection.execute("PRAGMA user_version = 2")
         connection.commit()
@@ -254,4 +255,6 @@ def test_schema_two_project_migrates_to_comparison_cache_with_backup(
         ).fetchone()[0]
     assert table is not None
     assert module_version == 3
-    assert len(list((root / "backups").glob("pre-migration_0002_to_0006_*"))) == 1
+    assert len(
+        list((root / "backups").glob("pre-migration_0002_to_0007_*"))
+    ) == 1

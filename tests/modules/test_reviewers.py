@@ -180,6 +180,7 @@ def test_workbench_and_example_contributions_register_explicitly() -> None:
     }
     assert {item.reviewer_id for item in registry.reviewers()} == {
         "art_director_review",
+        "deep_art_director_review",
         "lighting_review",
         "example_review",
     }

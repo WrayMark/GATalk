@@ -88,10 +88,17 @@ class ReviewCoordinator:
             cancellation,
         )
         validated = reviewer.validate_output(primary.output)
-        component_validations = validate_lighting_components(
-            validated.output,
-            current_rgb,
-            reference_rgb,
+        component_validations = (
+            validate_lighting_components(
+                validated.output,
+                current_rgb,
+                reference_rgb,
+            )
+            + validate_structured_evidence_claims(
+                validated.output,
+                current_rgb,
+                reference_rgb,
+            )
         )
 
         opinions: tuple[SecondOpinionItem, ...] = ()
@@ -129,6 +136,7 @@ class ReviewCoordinator:
                 model_id=options.second_opinion_model_id,
                 user_initiated=True,
                 disclosure_confirmed=True,
+                max_output_tokens=4000,
             )
             second = self.execution.run_review(
                 second_provider,
@@ -272,4 +280,54 @@ def validate_lighting_components(
         validations.append(
             validate_evidence_claim(claim, current_rgb)
         )
+    return tuple(validations)
+
+
+def validate_structured_evidence_claims(
+    output: Mapping[str, Any],
+    current_rgb: UInt8Image,
+    reference_rgb: UInt8Image,
+) -> tuple[EvidenceValidation, ...]:
+    """Validate reviewer-authored measurable claims against local pixels."""
+
+    validations: list[EvidenceValidation] = []
+    for finding in output.get("findings", []):
+        for value in finding.get("evidence_claims", []):
+            current_rect = value["current_rect"]
+            reference_value = value.get("reference_rect")
+            reference_box = (
+                None
+                if reference_value is None
+                else NormalizedBox(
+                    float(reference_value["x"]),
+                    float(reference_value["y"]),
+                    float(reference_value["width"]),
+                    float(reference_value["height"]),
+                )
+            )
+            claim = EvidenceClaim(
+                claim_id=str(value["claim_id"]),
+                description=str(value["description"]),
+                current_box=NormalizedBox(
+                    float(current_rect["x"]),
+                    float(current_rect["y"]),
+                    float(current_rect["width"]),
+                    float(current_rect["height"]),
+                ),
+                reference_box=reference_box,
+                expectation=EvidenceExpectation(
+                    EvidenceMetric(str(value["metric"])),
+                    str(value["operator"]),
+                    float(value["threshold"]),
+                    float(value["tolerance"]),
+                ),
+                confidence=float(value["confidence"]),
+            )
+            validations.append(
+                validate_evidence_claim(
+                    claim,
+                    current_rgb,
+                    reference_rgb,
+                )
+            )
     return tuple(validations)

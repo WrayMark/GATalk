@@ -182,7 +182,7 @@ def build() -> None:
     metadata.paragraph_format.space_after = Pt(14)
     set_font(
         metadata.add_run(
-            "适用版本：0.4.0a0（M3 候选，Gemini 接口修正版）"
+            "适用版本：0.5.0a0（M4 深度主美审阅与构图诊断候选）"
             "　更新日期：2026-07-28"
         ),
         size=9.5,
@@ -211,7 +211,7 @@ def build() -> None:
         "左侧：Project、Shot、Version 导航。",
         "中间：参考图和当前 UE 截图。",
         "右侧：参考分析、截图分析、对比分析、AI 审阅与任务、优化实验室。",
-        "顶部：导入、显示、模糊、剪影、A/B 和同步视图。",
+        "顶部：导入、显示、模糊、剪影、A/B、同步视图和构图辅助。",
     ):
         add_list_item(document, text, bullet_id)
 
@@ -235,6 +235,7 @@ def build() -> None:
         "开启“同步视图”可同步左右缩放和平移。",
         "选择“A/B 单图”后按 Space 切换参考图和当前截图。",
         "按 Esc 退出颜色遮罩、灯光标注、区域模式或优化预览。",
+        "构图辅助提供三分法、黄金分割、对角线、中心、三角形、单点透视和两点透视；只用于人工观察。",
         "显示模式包括原图、灰度、三阶/五阶明度、曝光伪色、溢出警告、剪影、缩略图观察、明度模糊和灯光明度代理图。",
     ):
         add_list_item(document, text, bullet_id)
@@ -278,7 +279,7 @@ def build() -> None:
 
     add_heading(document, "7. AI 审阅与灯光审片")
     for text in (
-        "选择“主美专项审阅”或“灯光专项审阅”。",
+        "优先选择“深度主美审阅（八维）”；专项灯光问题选择“灯光专项审阅”。",
         "无 API Key 时选择“离线 Mock”验证流程。",
         "使用真实供应商前，把 Key 存入 Windows 系统凭据。",
         "点击“查看发送清单并审阅”，核对数据后手动确认发送。",
@@ -286,6 +287,15 @@ def build() -> None:
     ):
         add_list_item(document, text, decimal_id)
     add_body(document, "“第二意见”会增加一次模型调用和费用，默认关闭。")
+    add_heading(document, "深度主美审阅", 2)
+    for text in (
+        "八个维度：构图、视觉引导、焦点层级、色彩、明度、灯光、材质和世界设计。",
+        "每个维度分开显示制作目标、参考呈现、当前效果、优点、风险和不确定性。",
+        "最多五个核心问题，并给出保留项、UE 执行顺序和下一版验证方法。",
+        "本地证据显示测量支持、部分支持、存在冲突或无法验证；冲突不会被隐藏。",
+        "离线 Mock 只验证界面和 JSON 流程，不会在本地分析图片，也不代表真实审阅。",
+    ):
+        add_list_item(document, text, bullet_id)
     add_heading(document, "AI 接口失败时", 2)
     for text in (
         "http_400：请求参数或模型不兼容；先恢复供应商默认模型后重试。",

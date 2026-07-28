@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -110,6 +110,7 @@ class AIReviewPanel(QWidget):
             manifest.provider_id: manifest for manifest in manifests
         }
         self._findings: list[Mapping[str, Any]] = []
+        self._dimension_reviews: list[Mapping[str, Any]] = []
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         body = QWidget()
@@ -118,6 +119,10 @@ class AIReviewPanel(QWidget):
         provider_group = QGroupBox("专项审阅")
         form = QFormLayout(provider_group)
         self.reviewer_combo = QComboBox()
+        self.reviewer_combo.addItem(
+            "深度主美审阅（八维）",
+            "deep_art_director_review",
+        )
         self.reviewer_combo.addItem("主美专项审阅", "art_director_review")
         self.reviewer_combo.addItem("灯光专项审阅", "lighting_review")
         form.addRow("审阅器", self.reviewer_combo)
@@ -206,18 +211,65 @@ class AIReviewPanel(QWidget):
         result_layout = QVBoxLayout(result_group)
         self.summary_label = QLabel("尚无结果")
         self.summary_label.setWordWrap(True)
+        self.summary_label.setTextInteractionFlags(
+            self.summary_label.textInteractionFlags()
+            | Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         result_layout.addWidget(self.summary_label)
+        self.target_readback_label = QLabel()
+        self.target_readback_label.setWordWrap(True)
+        self.target_readback_label.hide()
+        result_layout.addWidget(self.target_readback_label)
+
+        self.dimension_tree = QTreeWidget()
+        self.dimension_tree.setHeaderLabels(
+            ["审阅维度", "状态", "证据摘要", "可信度"]
+        )
+        self.dimension_tree.setRootIsDecorated(False)
+        self.dimension_tree.setMinimumHeight(190)
+        self.dimension_tree.hide()
+        result_layout.addWidget(self.dimension_tree)
+        self.dimension_detail = QLabel("选择一个维度查看制作目标、参考呈现和当前效果。")
+        self.dimension_detail.setWordWrap(True)
+        self.dimension_detail.setTextInteractionFlags(
+            self.dimension_detail.textInteractionFlags()
+            | Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        result_layout.addWidget(self.dimension_detail)
+
         self.findings_tree = QTreeWidget()
         self.findings_tree.setHeaderLabels(
-            ["优先级", "核心问题", "第二意见"]
+            ["优先级", "核心问题", "第二意见", "关联维度", "本地证据"]
         )
         self.findings_tree.setRootIsDecorated(False)
         result_layout.addWidget(self.findings_tree)
         self.validation_list = QListWidget()
         self.validation_list.setToolTip(
-            "灯光位置推断与本地像素测量的校验结果"
+            "AI 可测量结论与本地像素测量的校验结果；冲突不会被隐藏。"
         )
         result_layout.addWidget(self.validation_list)
+
+        self.action_plan_list = QListWidget()
+        self.action_plan_list.setToolTip("按依赖关系排序的执行计划")
+        self.action_plan_list.hide()
+        self.action_plan_heading = QLabel("执行顺序")
+        self.action_plan_heading.hide()
+        result_layout.addWidget(self.action_plan_heading)
+        result_layout.addWidget(self.action_plan_list)
+        self.preserve_list = QListWidget()
+        self.preserve_list.setToolTip("修改时应避免破坏的现有优点")
+        self.preserve_list.hide()
+        self.preserve_heading = QLabel("需要保留")
+        self.preserve_heading.hide()
+        result_layout.addWidget(self.preserve_heading)
+        result_layout.addWidget(self.preserve_list)
+        self.confidence_list = QListWidget()
+        self.confidence_list.setToolTip("证据不足、输入限制和可信度说明")
+        self.confidence_list.hide()
+        self.confidence_heading = QLabel("可信度与限制")
+        self.confidence_heading.hide()
+        result_layout.addWidget(self.confidence_heading)
+        result_layout.addWidget(self.confidence_list)
         self.create_task_button = QPushButton("将选中问题确认为修改任务")
         self.create_task_button.setEnabled(False)
         result_layout.addWidget(self.create_task_button)
@@ -260,6 +312,9 @@ class AIReviewPanel(QWidget):
                 self.findings_tree.currentIndex().isValid()
             )
         )
+        self.dimension_tree.currentItemChanged.connect(
+            self._dimension_selected
+        )
         self.create_task_button.clicked.connect(self._request_task)
         self.scheme_combo.currentIndexChanged.connect(
             self._scheme_changed
@@ -298,20 +353,138 @@ class AIReviewPanel(QWidget):
         self._findings = [
             dict(item.finding) for item in outcome.merged_findings
         ]
-        self.summary_label.setText(str(outcome.output.get("summary", "")))
+        summary = outcome.output.get(
+            "executive_summary",
+            outcome.output.get("summary", ""),
+        )
+        self.summary_label.setText(str(summary))
+        target_value = outcome.output.get("target_readback", "")
+        if isinstance(target_value, Mapping):
+            target = "；".join(
+                f"{label}：{target_value.get(key, '')}"
+                for key, label in (
+                    ("production_stage", "阶段"),
+                    ("target_style", "风格"),
+                    ("target_mood", "情绪"),
+                    ("primary_focus", "第一焦点"),
+                )
+                if target_value.get(key)
+            )
+        else:
+            target = str(target_value).strip()
+        self.target_readback_label.setText(
+            f"本次目标：{target}" if target else ""
+        )
+        self.target_readback_label.setVisible(bool(target))
+
+        self._dimension_reviews = [
+            dict(item)
+            for item in outcome.output.get("dimension_reviews", [])
+        ]
+        self.dimension_tree.clear()
+        dimension_labels = {
+            "composition": "构图结构",
+            "visual_guidance": "视觉引导",
+            "focus_hierarchy": "焦点层级",
+            "colour_design": "色彩设计",
+            "value_structure": "明度结构",
+            "lighting_atmosphere": "灯光与氛围",
+            "material_readability": "材质可读性",
+            "world_design_narrative": "世界设计与叙事",
+        }
+        status_labels = {
+            "meets_target": "符合目标",
+            "partially_meets": "部分符合",
+            "deviates": "偏离目标",
+            "insufficient_evidence": "证据不足",
+        }
+        for index, dimension in enumerate(self._dimension_reviews):
+            item = QTreeWidgetItem(
+                [
+                    dimension_labels.get(
+                        str(dimension.get("dimension_id", "")),
+                        str(dimension.get("dimension_id", "")),
+                    ),
+                    status_labels.get(
+                        str(dimension.get("status", "")),
+                        str(dimension.get("status", "")),
+                    ),
+                    "；".join(
+                        str(value)
+                        for value in dimension.get(
+                            "evidence_summary",
+                            [],
+                        )
+                    ),
+                    f"{float(dimension.get('confidence', 0.0)):.2f}",
+                ]
+            )
+            item.setData(0, 0x0100, index)
+            self.dimension_tree.addTopLevelItem(item)
+        for column in (0, 1, 3):
+            self.dimension_tree.resizeColumnToContents(column)
+        self.dimension_detail.setVisible(bool(self._dimension_reviews))
+        self.dimension_tree.setVisible(bool(self._dimension_reviews))
+        if self._dimension_reviews:
+            self.dimension_tree.setCurrentItem(
+                self.dimension_tree.topLevelItem(0)
+            )
+
+        validations_by_id = {
+            item.claim_id: item for item in outcome.component_validations
+        }
+        evidence_status_labels = {
+            "supported": "测量支持",
+            "partially_supported": "部分支持",
+            "conflict": "存在冲突",
+            "unverifiable": "无法验证",
+        }
+        severity = {
+            "conflict": 3,
+            "partially_supported": 2,
+            "unverifiable": 1,
+            "supported": 0,
+        }
         self.findings_tree.clear()
         for index, merged in enumerate(outcome.merged_findings):
             finding = merged.finding
+            finding_validations = [
+                validations_by_id[str(claim.get("claim_id", ""))]
+                for claim in finding.get("evidence_claims", [])
+                if str(claim.get("claim_id", "")) in validations_by_id
+            ]
+            worst_validation = (
+                max(
+                    finding_validations,
+                    key=lambda item: severity.get(item.status.value, 0),
+                )
+                if finding_validations
+                else None
+            )
             item = QTreeWidgetItem(
                 [
                     str(finding.get("priority", "")),
                     str(finding.get("observation", "")),
                     merged.second_opinion_status or "未启用",
+                    "、".join(
+                        dimension_labels.get(str(value), str(value))
+                        for value in finding.get("dimension_ids", [])
+                    ),
+                    (
+                        evidence_status_labels.get(
+                            worst_validation.status.value,
+                            worst_validation.status.value,
+                        )
+                        if worst_validation is not None
+                        else "未声明可测结论"
+                    ),
                 ]
             )
             item.setData(0, 0x0100, index)
             if merged.disagreement:
                 item.setToolTip(2, merged.disagreement)
+            if worst_validation is not None:
+                item.setToolTip(4, worst_validation.reason)
             self.findings_tree.addTopLevelItem(item)
         self.findings_tree.resizeColumnToContents(0)
         self.validation_list.clear()
@@ -329,6 +502,38 @@ class AIReviewPanel(QWidget):
             )
         for omission in outcome.omissions:
             self.validation_list.addItem(f"第二意见遗漏提示：{omission}")
+
+        self.action_plan_list.clear()
+        for action in sorted(
+            outcome.output.get("action_plan", []),
+            key=lambda value: int(value.get("order", 0)),
+        ):
+            ue_steps = "；".join(
+                str(value) for value in action.get("ue5_steps", [])
+            )
+            text = (
+                f"{action.get('order', '-')}．{action.get('action', '')}"
+            )
+            if ue_steps:
+                text += f"｜UE：{ue_steps}"
+            self.action_plan_list.addItem(text)
+        has_actions = self.action_plan_list.count() > 0
+        self.action_plan_list.setVisible(has_actions)
+        self.action_plan_heading.setVisible(has_actions)
+
+        self.preserve_list.clear()
+        for value in outcome.output.get("preserve_items", []):
+            self.preserve_list.addItem(str(value))
+        has_preserve = self.preserve_list.count() > 0
+        self.preserve_list.setVisible(has_preserve)
+        self.preserve_heading.setVisible(has_preserve)
+
+        self.confidence_list.clear()
+        for value in outcome.output.get("confidence_notes", []):
+            self.confidence_list.addItem(str(value))
+        has_confidence = self.confidence_list.count() > 0
+        self.confidence_list.setVisible(has_confidence)
+        self.confidence_heading.setVisible(has_confidence)
         self.scheme_combo.blockSignals(True)
         self.scheme_combo.clear()
         labels = {
@@ -399,6 +604,38 @@ class AIReviewPanel(QWidget):
         index = int(item.data(0, 0x0100))
         if 0 <= index < len(self._findings):
             self.task_requested.emit(dict(self._findings[index]))
+
+    def _dimension_selected(
+        self,
+        current: QTreeWidgetItem | None,
+        _previous: QTreeWidgetItem | None,
+    ) -> None:
+        if current is None:
+            return
+        index = current.data(0, 0x0100)
+        if not isinstance(index, int) or not (
+            0 <= index < len(self._dimension_reviews)
+        ):
+            return
+        value = self._dimension_reviews[index]
+        strengths = "；".join(
+            str(item) for item in value.get("strengths", [])
+        ) or "未识别"
+        risks = "；".join(
+            str(item) for item in value.get("risks", [])
+        ) or "未识别"
+        self.dimension_detail.setText(
+            "制作目标："
+            f"{value.get('intent_target', '')}\n"
+            "参考呈现："
+            f"{value.get('reference_read', '')}\n"
+            "当前效果："
+            f"{value.get('current_read', '')}\n"
+            f"已有优点：{strengths}\n"
+            f"风险：{risks}\n"
+            "不确定性："
+            f"{value.get('uncertainty', '')}"
+        )
 
     def _scheme_changed(self, index: int) -> None:
         scheme = self.scheme_combo.itemData(index)

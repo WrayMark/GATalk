@@ -1,8 +1,14 @@
+from scenelens.analysis.evidence_validation import (
+    EvidenceStatus,
+    EvidenceValidation,
+)
 from scenelens.modules.visual_review.review_coordinator import (
     ReviewRunOutcome,
 )
+from scenelens.modules.visual_review.reviews import DeepArtDirectorReview
 from scenelens.modules.visual_review.ui.ai_review_panel import AIReviewPanel
 from scenelens.providers.manifests import load_provider_manifests
+from scenelens.providers.mock import _default_mock_output
 
 
 def test_ai_panel_defaults_to_offline_mock_and_explicit_send(qtbot) -> None:
@@ -54,6 +60,66 @@ def test_panel_displays_conflicts_instead_of_hiding_them(qtbot) -> None:
     assert (
         panel.findings_tree.topLevelItem(0).toolTip(2) == "测量不支持。"
     )
+
+
+def test_panel_presents_eight_dimensions_actions_and_local_conflict(
+    qtbot,
+) -> None:
+    from scenelens.modules.visual_review.review_services import MergedFinding
+
+    panel = AIReviewPanel(load_provider_manifests())
+    qtbot.addWidget(panel)
+    output = _default_mock_output(DeepArtDirectorReview().output_schema)
+    output["target_readback"]["production_stage"] = "灯光初版"
+    output["findings"] = [
+        {
+            "finding_id": "finding-1",
+            "priority": "high",
+            "observation": "主体与背景分离不足",
+            "dimension_ids": ["focus_hierarchy"],
+            "evidence_claims": [{"claim_id": "claim-1"}],
+        }
+    ]
+    output["action_plan"] = [
+        {
+            "order": 1,
+            "action": "先建立主体明度分离",
+            "ue5_steps": ["锁定曝光", "调整主光"],
+        }
+    ]
+    output["preserve_items"] = ["保留村口轮廓"]
+    outcome = ReviewRunOutcome(
+        reviewer_id="deep_art_director_review",
+        provider_id="mock",
+        model_id="mock",
+        output=output,
+        component_validations=(
+            EvidenceValidation(
+                claim_id="claim-1",
+                status=EvidenceStatus.CONFLICT,
+                measured_value=0.8,
+                threshold=0.2,
+                adjusted_confidence=0.4,
+                reason="本地测量存在冲突",
+            ),
+        ),
+        merged_findings=(
+            MergedFinding(
+                finding=output["findings"][0],
+                primary_provider_id="mock",
+                second_opinion_provider_id=None,
+                second_opinion_status=None,
+                disagreement=None,
+            ),
+        ),
+    )
+
+    panel.show_outcome(outcome)
+
+    assert panel.dimension_tree.topLevelItemCount() == 8
+    assert panel.action_plan_list.count() == 1
+    assert panel.preserve_list.count() == 1
+    assert panel.findings_tree.topLevelItem(0).text(4) == "存在冲突"
 
 
 def test_panel_emits_selected_lighting_scheme_annotations(qtbot) -> None:

@@ -227,7 +227,7 @@ def test_schema_four_migrates_to_workbench_core_with_backup(tmp_path: Path):
         for table in tables:
             connection.execute(f"DROP TABLE {table}")
         connection.execute(
-            "DELETE FROM schema_migrations WHERE version IN (5, 6)"
+                "DELETE FROM schema_migrations WHERE version IN (5, 6, 7)"
         )
         connection.execute("PRAGMA user_version = 4")
         connection.commit()
@@ -249,7 +249,7 @@ def test_schema_four_migrates_to_workbench_core_with_backup(tmp_path: Path):
 
     assert actual == set(tables)
     assert len(
-        list((root / "backups").glob("pre-migration_0004_to_0006_*"))
+        list((root / "backups").glob("pre-migration_0004_to_0007_*"))
     ) == 1
     migrated.close()
 
@@ -268,7 +268,7 @@ def test_schema_five_migrates_lighting_observation_state_with_backup(
             "ALTER TABLE workspace_state DROP COLUMN silhouette_threshold"
         )
         connection.execute(
-            "DELETE FROM schema_migrations WHERE version = 6"
+                "DELETE FROM schema_migrations WHERE version IN (6, 7)"
         )
         connection.execute("PRAGMA user_version = 5")
         connection.commit()
@@ -280,5 +280,35 @@ def test_schema_five_migrates_lighting_observation_state_with_backup(
     assert migrated.get_workspace_state().silhouette_threshold == 0.45
     migrated.close()
     assert len(
-        list((root / "backups").glob("pre-migration_0005_to_0006_*"))
+        list((root / "backups").glob("pre-migration_0005_to_0007_*"))
+    ) == 1
+
+
+def test_schema_six_migrates_composition_guide_state_with_backup(
+    tmp_path: Path,
+):
+    project = ProjectStore.create(
+        tmp_path / "schema6-composition.scenelens",
+        "schema6",
+    )
+    root = project.root
+    project.close()
+    with sqlite3.connect(root / "project.db") as connection:
+        connection.execute(
+            "ALTER TABLE workspace_state DROP COLUMN composition_guide"
+        )
+        connection.execute(
+            "DELETE FROM schema_migrations WHERE version = 7"
+        )
+        connection.execute("PRAGMA user_version = 6")
+        connection.commit()
+    manifest = load_json(root / "project.json")
+    manifest["database"]["schema_version"] = 6
+    atomic_write_json(root / "project.json", manifest)
+
+    migrated = ProjectStore.open(root)
+    assert migrated.get_workspace_state().composition_guide == "none"
+    migrated.close()
+    assert len(
+        list((root / "backups").glob("pre-migration_0006_to_0007_*"))
     ) == 1

@@ -89,6 +89,7 @@ def test_art_brief_shot_version_assets_and_state_survive_reopen(tmp_path: Path):
         ab_role="current",
         sync_views=False,
         blur_sigma=2.5,
+        composition_guide="thirds",
     )
     store.save_workspace_state(state)
     store.save_canvas_state(
@@ -110,6 +111,7 @@ def test_art_brief_shot_version_assets_and_state_survive_reopen(tmp_path: Path):
     assert restored.display_mode == "grayscale"
     assert restored.comparison_mode == "ab"
     assert restored.blur_sigma == pytest.approx(2.5)
+    assert restored.composition_guide == "thirds"
     reference_state = reopened.get_canvas_state("reference", shot.id, None)
     current_state = reopened.get_canvas_state("current", shot.id, version.id)
     assert reference_state is not None

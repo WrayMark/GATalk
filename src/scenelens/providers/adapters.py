@@ -92,16 +92,23 @@ class OpenAICompatibleChatProvider:
             ProviderCapability.VISION_REVIEW,
             request.model_id,
         )
-        content: list[dict[str, Any]] = [
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": _data_url(image.media_type, image.data),
-                    "detail": "high",
-                },
-            }
-            for image in request.images
-        ]
+        content: list[dict[str, Any]] = []
+        for image in request.images:
+            content.append(
+                {
+                    "type": "text",
+                    "text": f"IMAGE_ROLE={image.role}",
+                }
+            )
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": _data_url(image.media_type, image.data),
+                        "detail": "high",
+                    },
+                }
+            )
         content.append(
             {
                 "type": "text",
@@ -141,6 +148,8 @@ class OpenAICompatibleChatProvider:
             }
         elif structured_output_mode == "json_object":
             body["response_format"] = {"type": "json_object"}
+        if request.max_output_tokens is not None:
+            body["max_tokens"] = request.max_output_tokens
         return JsonTransportRequest(
             url=f"{self.manifest.base_url}/chat/completions",
             headers={
@@ -209,14 +218,21 @@ class ResponsesVisionProvider:
             ProviderCapability.VISION_REVIEW,
             request.model_id,
         )
-        content: list[dict[str, Any]] = [
-            {
-                "type": "input_image",
-                "image_url": _data_url(image.media_type, image.data),
-                "detail": "high",
-            }
-            for image in request.images
-        ]
+        content: list[dict[str, Any]] = []
+        for image in request.images:
+            content.append(
+                {
+                    "type": "input_text",
+                    "text": f"IMAGE_ROLE={image.role}",
+                }
+            )
+            content.append(
+                {
+                    "type": "input_image",
+                    "image_url": _data_url(image.media_type, image.data),
+                    "detail": "high",
+                }
+            )
         content.append(
             {
                 "type": "input_text",
@@ -237,6 +253,8 @@ class ResponsesVisionProvider:
                 }
             },
         }
+        if request.max_output_tokens is not None:
+            body["max_output_tokens"] = request.max_output_tokens
         return JsonTransportRequest(
             url=f"{self.manifest.base_url}/responses",
             headers={
@@ -312,16 +330,37 @@ class GeminiVisionProvider:
             ProviderCapability.VISION_REVIEW,
             request.model_id,
         )
-        parts: list[dict[str, Any]] = [
-            {
-                "inlineData": {
-                    "mimeType": image.media_type,
-                    "data": base64.b64encode(image.data).decode("ascii"),
+        parts: list[dict[str, Any]] = []
+        for image in request.images:
+            parts.append({"text": f"IMAGE_ROLE={image.role}"})
+            parts.append(
+                {
+                    "inlineData": {
+                        "mimeType": image.media_type,
+                        "data": base64.b64encode(image.data).decode("ascii"),
+                    }
                 }
-            }
-            for image in request.images
-        ]
+            )
         parts.append({"text": request.canonical_payload()})
+        generation_config: dict[str, Any] = {
+            "responseFormat": {
+                "text": {
+                    # generateContent exposes this field as the
+                    # TextResponseFormat.MimeType enum.  The REST
+                    # documentation also shows the MIME spelling in
+                    # some examples, but the v1beta endpoint rejects
+                    # it and accepts the enum wire value.
+                    "mimeType": "APPLICATION_JSON",
+                    "schema": gemini_compatible_schema(
+                        request.output_schema
+                    ),
+                }
+            },
+        }
+        if request.max_output_tokens is not None:
+            generation_config["maxOutputTokens"] = (
+                request.max_output_tokens
+            )
         return JsonTransportRequest(
             url=(
                 f"{self.manifest.base_url}/models/{model}:generateContent"
@@ -335,21 +374,7 @@ class GeminiVisionProvider:
                     "parts": [{"text": request.system_instruction}]
                 },
                 "contents": [{"role": "user", "parts": parts}],
-                "generationConfig": {
-                    "responseFormat": {
-                        "text": {
-                            # generateContent exposes this field as the
-                            # TextResponseFormat.MimeType enum.  The REST
-                            # documentation also shows the MIME spelling in
-                            # some examples, but the v1beta endpoint rejects
-                            # it and accepts the enum wire value.
-                            "mimeType": "APPLICATION_JSON",
-                            "schema": gemini_compatible_schema(
-                                request.output_schema
-                            ),
-                        }
-                    },
-                },
+                "generationConfig": generation_config,
             },
             timeout_seconds=request.timeout_seconds,
         )

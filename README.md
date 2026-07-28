@@ -5,7 +5,7 @@ SceneLens 是一款面向游戏场景美术、UE 地编和环境艺术作品的 
 AI 专项审阅、修改任务、优化预演、新版本复查和质量门禁串成可追踪的工作流。
 
 M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前
-`0.4.0a0` 为 **M3 参考匹配与画面优化实验室**候选版。
+`0.5.0a0` 为 **M4 深度主美审阅与构图诊断**候选版。
 
 ## 环境要求
 
@@ -73,4 +73,6 @@ M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前
 - [docs/PROVIDER_COMPATIBILITY_AUDIT_2026-07-19.md](docs/PROVIDER_COMPATIBILITY_AUDIT_2026-07-19.md)：
   AI 接口兼容修复、错误含义和人工联网验证项
 - [docs/COMPETITOR_REVIEW_M2.md](docs/COMPETITOR_REVIEW_M2.md)：M2 竞品审查
+- [docs/M4_DEEP_REVIEW_ARCHITECTURE.md](docs/M4_DEEP_REVIEW_ARCHITECTURE.md)：
+  八维审阅、证据校验与构图辅助边界
 - [docs/M1B2_REGION_DATA_MODEL.md](docs/M1B2_REGION_DATA_MODEL.md)：区域 schema 与 Version 语义

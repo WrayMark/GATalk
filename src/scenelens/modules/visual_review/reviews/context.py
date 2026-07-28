@@ -12,6 +12,7 @@ class ReviewContext:
     creative_intent: Mapping[str, Any]
     reference_visual_brief: Mapping[str, Any]
     global_measurements: Mapping[str, Any]
+    local_evidence_digest: Mapping[str, Any] = field(default_factory=dict)
     paired_region_measurements: tuple[Mapping[str, Any], ...] = ()
     version_history: tuple[Mapping[str, Any], ...] = ()
     locked_goals: tuple[str, ...] = ()
@@ -28,6 +29,7 @@ class ReviewContext:
                 self.reference_visual_brief
             ),
             "global_measurements": dict(self.global_measurements),
+            "local_evidence_digest": dict(self.local_evidence_digest),
             "paired_region_measurements": [
                 dict(value) for value in self.paired_region_measurements
             ],

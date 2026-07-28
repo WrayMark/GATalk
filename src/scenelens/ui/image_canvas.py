@@ -56,6 +56,16 @@ class AnnotationOverlaySpec:
     colour: str = "#FFD166"
 
 
+@dataclass(frozen=True)
+class GuideOverlaySpec:
+    guide_id: str
+    label: str
+    lines: tuple[
+        tuple[tuple[float, float], tuple[float, float]], ...
+    ]
+    colour: str = "#5DD6FF"
+
+
 class _RegionOverlayItem(QGraphicsRectItem):
     _HANDLE_SIZE_SCREEN = 8.0
     _MIN_SIZE_SCENE = 4.0
@@ -287,6 +297,8 @@ class ImageCanvas(QGraphicsView):
         self._regions_visible = True
         self._region_items: dict[str, _RegionOverlayItem] = {}
         self._annotation_items: list[QGraphicsItem] = []
+        self._guide_spec: GuideOverlaySpec | None = None
+        self._guide_items: list[QGraphicsItem] = []
         self._region_drag_start: QPointF | None = None
         self._region_rubber_band: QGraphicsRectItem | None = None
         self._zoom_factor = 1.0
@@ -329,6 +341,7 @@ class ImageCanvas(QGraphicsView):
         self._placeholder.setVisible(False)
         self._scene.setSceneRect(QRectF(pixmap.rect()))
         self._has_image = True
+        self._render_guide_overlay()
 
         if reset_view or previous_size != pixmap.size():
             self._zoom_factor = 1.0
@@ -341,6 +354,7 @@ class ImageCanvas(QGraphicsView):
         self.clear_overlay()
         self.clear_region_overlays()
         self.clear_annotation_overlays()
+        self._clear_guide_items()
         self._placeholder.setVisible(True)
         self._scene.setSceneRect(QRectF(0.0, 0.0, 640.0, 480.0))
         self._has_image = False
@@ -513,9 +527,62 @@ class ImageCanvas(QGraphicsView):
             self._scene.removeItem(item)
         self._annotation_items.clear()
 
+    def set_guide_overlay(self, spec: GuideOverlaySpec | None) -> None:
+        self._guide_spec = spec
+        self._render_guide_overlay()
+
+    def clear_guide_overlay(self) -> None:
+        self._guide_spec = None
+        self._clear_guide_items()
+
+    def _render_guide_overlay(self) -> None:
+        self._clear_guide_items()
+        if not self._has_image or self._guide_spec is None:
+            return
+        bounds = self.image_scene_rect()
+        colour = QColor(self._guide_spec.colour)
+        pen = QPen(colour)
+        pen.setCosmetic(True)
+        pen.setWidth(1)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        for start, end in self._guide_spec.lines:
+            path = QPainterPath(
+                QPointF(
+                    start[0] * bounds.width(),
+                    start[1] * bounds.height(),
+                )
+            )
+            path.lineTo(
+                QPointF(
+                    end[0] * bounds.width(),
+                    end[1] * bounds.height(),
+                )
+            )
+            item = QGraphicsPathItem(path)
+            item.setPen(pen)
+            item.setZValue(25.0)
+            item.setToolTip(self._guide_spec.label)
+            self._scene.addItem(item)
+            self._guide_items.append(item)
+        label = QGraphicsSimpleTextItem(self._guide_spec.label)
+        label.setBrush(QBrush(colour))
+        label.setPos(8.0, 8.0)
+        label.setZValue(26.0)
+        self._scene.addItem(label)
+        self._guide_items.append(label)
+
+    def _clear_guide_items(self) -> None:
+        for item in self._guide_items:
+            self._scene.removeItem(item)
+        self._guide_items.clear()
+
     @property
     def annotation_overlay_count(self) -> int:
         return len(self._annotation_items)
+
+    @property
+    def guide_overlay_count(self) -> int:
+        return len(self._guide_items)
 
     def select_region(self, region_id: str | None) -> None:
         for item_id, item in self._region_items.items():

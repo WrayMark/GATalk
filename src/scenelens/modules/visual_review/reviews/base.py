@@ -30,6 +30,7 @@ def load_review_schema(filename: str) -> Mapping[str, Any]:
 class StructuredVisionReviewer:
     schema_filename: str
     system_instruction: str
+    max_output_tokens: int | None = None
 
     @property
     def output_schema(self) -> Mapping[str, Any]:
@@ -55,6 +56,7 @@ class StructuredVisionReviewer:
             model_id=model_id,
             user_initiated=user_initiated,
             disclosure_confirmed=disclosure_confirmed,
+            max_output_tokens=self.max_output_tokens,
         )
 
     def validate_output(

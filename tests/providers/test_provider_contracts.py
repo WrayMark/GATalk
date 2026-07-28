@@ -31,7 +31,10 @@ SCHEMA = {
 }
 
 
-def _request(confirmed: bool = True) -> VisionReviewRequest:
+def _request(
+    confirmed: bool = True,
+    max_output_tokens: int | None = None,
+) -> VisionReviewRequest:
     return VisionReviewRequest(
         system_instruction="Return evidence-grounded JSON.",
         payload={"creative_intent": {"stage": "灯光初版"}},
@@ -45,6 +48,7 @@ def _request(confirmed: bool = True) -> VisionReviewRequest:
         output_schema=SCHEMA,
         user_initiated=True,
         disclosure_confirmed=confirmed,
+        max_output_tokens=max_output_tokens,
     )
 
 
@@ -93,7 +97,10 @@ def test_openai_chat_provider_contract_is_offline_and_configurable(provider_id):
     assert wire.body["model"] == provider.manifest.default_models[
         "vision_review"
     ]
-    assert wire.body["messages"][1]["content"][0]["image_url"][
+    assert wire.body["messages"][1]["content"][0]["text"] == (
+        "IMAGE_ROLE=current"
+    )
+    assert wire.body["messages"][1]["content"][1]["image_url"][
         "url"
     ].startswith("data:image/png;base64,")
     assert wire.body["response_format"] == {"type": "json_object"}
@@ -157,7 +164,10 @@ def test_gemini_provider_contract_uses_inline_image_and_json_schema():
     wire = transport.requests[0]
     assert ":generateContent" in wire.url
     assert wire.headers["x-goog-api-key"] == "test-secret"
-    assert wire.body["contents"][0]["parts"][0]["inlineData"][
+    assert wire.body["contents"][0]["parts"][0]["text"] == (
+        "IMAGE_ROLE=current"
+    )
+    assert wire.body["contents"][0]["parts"][1]["inlineData"][
         "mimeType"
     ] == "image/png"
     assert wire.body["generationConfig"]["responseFormat"]["text"][
@@ -167,6 +177,24 @@ def test_gemini_provider_contract_uses_inline_image_and_json_schema():
         "mimeType"
     ] == "APPLICATION_JSON"
     assert "temperature" not in wire.body["generationConfig"]
+
+
+def test_rich_review_output_budget_maps_to_each_provider_wire_format():
+    chat = OpenAICompatibleChatProvider(_manifest("aliyun_bailian"))
+    responses = ResponsesVisionProvider(_manifest("openai"))
+    gemini = GeminiVisionProvider(_manifest("google_gemini"))
+    request = _request(max_output_tokens=12000)
+
+    assert chat.build_request(request, "secret").body["max_tokens"] == 12000
+    assert (
+        responses.build_request(request, "secret").body["max_output_tokens"]
+        == 12000
+    )
+    assert (
+        gemini.build_request(request, "secret")
+        .body["generationConfig"]["maxOutputTokens"]
+        == 12000
+    )
 
 
 def test_provider_request_requires_user_disclosure_confirmation():

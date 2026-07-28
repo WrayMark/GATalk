@@ -93,6 +93,16 @@ class VisionReviewRequest:
     user_initiated: bool = False
     disclosure_confirmed: bool = False
     timeout_seconds: float = 120.0
+    max_output_tokens: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive.")
+        if (
+            self.max_output_tokens is not None
+            and self.max_output_tokens <= 0
+        ):
+            raise ValueError("max_output_tokens must be positive.")
 
     def canonical_payload(self) -> str:
         return json.dumps(
