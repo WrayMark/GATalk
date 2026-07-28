@@ -51,6 +51,7 @@ def test_gemini_disclosure_warns_about_one_structure_repair_call(
     labels = [item.text() for item in dialog.findChildren(QLabel)]
 
     assert any("最多会自动执行一次结构纠错" in text for text in labels)
+    assert any("被截断" in text for text in labels)
     assert any("增加少量费用" in text for text in labels)
 
 

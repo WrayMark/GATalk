@@ -480,25 +480,48 @@ class GeminiVisionProvider:
             credential,
             cancellation,
         )
-        output = self._parse_response_output(response)
         first_usage = dict(response.get("usageMetadata", {}))
-        issues = validate_json_schema(output, request.output_schema)
+        raw_output = self._response_text(response)
+        finish_reason = self._finish_reason(response)
+        output: Mapping[str, Any] | None = None
+        repair_reason: str | None = None
+        repair_issues: list[str] = []
+        try:
+            output = _parse_json_text(raw_output)
+        except ProviderError as exc:
+            if exc.code != "invalid_structured_output":
+                raise
+            repair_reason = "json_syntax"
+            detail = exc.technical_detail or exc.public_message
+            repair_issues.append(f"JSON 语法无效：{detail}")
+            if finish_reason:
+                repair_issues.append(
+                    f"供应商完成原因：{finish_reason}"
+                )
+        if output is not None:
+            issues = validate_json_schema(output, request.output_schema)
+            if issues:
+                repair_reason = "schema_validation"
+                repair_issues.extend(str(issue) for issue in issues)
         repaired = False
-        if issues:
+        if repair_issues:
             cancellation.raise_if_cancelled()
             repair_request = VisionReviewRequest(
                 system_instruction=(
-                    "你是 JSON 结构纠错器。修复给定审阅结果，使其严格符合"
-                    "输出 Schema。保留原有美术观察、证据、优先级和建议语义；"
-                    "不得增加新的美术结论，不得虚构坐标或测量。缺少完整结构"
-                    "信息的 evidence_claims 必须返回空数组。只输出 JSON。"
+                    "你是 JSON 语法与结构纠错器。修复给定审阅结果，使其成为"
+                    "有效 JSON 并严格符合输出 Schema。若原文被截断，使用更"
+                    "精简的措辞完成必填字段。保留已有美术观察、证据、优先级"
+                    "和建议语义；不得增加新的美术结论，不得虚构坐标或测量。"
+                    "缺少完整结构信息的 evidence_claims 必须返回空数组。"
+                    "只输出一个完整 JSON 对象。"
                 ),
                 payload={
                     "original_input": dict(request.payload),
-                    "invalid_output": dict(output),
-                    "schema_issues": [
-                        str(issue) for issue in issues
-                    ],
+                    "invalid_output": (
+                        raw_output if output is None else dict(output)
+                    ),
+                    "repair_reason": repair_reason,
+                    "schema_issues": repair_issues,
                 },
                 images=request.images,
                 output_schema=request.output_schema,
@@ -513,8 +536,25 @@ class GeminiVisionProvider:
                 credential,
                 cancellation,
             )
-            output = self._parse_response_output(response)
             repaired = True
+            repaired_text = self._response_text(response)
+            try:
+                output = _parse_json_text(repaired_text)
+            except ProviderError as exc:
+                if exc.code != "invalid_structured_output":
+                    raise
+                detail = exc.technical_detail or exc.public_message
+                repaired_finish = self._finish_reason(response)
+                if repaired_finish:
+                    detail = (
+                        f"{detail} | finish_reason={repaired_finish}"
+                    )
+                raise ProviderError(
+                    "AI 返回内容经过一次自动纠错后仍不是有效 JSON。",
+                    code="invalid_structured_output_after_repair",
+                    retryable=False,
+                    technical_detail=detail,
+                ) from exc
             remaining = validate_json_schema(
                 output,
                 request.output_schema,
@@ -529,10 +569,17 @@ class GeminiVisionProvider:
                     retryable=False,
                     technical_detail=detail,
                 )
+        if output is None:
+            raise ProviderError(
+                "AI 服务响应缺少可用的结构化输出。",
+                code="missing_output",
+                retryable=False,
+            )
         usage = dict(response.get("usageMetadata", {}))
         if repaired:
             usage = {
                 "schemaRepairAttempted": True,
+                "schemaRepairReason": repair_reason,
                 "initial": first_usage,
                 "repair": usage,
             }
@@ -566,19 +613,31 @@ class GeminiVisionProvider:
         return wire, response
 
     @staticmethod
-    def _parse_response_output(
+    def _response_text(
         response: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
+    ) -> str:
         try:
             parts = response["candidates"][0]["content"]["parts"]
-            text = next(part["text"] for part in parts if "text" in part)
-        except (KeyError, IndexError, StopIteration, TypeError) as exc:
+            texts = [
+                str(part["text"]) for part in parts if "text" in part
+            ]
+            if not texts:
+                raise KeyError("text")
+        except (KeyError, IndexError, TypeError) as exc:
             raise ProviderError(
                 "AI 服务响应缺少结构化输出。",
                 code="missing_output",
                 retryable=False,
             ) from exc
-        return _parse_json_text(str(text))
+        return "".join(texts)
+
+    @staticmethod
+    def _finish_reason(response: Mapping[str, Any]) -> str:
+        try:
+            value = response["candidates"][0].get("finishReason", "")
+        except (KeyError, IndexError, TypeError, AttributeError):
+            return ""
+        return str(value)
 
     def generate_structured(
         self,

@@ -292,6 +292,7 @@ def test_gemini_repairs_missing_fields_and_string_evidence_claims_once():
 
     assert response.output == valid
     assert response.usage["schemaRepairAttempted"] is True
+    assert response.usage["schemaRepairReason"] == "schema_validation"
     assert len(transport.requests) == 2
     repair_parts = transport.requests[1].body["contents"][0]["parts"]
     assert any(
@@ -299,6 +300,132 @@ def test_gemini_repairs_missing_fields_and_string_evidence_claims_once():
         and "evidence_claims" in part.get("text", "")
         for part in repair_parts
     )
+
+
+def test_gemini_repairs_invalid_json_from_exact_report_location_once():
+    invalid_json = "\n".join(
+        [
+            "{",
+            '  "findings": [',
+            *([""] * 458),
+            "                invalid",
+            "  ]",
+            "}",
+        ]
+    )
+    transport = RecordingJsonTransport(
+        [
+            {
+                "candidates": [
+                    {
+                        "content": {"parts": [{"text": invalid_json}]},
+                        "finishReason": "MAX_TOKENS",
+                    }
+                ],
+                "usageMetadata": {"totalTokenCount": 12000},
+            },
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": json.dumps(
+                                        {"findings": []}
+                                    )
+                                }
+                            ]
+                        },
+                        "finishReason": "STOP",
+                    }
+                ],
+                "usageMetadata": {"totalTokenCount": 100},
+            },
+        ]
+    )
+    provider = GeminiVisionProvider(
+        _manifest("google_gemini"),
+        transport,
+    )
+
+    response = provider.review(
+        _request(),
+        "test-secret",
+        CancellationToken(),
+    )
+
+    assert response.output == {"findings": []}
+    assert response.usage["schemaRepairAttempted"] is True
+    assert response.usage["schemaRepairReason"] == "json_syntax"
+    assert len(transport.requests) == 2
+    repair_payload = next(
+        part["text"]
+        for part in transport.requests[1].body["contents"][0]["parts"]
+        if "invalid_output" in part.get("text", "")
+    )
+    assert "line=461,column=17" in repair_payload
+    assert "MAX_TOKENS" in repair_payload
+    assert "invalid_output" in repair_payload
+
+
+def test_gemini_joins_multiple_text_parts_before_parsing():
+    transport = RecordingJsonTransport(
+        [
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {"text": '{"findings":'},
+                                {"text": "[]}"},
+                            ]
+                        }
+                    }
+                ]
+            }
+        ]
+    )
+    provider = GeminiVisionProvider(
+        _manifest("google_gemini"),
+        transport,
+    )
+
+    response = provider.review(
+        _request(),
+        "test-secret",
+        CancellationToken(),
+    )
+
+    assert response.output == {"findings": []}
+    assert len(transport.requests) == 1
+
+
+def test_gemini_stops_after_one_failed_json_syntax_repair():
+    invalid_body = {
+        "candidates": [
+            {
+                "content": {"parts": [{"text": '{"findings": ['}]},
+                "finishReason": "MAX_TOKENS",
+            }
+        ]
+    }
+    transport = RecordingJsonTransport([invalid_body, invalid_body])
+    provider = GeminiVisionProvider(
+        _manifest("google_gemini"),
+        transport,
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        provider.review(
+            _request(),
+            "test-secret",
+            CancellationToken(),
+        )
+
+    assert exc_info.value.code == "invalid_structured_output_after_repair"
+    assert "line=1" in exc_info.value.technical_detail
+    assert "finish_reason=MAX_TOKENS" in exc_info.value.technical_detail
+    assert len(transport.requests) == 2
 
 
 def test_gemini_stops_after_one_failed_structure_repair():

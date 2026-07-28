@@ -80,8 +80,9 @@ class DataDisclosureDialog(QDialog):
             layout.addWidget(cost)
         if preview.provider_id == "google_gemini":
             repair_notice = QLabel(
-                "Gemini 若首次返回的 JSON 结构不完整，SceneLens 最多会自动"
-                "执行一次结构纠错；可能再次发送同一审阅副本并增加少量费用。"
+                "Gemini 若首次返回的 JSON 语法损坏、被截断或结构不完整，"
+                "SceneLens 最多会自动执行一次结构纠错；可能再次发送同一"
+                "审阅副本并增加少量费用。"
             )
             repair_notice.setWordWrap(True)
             repair_notice.setStyleSheet("color: #E6B450;")

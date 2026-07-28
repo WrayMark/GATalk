@@ -182,7 +182,7 @@ def build() -> None:
     metadata.paragraph_format.space_after = Pt(14)
     set_font(
         metadata.add_run(
-            "适用版本：0.5.0a3（M4 深度主美审阅引用完整性修复候选）"
+            "适用版本：0.5.0a4（M4 Gemini 损坏 JSON 自动恢复候选）"
             "　更新日期：2026-07-28"
         ),
         size=9.5,
@@ -298,9 +298,10 @@ def build() -> None:
         add_list_item(document, text, bullet_id)
     add_heading(document, "AI 接口失败时", 2)
     for text in (
-        "http_400：请求参数或模型不兼容。新版会自动处理 Gemini 深度审阅的复杂 Schema；仍失败时先确认正在运行 0.5.0a3，再恢复默认模型重试。",
+        "http_400：请求参数或模型不兼容。新版会自动处理 Gemini 深度审阅的复杂 Schema；仍失败时先确认正在运行 0.5.0a4，再恢复默认模型重试。",
         "若错误包含 generation_config.response_format.text.mime_type，说明仍在运行旧版；关闭旧程序后改用本次 Gemini 接口修正版。",
-        "Gemini 首次返回的 JSON 结构不完整时，SceneLens 最多自动纠错一次。确认发送窗口会提示该过程可能再次发送同一审阅副本并增加少量费用。",
+        "Gemini 首次返回的 JSON 语法损坏、被截断或结构不完整时，SceneLens 最多自动纠错一次。确认发送窗口会提示该过程可能再次发送同一审阅副本并增加少量费用。",
+        "错误中的 line 和 column 表示 AI 返回文本的 JSON 损坏位置，不表示 API Key 错误。0.5.0a4 会把原始返回交给同一模型压缩并修复；第二次仍损坏时停止，不会无限重试。",
         "若 AI 引用了本次报告中不存在的问题 ID，0.5.0a3 会取消无效链接并继续显示完整报告，不追加 API 调用。界面的“结构修复”只表示链接已取消，正文和真实问题没有被改写。",
         "http_401：Key 错误、过期或不属于该供应商。",
         "http_403：检查模型权限、服务开通、地域和 Key 所属工作区。",
