@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import copy
 import json
-from dataclasses import dataclass
 
 import pytest
 
@@ -21,6 +21,8 @@ from scenelens.providers.contracts import (
 )
 from scenelens.providers.factory import create_default_provider_registry
 from scenelens.providers.manifests import load_provider_manifests
+from scenelens.providers.mock import _default_mock_output
+from scenelens.providers.schema_adapters import schema_output_template
 from scenelens.providers.transport import RecordingJsonTransport
 
 
@@ -202,7 +204,7 @@ def test_rich_review_output_budget_maps_to_each_provider_wire_format():
     )
 
 
-def test_gemini_deep_review_uses_compact_wire_schema_and_prompt_contract():
+def test_gemini_deep_review_uses_structural_wire_schema_and_prompt_contract():
     schema = load_review_schema("deep_art_director_review.schema.json")
     provider = GeminiVisionProvider(_manifest("google_gemini"))
 
@@ -214,13 +216,118 @@ def test_gemini_deep_review_uses_compact_wire_schema_and_prompt_contract():
     prompt_parts = wire.body["contents"][0]["parts"]
 
     assert text_format["schema"]["required"] == schema["required"]
-    assert text_format["schema"]["properties"]["dimension_reviews"] == {
-        "type": "array"
-    }
+    claims = text_format["schema"]["properties"]["findings"]["items"][
+        "properties"
+    ]["evidence_claims"]
+    assert claims["items"]["type"] == "object"
+    target = text_format["schema"]["properties"]["target_readback"]
+    assert "production_stage" in target["required"]
     assert any(
         "SCENELENS_OUTPUT_JSON_SCHEMA=" in part.get("text", "")
         for part in prompt_parts
     )
+    assert any(
+        "SCENELENS_OUTPUT_JSON_TEMPLATE=" in part.get("text", "")
+        for part in prompt_parts
+    )
+
+
+def test_gemini_repairs_missing_fields_and_string_evidence_claims_once():
+    schema = load_review_schema("deep_art_director_review.schema.json")
+    valid = _default_mock_output(schema)
+    finding = schema_output_template(
+        schema["properties"]["findings"]["items"]
+    )
+    finding["finding_id"] = "finding-1"
+    finding["dimension_ids"] = ["composition"]
+    valid["findings"] = [finding]
+    invalid = copy.deepcopy(valid)
+    for field in (
+        "production_stage",
+        "target_style",
+        "target_mood",
+        "primary_focus",
+        "protected_content",
+        "review_exclusions",
+    ):
+        invalid["target_readback"].pop(field)
+    invalid["findings"][0]["evidence_claims"] = [
+        f"第 {index + 1} 条证据只有文字，没有完整矩形、指标和阈值。"
+        for index in range(8)
+    ]
+    transport = RecordingJsonTransport(
+        [
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [{"text": json.dumps(invalid)}]
+                        }
+                    }
+                ],
+                "usageMetadata": {"totalTokenCount": 100},
+            },
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [{"text": json.dumps(valid)}]
+                        }
+                    }
+                ],
+                "usageMetadata": {"totalTokenCount": 30},
+            },
+        ]
+    )
+    provider = GeminiVisionProvider(
+        _manifest("google_gemini"),
+        transport,
+    )
+
+    response = provider.review(
+        _request(output_schema=schema),
+        "test-secret",
+        CancellationToken(),
+    )
+
+    assert response.output == valid
+    assert response.usage["schemaRepairAttempted"] is True
+    assert len(transport.requests) == 2
+    repair_parts = transport.requests[1].body["contents"][0]["parts"]
+    assert any(
+        '"schema_issues"' in part.get("text", "")
+        and "evidence_claims" in part.get("text", "")
+        for part in repair_parts
+    )
+
+
+def test_gemini_stops_after_one_failed_structure_repair():
+    schema = load_review_schema("deep_art_director_review.schema.json")
+    invalid = {"schema_version": "2.0"}
+    response_body = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": json.dumps(invalid)}]
+                }
+            }
+        ]
+    }
+    transport = RecordingJsonTransport([response_body, response_body])
+    provider = GeminiVisionProvider(
+        _manifest("google_gemini"),
+        transport,
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        provider.review(
+            _request(output_schema=schema),
+            "test-secret",
+            CancellationToken(),
+        )
+
+    assert exc_info.value.code == "invalid_structured_output_after_repair"
+    assert len(transport.requests) == 2
 
 
 def test_gemini_retries_schema_rejection_once_in_prompt_only_mode():

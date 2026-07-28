@@ -39,7 +39,7 @@ class GeminiSchemaProfile:
     property_count: int
 
     @property
-    def requires_compact_mode(self) -> bool:
+    def requires_structural_mode(self) -> bool:
         return (
             self.byte_size > _GEMINI_SAFE_SCHEMA_BYTES
             or self.max_depth > _GEMINI_SAFE_SCHEMA_DEPTH
@@ -86,30 +86,24 @@ def gemini_schema_profile(
     )
 
 
-def gemini_compact_schema(
+def gemini_structural_schema(
     schema: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Keep the top-level contract for Gemini's server-side constraint.
+    """Keep complete object/array shape for Gemini's wire constraint.
 
-    The complete schema is still sent as prompt text and validated locally.
-    This compact copy prevents complex SceneLens review schemas from being
-    rejected before inference starts.
+    Large enums, numeric bounds and other non-structural constraints are
+    omitted to reduce Gemini grammar complexity.  Nested field names, required
+    fields and item types remain server-enforced, while the complete schema is
+    still sent as prompt text and validated locally.
     """
 
-    adapted = gemini_compatible_schema(schema)
-    result: dict[str, Any] = {"type": adapted.get("type", "object")}
-    properties = adapted.get("properties")
-    if isinstance(properties, Mapping):
-        result["properties"] = {
-            str(name): _compact_property(child)
-            for name, child in properties.items()
-        }
-    required = adapted.get("required")
-    if isinstance(required, list):
-        result["required"] = list(required)
-    if adapted.get("additionalProperties") is False:
-        result["additionalProperties"] = False
-    return result
+    return _structural_mapping(dict(schema))
+
+
+def schema_output_template(schema: Mapping[str, Any]) -> Any:
+    """Build a valid shape example for prompt-side structured guidance."""
+
+    return _template_value(dict(schema))
 
 
 def _adapt_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -135,19 +129,84 @@ def _adapt_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _compact_property(value: Any) -> dict[str, Any]:
-    if not isinstance(value, Mapping):
-        return {}
+def _structural_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     if "type" in value:
         result["type"] = value["type"]
-    if "enum" in value:
-        result["enum"] = list(value["enum"])
-    if not result and "anyOf" in value:
+    if "const" in value:
+        result["enum"] = [value["const"]]
+        result.setdefault("type", _json_type(value["const"]))
+    properties = value.get("properties")
+    if isinstance(properties, Mapping):
+        result["properties"] = {
+            str(name): (
+                _structural_mapping(child)
+                if isinstance(child, Mapping)
+                else {}
+            )
+            for name, child in properties.items()
+        }
+    required = value.get("required")
+    if isinstance(required, list):
+        result["required"] = list(required)
+    items = value.get("items")
+    if isinstance(items, Mapping):
+        result["items"] = _structural_mapping(items)
+    any_of = value.get("anyOf")
+    if isinstance(any_of, list):
         result["anyOf"] = [
-            _compact_property(item) for item in value["anyOf"]
+            _structural_mapping(item)
+            if isinstance(item, Mapping)
+            else {}
+            for item in any_of
         ]
     return result
+
+
+def _template_value(
+    schema: Mapping[str, Any],
+    *,
+    array_index: int = 0,
+) -> Any:
+    if "const" in schema:
+        return schema["const"]
+    enum = schema.get("enum")
+    if isinstance(enum, list) and enum:
+        return enum[array_index % len(enum)]
+    expected = schema.get("type")
+    expected_values = expected if isinstance(expected, list) else [expected]
+    if "null" in expected_values:
+        return None
+    if "object" in expected_values:
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        return {
+            str(name): _template_value(
+                properties[name],
+                array_index=array_index,
+            )
+            for name in required
+            if isinstance(properties, Mapping)
+            and isinstance(properties.get(name), Mapping)
+        }
+    if "array" in expected_values:
+        minimum = max(0, int(schema.get("minItems", 0)))
+        items = schema.get("items", {})
+        if not isinstance(items, Mapping):
+            return []
+        return [
+            _template_value(items, array_index=index)
+            for index in range(minimum)
+        ]
+    if "string" in expected_values:
+        return "待填写"
+    if "integer" in expected_values:
+        return int(schema.get("minimum", 0))
+    if "number" in expected_values:
+        return float(schema.get("minimum", 0.0))
+    if "boolean" in expected_values:
+        return False
+    return None
 
 
 def _schema_shape(value: Any, depth: int = 1) -> tuple[int, int]:

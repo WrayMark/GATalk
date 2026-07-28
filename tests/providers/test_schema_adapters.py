@@ -1,10 +1,13 @@
+import json
 from copy import deepcopy
 
+from scenelens.modules.visual_review.reviews import DeepArtDirectorReview
 from scenelens.modules.visual_review.reviews.base import load_review_schema
 from scenelens.providers.schema_adapters import (
-    gemini_compact_schema,
     gemini_compatible_schema,
     gemini_schema_profile,
+    gemini_structural_schema,
+    schema_output_template,
 )
 
 
@@ -62,22 +65,55 @@ def test_gemini_schema_adapter_preserves_measurement_constraints() -> None:
     }
 
 
-def test_deep_review_schema_uses_compact_gemini_wire_contract() -> None:
+def test_deep_review_schema_uses_structural_gemini_wire_contract() -> None:
     schema = load_review_schema("deep_art_director_review.schema.json")
 
     profile = gemini_schema_profile(schema)
-    compact = gemini_compact_schema(schema)
+    structural = gemini_structural_schema(schema)
 
-    assert profile.requires_compact_mode is True
+    assert profile.requires_structural_mode is True
     assert profile.byte_size > 4_096
-    assert compact["required"] == schema["required"]
-    assert set(compact["properties"]) == set(schema["properties"])
-    assert compact["properties"]["dimension_reviews"] == {
-        "type": "array"
-    }
-    assert compact["properties"]["schema_version"] == {
+    assert structural["required"] == schema["required"]
+    assert set(structural["properties"]) == set(schema["properties"])
+    target = structural["properties"]["target_readback"]
+    assert target["required"] == schema["properties"]["target_readback"][
+        "required"
+    ]
+    claims = structural["properties"]["findings"]["items"]["properties"][
+        "evidence_claims"
+    ]
+    assert claims["items"]["type"] == "object"
+    assert "enum" not in structural["properties"]["dimension_reviews"][
+        "items"
+    ]["properties"]["dimension_id"]
+    assert len(
+        json.dumps(
+            structural,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    ) < profile.byte_size
+    assert structural["properties"]["schema_version"] == {
         "type": "string",
         "enum": ["2.0"],
+    }
+
+
+def test_deep_review_prompt_template_is_locally_valid() -> None:
+    reviewer = DeepArtDirectorReview()
+
+    template = schema_output_template(reviewer.output_schema)
+    validated = reviewer.validate_output(template)
+
+    assert len(validated.output["dimension_reviews"]) == 8
+    assert validated.output["findings"] == []
+    assert set(validated.output["target_readback"]) == {
+        "production_stage",
+        "target_style",
+        "target_mood",
+        "primary_focus",
+        "protected_content",
+        "review_exclusions",
     }
 
 
@@ -89,4 +125,4 @@ def test_small_schema_keeps_full_gemini_wire_contract() -> None:
         "additionalProperties": False,
     }
 
-    assert gemini_schema_profile(schema).requires_compact_mode is False
+    assert gemini_schema_profile(schema).requires_structural_mode is False

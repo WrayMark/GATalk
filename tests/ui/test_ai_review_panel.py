@@ -1,3 +1,5 @@
+from PySide6.QtWidgets import QLabel
+
 from scenelens.analysis.evidence_validation import (
     EvidenceStatus,
     EvidenceValidation,
@@ -6,7 +8,11 @@ from scenelens.modules.visual_review.review_coordinator import (
     ReviewRunOutcome,
 )
 from scenelens.modules.visual_review.reviews import DeepArtDirectorReview
-from scenelens.modules.visual_review.ui.ai_review_panel import AIReviewPanel
+from scenelens.modules.visual_review.ui.ai_review_panel import (
+    AIReviewPanel,
+    DataDisclosureDialog,
+)
+from scenelens.providers.contracts import DataDisclosurePreview
 from scenelens.providers.manifests import load_provider_manifests
 from scenelens.providers.mock import _default_mock_output
 
@@ -26,6 +32,26 @@ def test_second_opinion_has_visible_extra_cost_warning(qtbot) -> None:
     panel.second_opinion_checkbox.setChecked(True)
     assert panel.second_provider_combo.isEnabled()
     assert panel.cost_warning.isVisibleTo(panel)
+
+
+def test_gemini_disclosure_warns_about_one_structure_repair_call(
+    qtbot,
+) -> None:
+    dialog = DataDisclosureDialog(
+        DataDisclosurePreview(
+            provider_id="google_gemini",
+            model_id="gemini-3.5-flash",
+            payload_fields=("creative_intent",),
+            images=(),
+        ),
+        second_opinion=False,
+    )
+    qtbot.addWidget(dialog)
+
+    labels = [item.text() for item in dialog.findChildren(QLabel)]
+
+    assert any("最多会自动执行一次结构纠错" in text for text in labels)
+    assert any("增加少量费用" in text for text in labels)
 
 
 def test_panel_displays_conflicts_instead_of_hiding_them(qtbot) -> None:

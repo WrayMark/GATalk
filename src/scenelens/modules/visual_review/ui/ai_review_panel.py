@@ -78,6 +78,14 @@ class DataDisclosureDialog(QDialog):
             cost = QLabel("第二意见已开启：会产生一次额外模型调用和费用。")
             cost.setStyleSheet("color: #E6B450; font-weight: 600;")
             layout.addWidget(cost)
+        if preview.provider_id == "google_gemini":
+            repair_notice = QLabel(
+                "Gemini 若首次返回的 JSON 结构不完整，SceneLens 最多会自动"
+                "执行一次结构纠错；可能再次发送同一审阅副本并增加少量费用。"
+            )
+            repair_notice.setWordWrap(True)
+            repair_notice.setStyleSheet("color: #E6B450;")
+            layout.addWidget(repair_notice)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel
             | QDialogButtonBox.StandardButton.Ok

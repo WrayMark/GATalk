@@ -4,6 +4,7 @@ import base64
 import json
 from typing import Any, Mapping
 
+from scenelens.core.schema_validation import validate_json_schema
 from scenelens.providers.contracts import (
     CancellationToken,
     ProviderCapability,
@@ -15,9 +16,10 @@ from scenelens.providers.contracts import (
     require_user_approval,
 )
 from scenelens.providers.schema_adapters import (
-    gemini_compact_schema,
     gemini_compatible_schema,
     gemini_schema_profile,
+    gemini_structural_schema,
+    schema_output_template,
 )
 from scenelens.providers.transport import (
     JsonTransport,
@@ -65,10 +67,21 @@ def _structured_schema_prompt(schema: Mapping[str, Any]) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
+    template = json.dumps(
+        schema_output_template(schema),
+        ensure_ascii=False,
+        sort_keys=False,
+        separators=(",", ":"),
+    )
     return (
         "SCENELENS_OUTPUT_JSON_SCHEMA="
         f"{serialized}\n"
-        "只返回一个符合该 Schema 的 JSON 对象，不要使用 Markdown 代码围栏。"
+        "SCENELENS_OUTPUT_JSON_TEMPLATE="
+        f"{template}\n"
+        "严格保留模板中的对象、数组和必填字段层级，把“待填写”替换为实际"
+        "内容。数组元素必须遵守 items 类型；evidence_claims 只能包含完整"
+        "对象，无法提供矩形、指标、阈值和可信度时必须返回空数组。"
+        "只返回一个符合 Schema 的 JSON 对象，不要使用 Markdown 代码围栏。"
     )
 
 
@@ -401,15 +414,15 @@ class GeminiVisionProvider:
         )
         if schema_mode == "auto":
             schema_mode = (
-                "compact"
+                "structural"
                 if gemini_schema_profile(
                     request.output_schema
-                ).requires_compact_mode
+                ).requires_structural_mode
                 else "full"
             )
-        if schema_mode not in {"full", "compact", "prompt"}:
+        if schema_mode not in {"full", "structural", "prompt"}:
             raise ValueError(f"Unknown Gemini schema mode: {schema_mode}")
-        if schema_mode in {"compact", "prompt"}:
+        if schema_mode in {"structural", "prompt"}:
             parts.append(
                 {
                     "text": _structured_schema_prompt(
@@ -427,8 +440,8 @@ class GeminiVisionProvider:
         }
         if schema_mode == "full":
             text_format["schema"] = compatible_schema
-        elif schema_mode == "compact":
-            text_format["schema"] = gemini_compact_schema(
+        elif schema_mode == "structural":
+            text_format["schema"] = gemini_structural_schema(
                 request.output_schema
             )
         generation_config: dict[str, Any] = {
@@ -462,6 +475,81 @@ class GeminiVisionProvider:
         credential: str,
         cancellation: CancellationToken,
     ) -> ProviderResponse:
+        wire, response = self._send_with_schema_fallback(
+            request,
+            credential,
+            cancellation,
+        )
+        output = self._parse_response_output(response)
+        first_usage = dict(response.get("usageMetadata", {}))
+        issues = validate_json_schema(output, request.output_schema)
+        repaired = False
+        if issues:
+            cancellation.raise_if_cancelled()
+            repair_request = VisionReviewRequest(
+                system_instruction=(
+                    "你是 JSON 结构纠错器。修复给定审阅结果，使其严格符合"
+                    "输出 Schema。保留原有美术观察、证据、优先级和建议语义；"
+                    "不得增加新的美术结论，不得虚构坐标或测量。缺少完整结构"
+                    "信息的 evidence_claims 必须返回空数组。只输出 JSON。"
+                ),
+                payload={
+                    "original_input": dict(request.payload),
+                    "invalid_output": dict(output),
+                    "schema_issues": [
+                        str(issue) for issue in issues
+                    ],
+                },
+                images=request.images,
+                output_schema=request.output_schema,
+                model_id=request.model_id,
+                user_initiated=request.user_initiated,
+                disclosure_confirmed=request.disclosure_confirmed,
+                timeout_seconds=request.timeout_seconds,
+                max_output_tokens=request.max_output_tokens,
+            )
+            wire, response = self._send_with_schema_fallback(
+                repair_request,
+                credential,
+                cancellation,
+            )
+            output = self._parse_response_output(response)
+            repaired = True
+            remaining = validate_json_schema(
+                output,
+                request.output_schema,
+            )
+            if remaining:
+                detail = " | ".join(
+                    str(issue) for issue in remaining[:12]
+                )
+                raise ProviderError(
+                    "AI 返回结构经过一次自动纠错后仍不完整。",
+                    code="invalid_structured_output_after_repair",
+                    retryable=False,
+                    technical_detail=detail,
+                )
+        usage = dict(response.get("usageMetadata", {}))
+        if repaired:
+            usage = {
+                "schemaRepairAttempted": True,
+                "initial": first_usage,
+                "repair": usage,
+            }
+        return ProviderResponse(
+            provider_id=self.manifest.provider_id,
+            model_id=str(wire.url.split("/models/", 1)[1].split(":", 1)[0]),
+            output=output,
+            request_id=None,
+            usage=usage,
+        )
+
+    def _send_with_schema_fallback(
+        self,
+        request: VisionReviewRequest,
+        credential: str,
+        cancellation: CancellationToken,
+    ) -> tuple[JsonTransportRequest, Mapping[str, Any]]:
         wire = self.build_request(request, credential)
         try:
             response = self.transport.send(wire, cancellation)
@@ -475,6 +563,12 @@ class GeminiVisionProvider:
                 schema_mode="prompt",
             )
             response = self.transport.send(wire, cancellation)
+        return wire, response
+
+    @staticmethod
+    def _parse_response_output(
+        response: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
         try:
             parts = response["candidates"][0]["content"]["parts"]
             text = next(part["text"] for part in parts if "text" in part)
@@ -484,13 +578,7 @@ class GeminiVisionProvider:
                 code="missing_output",
                 retryable=False,
             ) from exc
-        return ProviderResponse(
-            provider_id=self.manifest.provider_id,
-            model_id=str(wire.url.split("/models/", 1)[1].split(":", 1)[0]),
-            output=_parse_json_text(str(text)),
-            request_id=None,
-            usage=dict(response.get("usageMetadata", {})),
-        )
+        return _parse_json_text(str(text))
 
     def generate_structured(
         self,
