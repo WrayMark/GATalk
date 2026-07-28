@@ -33,11 +33,17 @@ class FunctionWorker(QRunnable):
         try:
             result = self.function()
         except Exception as exc:  # UI boundary: convert to a user-facing event.
+            message_factory = getattr(exc, "to_user_message", None)
+            message = (
+                str(message_factory())
+                if callable(message_factory)
+                else str(exc)
+            )
             self.signals.error.emit(
                 self.role,
                 self.kind,
                 self.generation,
-                str(exc),
+                message,
                 traceback.format_exc(),
             )
         else:
@@ -49,4 +55,3 @@ class FunctionWorker(QRunnable):
             )
         finally:
             self.signals.finished.emit(self.role, self.kind, self.generation)
-

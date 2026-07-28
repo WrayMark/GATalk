@@ -96,6 +96,8 @@ def test_openai_chat_provider_contract_is_offline_and_configurable(provider_id):
     assert wire.body["messages"][1]["content"][0]["image_url"][
         "url"
     ].startswith("data:image/png;base64,")
+    assert wire.body["response_format"] == {"type": "json_object"}
+    assert "JSON" in wire.body["messages"][0]["content"]
 
 
 @pytest.mark.parametrize("provider_id", ["openai", "xai_grok"])
@@ -155,10 +157,16 @@ def test_gemini_provider_contract_uses_inline_image_and_json_schema():
     wire = transport.requests[0]
     assert ":generateContent" in wire.url
     assert wire.headers["x-goog-api-key"] == "test-secret"
-    assert wire.body["contents"][0]["parts"][0]["inline_data"][
-        "mime_type"
+    assert wire.body["contents"][0]["parts"][0]["inlineData"][
+        "mimeType"
     ] == "image/png"
-    assert wire.body["generationConfig"]["responseJsonSchema"] == SCHEMA
+    assert wire.body["generationConfig"]["responseFormat"]["text"][
+        "schema"
+    ] == SCHEMA
+    assert wire.body["generationConfig"]["responseFormat"]["text"][
+        "mimeType"
+    ] == "APPLICATION_JSON"
+    assert "temperature" not in wire.body["generationConfig"]
 
 
 def test_provider_request_requires_user_disclosure_confirmation():
@@ -205,4 +213,3 @@ def test_default_registry_creation_is_offline_and_lists_image_edit_slots():
         "openai_image",
         "xai_imagine",
     } <= edit_ids
-

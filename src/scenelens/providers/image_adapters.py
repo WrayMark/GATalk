@@ -15,10 +15,12 @@ from scenelens.providers.contracts import (
     require_user_approval,
 )
 from scenelens.providers.transport import (
+    BinaryDownloadTransport,
     BinaryTransport,
     BinaryTransportRequest,
     JsonTransport,
     JsonTransportRequest,
+    UrllibBinaryDownloadTransport,
     UrllibBinaryTransport,
     UrllibJsonTransport,
 )
@@ -45,8 +47,8 @@ class GeminiImageEditProvider:
         )
         parts: list[dict[str, Any]] = [
             {
-                "inline_data": {
-                    "mime_type": image.media_type,
+                "inlineData": {
+                    "mimeType": image.media_type,
                     "data": base64.b64encode(image.data).decode("ascii"),
                 }
             }
@@ -126,9 +128,13 @@ class DashScopeImageEditProvider:
         self,
         manifest: ProviderManifest,
         transport: JsonTransport | None = None,
+        download_transport: BinaryDownloadTransport | None = None,
     ) -> None:
         self.manifest = manifest
         self.transport = transport or UrllibJsonTransport()
+        self.download_transport = (
+            download_transport or UrllibBinaryDownloadTransport()
+        )
 
     def build_request(
         self,
@@ -195,10 +201,15 @@ class DashScopeImageEditProvider:
                 for item in content
                 if item.get("b64_json") or item.get("image")
             )
-            data, media_type = _decode_image_value(str(image_value))
+            data, media_type = _resolve_image_value(
+                str(image_value),
+                self.download_transport,
+                cancellation,
+                timeout_seconds=request.timeout_seconds,
+            )
         except (KeyError, IndexError, StopIteration, TypeError, ValueError) as exc:
             raise ProviderError(
-                "万相响应缺少内嵌图片；远端 URL 输出需人工验证。",
+                "万相响应缺少可用图片。",
                 code="missing_image_output",
             ) from exc
         return ImageEditResponse(
@@ -215,9 +226,13 @@ class MultipartImageEditProvider:
         self,
         manifest: ProviderManifest,
         transport: BinaryTransport | None = None,
+        download_transport: BinaryDownloadTransport | None = None,
     ) -> None:
         self.manifest = manifest
         self.transport = transport or UrllibBinaryTransport()
+        self.download_transport = (
+            download_transport or UrllibBinaryDownloadTransport()
+        )
 
     def build_request(
         self,
@@ -255,11 +270,12 @@ class MultipartImageEditProvider:
                 ).encode("utf-8")
             )
         for index, image in enumerate(request.images):
+            extension = _extension_for_media_type(image.media_type)
             fields.append(
                 (
                     f"--{boundary}\r\n"
                     'Content-Disposition: form-data; name="image[]"; '
-                    f'filename="{index}-{image.role}.png"\r\n'
+                    f'filename="{index}-{image.role}.{extension}"\r\n'
                     f"Content-Type: {image.media_type}\r\n\r\n"
                 ).encode("utf-8")
                 + image.data
@@ -289,13 +305,22 @@ class MultipartImageEditProvider:
         response = self.transport.send(wire, cancellation)
         try:
             item: Mapping[str, Any] = response["data"][0]
-            value = item.get("b64_json") or item.get("image")
+            value = (
+                item.get("b64_json")
+                or item.get("image")
+                or item.get("url")
+            )
             if value is None:
                 raise ValueError("URL-only output")
-            data, media_type = _decode_image_value(str(value))
+            data, media_type = _resolve_image_value(
+                str(value),
+                self.download_transport,
+                cancellation,
+                timeout_seconds=request.timeout_seconds,
+            )
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise ProviderError(
-                "图像编辑响应缺少内嵌图片；URL-only 响应尚未自动下载。",
+                "图像编辑响应缺少可用图片。",
                 code="missing_image_output",
             ) from exc
         return ImageEditResponse(
@@ -310,18 +335,133 @@ class MultipartImageEditProvider:
         )
 
 
+class XAIImageEditProvider:
+    def __init__(
+        self,
+        manifest: ProviderManifest,
+        transport: JsonTransport | None = None,
+        download_transport: BinaryDownloadTransport | None = None,
+    ) -> None:
+        self.manifest = manifest
+        self.transport = transport or UrllibJsonTransport()
+        self.download_transport = (
+            download_transport or UrllibBinaryDownloadTransport()
+        )
+
+    def build_request(
+        self,
+        request: ImageEditRequest,
+        credential: str,
+    ) -> JsonTransportRequest:
+        require_user_approval(request)
+        if len(request.images) > 3:
+            raise ProviderError(
+                "Grok Imagine 一次最多接收三张输入图片。",
+                code="too_many_input_images",
+            )
+        prompt = json.dumps(
+            dict(request.instruction),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        images = [
+            {
+                "type": "image_url",
+                "url": (
+                    f"data:{image.media_type};base64,"
+                    + base64.b64encode(image.data).decode("ascii")
+                ),
+            }
+            for image in request.images
+        ]
+        body: dict[str, Any] = {
+            "model": self.manifest.model_for(
+                ProviderCapability.IMAGE_EDIT,
+                request.model_id,
+            ),
+            "prompt": prompt,
+        }
+        if len(images) == 1:
+            body["image"] = images[0]
+        else:
+            body["images"] = images
+        endpoint = str(
+            self.manifest.options.get("endpoint", "/images/edits")
+        )
+        return JsonTransportRequest(
+            url=f"{self.manifest.base_url}{endpoint}",
+            headers={
+                "Authorization": f"Bearer {credential}",
+                "Content-Type": "application/json",
+            },
+            body=body,
+            timeout_seconds=request.timeout_seconds,
+        )
+
+    def edit_image(
+        self,
+        request: ImageEditRequest,
+        credential: str,
+        cancellation: CancellationToken,
+    ) -> ImageEditResponse:
+        wire = self.build_request(request, credential)
+        response = self.transport.send(wire, cancellation)
+        try:
+            item: Mapping[str, Any] = response["data"][0]
+            value = item.get("b64_json") or item.get("image") or item.get("url")
+            if value is None:
+                raise ValueError("missing image output")
+            data, media_type = _resolve_image_value(
+                str(value),
+                self.download_transport,
+                cancellation,
+                timeout_seconds=request.timeout_seconds,
+            )
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            raise ProviderError(
+                "Grok Imagine 响应缺少可用图片。",
+                code="missing_image_output",
+            ) from exc
+        return ImageEditResponse(
+            self.manifest.provider_id,
+            str(wire.body["model"]),
+            media_type,
+            data,
+            {
+                "usage": dict(response.get("usage", {})),
+                "revised_prompt": item.get("revised_prompt"),
+            },
+        )
+
+
 def create_image_edit_provider(
     manifest: ProviderManifest,
     *,
     json_transport: JsonTransport | None = None,
     binary_transport: BinaryTransport | None = None,
+    download_transport: BinaryDownloadTransport | None = None,
 ):
     if manifest.api_style == "gemini_image_edit":
         return GeminiImageEditProvider(manifest, json_transport)
     if manifest.api_style == "dashscope_image_edit":
-        return DashScopeImageEditProvider(manifest, json_transport)
+        return DashScopeImageEditProvider(
+            manifest,
+            json_transport,
+            download_transport,
+        )
     if manifest.api_style == "multipart_image_edit":
-        return MultipartImageEditProvider(manifest, binary_transport)
+        return MultipartImageEditProvider(
+            manifest,
+            binary_transport,
+            download_transport,
+        )
+    if manifest.api_style == "xai_image_edit":
+        return XAIImageEditProvider(
+            manifest,
+            json_transport,
+            download_transport,
+        )
     raise ValueError(
         f"Provider {manifest.provider_id} does not expose image edit."
     )
@@ -336,3 +476,29 @@ def _decode_image_value(value: str) -> tuple[bytes, str]:
     if value.startswith("http://") or value.startswith("https://"):
         raise ValueError("remote URL is not embedded image data")
     return base64.b64decode(encoded, validate=True), media_type
+
+
+def _resolve_image_value(
+    value: str,
+    download_transport: BinaryDownloadTransport,
+    cancellation: CancellationToken,
+    *,
+    timeout_seconds: float,
+) -> tuple[bytes, str]:
+    if value.startswith("http://") or value.startswith("https://"):
+        downloaded = download_transport.download(
+            value,
+            cancellation,
+            timeout_seconds=timeout_seconds,
+            max_bytes=50 * 1024 * 1024,
+        )
+        return downloaded.data, downloaded.media_type
+    return _decode_image_value(value)
+
+
+def _extension_for_media_type(media_type: str) -> str:
+    return {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+    }.get(media_type.lower(), "bin")

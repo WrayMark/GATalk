@@ -181,7 +181,10 @@ def build() -> None:
     metadata = document.add_paragraph()
     metadata.paragraph_format.space_after = Pt(14)
     set_font(
-        metadata.add_run("适用版本：0.4.0a0（M3 候选）　更新日期：2026-07-19"),
+        metadata.add_run(
+            "适用版本：0.4.0a0（M3 候选，Gemini 接口修正版）"
+            "　更新日期：2026-07-28"
+        ),
         size=9.5,
         color=MUTED,
     )
@@ -191,7 +194,11 @@ def build() -> None:
     )
 
     add_heading(document, "1. 启动")
-    add_list_item(document, "试用版：打开 dist/SceneLens/SceneLens.exe。", bullet_id)
+    add_list_item(
+        document,
+        "试用版：打开本次候选目录中的 SceneLens/SceneLens.exe，不要继续使用旧候选。",
+        bullet_id,
+    )
     add_list_item(document, "开发版：双击 start_dev.cmd。", bullet_id)
     add_list_item(
         document,
@@ -279,6 +286,22 @@ def build() -> None:
     ):
         add_list_item(document, text, decimal_id)
     add_body(document, "“第二意见”会增加一次模型调用和费用，默认关闭。")
+    add_heading(document, "AI 接口失败时", 2)
+    for text in (
+        "http_400：请求参数或模型不兼容；先恢复供应商默认模型后重试。",
+        "若错误包含 generation_config.response_format.text.mime_type，说明仍在运行旧版；关闭旧程序后改用本次 Gemini 接口修正版。",
+        "http_401：Key 错误、过期或不属于该供应商。",
+        "http_403：检查模型权限、服务开通、地域和 Key 所属工作区。",
+        "http_404：模型 ID 或接口不存在；改回默认模型。",
+        "http_413：降低发送分辨率后重试。",
+        "http_429：额度不足或调用过快，检查控制台后稍后重试。",
+        "http_5xx：供应商服务异常，稍后重试。",
+    ):
+        add_list_item(document, text, bullet_id)
+    add_body(
+        document,
+        "错误窗口会显示供应商返回的脱敏原因。不要把 API Key 截图或复制给他人。",
+    )
 
     add_heading(document, "8. 优化实验室")
     add_heading(document, "目标匹配画像", 2)

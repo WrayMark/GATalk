@@ -420,3 +420,35 @@
   响应；URL-only 输出暂不自动下载，避免未经重新确认的第二次网络取回。
 - 后果：所有网络发送继续经过主动触发、发送清单、系统凭据、后台取消/重试和
   脱敏 AIRun。真实 Key、模型可用性、计费和响应字段需逐供应商人工验证。
+
+## D-044 Provider 兼容 Schema、错误诊断与结果下载
+
+- 状态：Accepted
+- 日期：2026-07-19
+- 决策：本地审阅 Schema 是领域数据真相；供应商只接收由适配器生成的兼容
+  Schema。Gemini 适配器移除其不支持的关键字并把 `const` 转成单值
+  `enum`，响应返回后仍使用完整本地 Schema 验证，不降低 SceneLens 数据要求。
+- 决策：公共 HTTP 层读取有界错误正文，提取并脱敏 status、code、type 和
+  message。界面显示 HTTP 分类、内部错误代码和供应商原因，不显示 API Key、
+  Authorization、图片字节或完整请求正文。
+- 决策：D-043 中“URL-only 输出不下载”的限制由本决策替代。用户确认并主动
+  发起图像编辑后，同一后台任务可以下载供应商返回的 HTTPS 结果 URL；只接受
+  图片媒体类型，最大 50 MiB，不携带 API Key 到结果 URL。
+- 决策：xAI 图像编辑使用 JSON；OpenAI 图像编辑使用 multipart；万相和
+  Gemini 使用各自原生 JSON。不得仅因端点路径相似而共享错误的传输格式。
+- 后果：真实 Key 仍不进入自动测试。离线契约测试证明请求结构、错误脱敏和
+  响应解析；账号权限、区域、配额、计费和真实服务响应继续列为人工联网验收。
+
+## D-045 Gemini generateContent MIME 枚举兼容
+
+- 状态：Accepted
+- 日期：2026-07-28
+- 决策：Gemini `generateContent` 的新 `responseFormat.text.mimeType` 按
+  `TextResponseFormat.MimeType` 发送 `APPLICATION_JSON`，不发送旧式
+  MIME 字符串 `application/json`。独立图片输入的 `inlineData.mimeType`
+  仍使用 `image/png` 等真实媒体类型。
+- 依据：真实 v1beta 请求返回 `INVALID_ARGUMENT`，明确指出
+  `generation_config.response_format.text.mime_type` 的枚举值无效；官方
+  API 参考同时列出 `APPLICATION_JSON` 枚举。
+- 后果：Provider 契约测试必须精确断言该字段，避免只验证 Schema 而漏掉
+  线上的枚举兼容问题。

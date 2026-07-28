@@ -6,6 +6,8 @@ __pycache__/
 htmlcov/
 build/
 dist/
+build-*/
+dist-*/
 *-smoke.png
 *.egg-info/
 *.log

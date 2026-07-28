@@ -20,10 +20,10 @@
 
 | Provider | 请求风格 | 默认模型来源 | 当前完成度 |
 |---|---|---|---|
-| 阿里云百炼 | OpenAI-compatible Chat | Manifest | 请求构造、Base64 图像、解析、Mock 契约完成 |
-| SiliconFlow | OpenAI-compatible Chat | Manifest | 请求构造、Base64 图像、解析、Mock 契约完成 |
+| 阿里云百炼 | OpenAI-compatible Chat | Manifest | Base64 图像、JSON 对象模式、解析、Mock 契约完成 |
+| SiliconFlow | OpenAI-compatible Chat | Manifest | Base64 图像、JSON 对象模式、解析、Mock 契约完成 |
 | OpenAI | Responses | Manifest | 图像输入、严格 JSON Schema 请求、解析、Mock 契约完成 |
-| Google Gemini | `generateContent` | Manifest | inline image、JSON Schema 请求、解析、Mock 契约完成 |
+| Google Gemini | `generateContent` | Manifest | inline image、`responseFormat`、兼容 Schema、解析、Mock 契约完成 |
 | xAI Grok | Responses | Manifest | 图像输入、严格 JSON Schema 请求、解析、Mock 契约完成 |
 
 公开协议核查依据：
@@ -45,11 +45,13 @@ M2 已注册以下 `ImageEditProvider` 位置：
 
 - 阿里云万相：初始 Manifest 使用 `wan2.7-image-pro`
 - Gemini / Nano Banana：`gemini-3.1-flash-image`
-- OpenAI GPT Image：`gpt-image-1`
+- OpenAI GPT Image：`gpt-image-2`
 - Grok Imagine：`grok-imagine-image-quality`
 
-同时提供完全离线的 `MockProvider`。真实图像编辑传输、异步结果获取和生成物
-落盘放在 M3；M2 的非 Mock 位置会明确返回“尚未启用”，不会假装成功。
+M3 已完成真实请求构造：万相和 Gemini 使用原生 JSON，OpenAI 使用
+multipart，Grok Imagine 使用 JSON。供应商返回 HTTPS 结果 URL 时，由同一
+用户主动触发任务在后台安全下载；只接受图片媒体类型并限制最大 50 MiB。
+同时保留完全离线的 `MockProvider`。
 
 参考：
 
@@ -67,14 +69,15 @@ M2 已注册以下 `ImageEditProvider` 位置：
 - 项目、SQLite、JSON 和日志不保存 API Key；`AIRun` 输入清单拒绝常见凭据字段。
 - 后台执行支持协作取消、请求超时、有限指数退避和错误脱敏。底层同步 HTTP
   已发出后不能保证立即中断 socket，但取消后的结果不会被接受。
+- HTTP 错误会显示脱敏后的状态和供应商原因；不保存 Key、请求正文或图片字节。
 
 ## 5. 未验证项
 
 - 未使用任何真实 API Key，未验证供应商账户、余额、地区路由、当前模型开通
   状态、计费或实际响应 Schema。
-- 百炼和 SiliconFlow 的严格 JSON Schema 服务端能力可能随具体模型不同；
-  SceneLens 仍必须对返回结果做本地 Schema 校验，不把提示词约束当作保证。
+- 百炼和 SiliconFlow 当前使用 JSON 对象模式，不声称服务端保证完整
+  SceneLens Schema；返回结果仍由本地完整 Schema 验证。
+- Gemini 只接收兼容子集，返回结果仍由本地完整 Schema 验证。
 - Windows Credential Manager 已完成接口和非破坏性测试，但尚未使用真实用户
   Key 做写入/读取/删除人工烟测。
 - 真实联网测试默认关闭，以上项目列入 M2 人工联网验收，不阻塞离线功能。
-

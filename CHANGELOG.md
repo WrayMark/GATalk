@@ -4,6 +4,11 @@
 
 ### Added
 
+- 增加供应商 HTTP 错误状态和脱敏原因显示，区分参数、认证、权限、模型、
+  请求大小、额度和服务端错误。
+- 增加 Gemini JSON Schema 兼容转换、万相/OpenAI/Grok 远程结果图片安全
+  下载，以及对应离线契约测试。
+- 增加 `docs/PROVIDER_COMPATIBILITY_AUDIT_2026-07-19.md` 兼容性审计记录。
 - 增加随每次用户可见更新同步维护的 `SceneLens_使用手册.docx` 纯文字简明
   Word 使用手册及可重复生成脚本。
 - 增加 M3“优化实验室”页签，集中呈现目标匹配画像、本地安全调色与
@@ -58,6 +63,13 @@
 
 ### Changed
 
+- Gemini `generateContent` 的 `responseFormat.text.mimeType` 改用服务端要求的
+  `APPLICATION_JSON` 枚举值；此前的 `application/json` 会被 v1beta 端点以
+  `INVALID_ARGUMENT` 拒绝。
+- Gemini 视觉审阅改用当前 `responseFormat`，不再向 Gemini 发送不支持的
+  Schema 关键字或强制低温度；百炼和 SiliconFlow 明确启用 JSON 对象模式。
+- Grok Imagine 图像编辑改用 JSON 请求；OpenAI 图像默认模型更新为
+  `gpt-image-2`。
 - 项目版本进入 `0.4.0a0`；M3 形成第二个重大外部试用候选。
 - M2 注册的四类图像编辑能力位置在 M3 获得请求适配实现；真实 Key、区域开通、
   计费和供应商响应仍不属于默认自动测试。
@@ -73,6 +85,15 @@
 
 ### Validation
 
+- Gemini MIME 枚举回归测试与完整离线回归共 149 项通过。
+- Gemini 接口修复候选 `dist-gemini-fix/SceneLens/` 构建成功，包含简明
+  Word 使用手册；目录总大小 266,520,924 bytes（约 254.2 MiB），包内
+  `--smoke-test` 退出码为 0。
+- Provider 兼容修复完整回归 149 项通过；新增测试全部离线且不读取真实 Key。
+- Provider 兼容修复 Windows 候选 `onedir` 构建成功，目录总大小
+  266,480,131 bytes（约 254.1 MiB）；包内离线烟测退出码为 0。旧
+  `dist/SceneLens/SceneLens.exe` 被运行中进程占用，因此候选输出到
+  `dist-provider-fix/SceneLens/`。
 - M3 候选完整回归 145 项通过；默认测试完全离线，包含 Mock
   `AIConceptPreview` 端到端隔离和不新增 Version 的 UI 测试。
 - M3 Windows `onedir` 构建成功，目录总大小 266,472,228 bytes（约

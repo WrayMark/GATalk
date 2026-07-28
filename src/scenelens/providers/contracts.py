@@ -190,6 +190,13 @@ class ProviderError(RuntimeError):
         self.retryable = retryable
         self.technical_detail = technical_detail
 
+    def to_user_message(self) -> str:
+        lines = [self.public_message, f"错误代码：{self.code}"]
+        detail = self.technical_detail.strip()
+        if detail:
+            lines.append(f"服务返回：{detail}")
+        return "\n".join(lines)
+
 
 class ProviderCancelledError(ProviderError):
     def __init__(self) -> None:
@@ -278,4 +285,3 @@ def require_user_approval(
             code="disclosure_not_confirmed",
             retryable=False,
         )
-

@@ -29,7 +29,7 @@
       "credential_target": "SceneLens/provider/aliyun_bailian",
       "optional": true,
       "mainland_priority": 10,
-      "options": {"json_schema_mode": false}
+      "options": {"structured_output_mode": "json_object"}
     },
     {
       "provider_id": "siliconflow",
@@ -44,7 +44,7 @@
       "credential_target": "SceneLens/provider/siliconflow",
       "optional": true,
       "mainland_priority": 20,
-      "options": {"json_schema_mode": false}
+      "options": {"structured_output_mode": "json_object"}
     },
     {
       "provider_id": "openai",
@@ -119,7 +119,7 @@
       "api_style": "multipart_image_edit",
       "base_url": "https://api.openai.com/v1",
       "capabilities": ["image_edit"],
-      "default_models": {"image_edit": "gpt-image-1"},
+      "default_models": {"image_edit": "gpt-image-2"},
       "credential_target": "SceneLens/provider/openai",
       "optional": true,
       "mainland_priority": 80,
@@ -128,7 +128,7 @@
     {
       "provider_id": "xai_imagine",
       "display_name": "Grok Imagine",
-      "api_style": "multipart_image_edit",
+      "api_style": "xai_image_edit",
       "base_url": "https://api.x.ai/v1",
       "capabilities": ["image_edit"],
       "default_models": {"image_edit": "grok-imagine-image-quality"},

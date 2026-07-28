@@ -14,6 +14,7 @@ from scenelens.providers.contracts import (
     VisionReviewRequest,
     require_user_approval,
 )
+from scenelens.providers.schema_adapters import gemini_compatible_schema
 from scenelens.providers.transport import (
     JsonTransport,
     JsonTransportRequest,
@@ -107,15 +108,29 @@ class OpenAICompatibleChatProvider:
                 "text": request.canonical_payload(),
             }
         )
+        structured_output_mode = str(
+            self.manifest.options.get("structured_output_mode", "")
+        )
+        if (
+            not structured_output_mode
+            and bool(self.manifest.options.get("json_schema_mode", False))
+        ):
+            structured_output_mode = "json_schema"
+        system_instruction = request.system_instruction
+        if structured_output_mode == "json_object":
+            system_instruction = (
+                f"{system_instruction}\nReturn JSON only and do not wrap it "
+                "in Markdown."
+            )
         body: dict[str, Any] = {
             "model": model,
             "messages": [
-                {"role": "system", "content": request.system_instruction},
+                {"role": "system", "content": system_instruction},
                 {"role": "user", "content": content},
             ],
             "temperature": 0.2,
         }
-        if bool(self.manifest.options.get("json_schema_mode", False)):
+        if structured_output_mode == "json_schema":
             body["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
@@ -124,6 +139,8 @@ class OpenAICompatibleChatProvider:
                     "schema": dict(request.output_schema),
                 },
             }
+        elif structured_output_mode == "json_object":
+            body["response_format"] = {"type": "json_object"}
         return JsonTransportRequest(
             url=f"{self.manifest.base_url}/chat/completions",
             headers={
@@ -297,8 +314,8 @@ class GeminiVisionProvider:
         )
         parts: list[dict[str, Any]] = [
             {
-                "inline_data": {
-                    "mime_type": image.media_type,
+                "inlineData": {
+                    "mimeType": image.media_type,
                     "data": base64.b64encode(image.data).decode("ascii"),
                 }
             }
@@ -319,9 +336,19 @@ class GeminiVisionProvider:
                 },
                 "contents": [{"role": "user", "parts": parts}],
                 "generationConfig": {
-                    "temperature": 0.2,
-                    "responseMimeType": "application/json",
-                    "responseJsonSchema": dict(request.output_schema),
+                    "responseFormat": {
+                        "text": {
+                            # generateContent exposes this field as the
+                            # TextResponseFormat.MimeType enum.  The REST
+                            # documentation also shows the MIME spelling in
+                            # some examples, but the v1beta endpoint rejects
+                            # it and accepts the enum wire value.
+                            "mimeType": "APPLICATION_JSON",
+                            "schema": gemini_compatible_schema(
+                                request.output_schema
+                            ),
+                        }
+                    },
                 },
             },
             timeout_seconds=request.timeout_seconds,
