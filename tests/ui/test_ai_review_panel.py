@@ -148,6 +148,32 @@ def test_panel_presents_eight_dimensions_actions_and_local_conflict(
     assert panel.findings_tree.topLevelItem(0).text(4) == "存在冲突"
 
 
+def test_panel_displays_safe_cross_reference_repairs(qtbot) -> None:
+    panel = AIReviewPanel(load_provider_manifests())
+    qtbot.addWidget(panel)
+    outcome = ReviewRunOutcome(
+        reviewer_id="deep_art_director_review",
+        provider_id="mock",
+        model_id="mock",
+        output=_default_mock_output(DeepArtDirectorReview().output_schema),
+        component_validations=(),
+        merged_findings=(),
+        normalization_warnings=(
+            "审阅维度 3 引用了不存在的问题 ID：find_missing；"
+            "已取消无效链接，正文未改动。",
+        ),
+    )
+
+    panel.show_outcome(outcome)
+
+    values = [
+        panel.validation_list.item(index).text()
+        for index in range(panel.validation_list.count())
+    ]
+    assert any("结构修复：" in value for value in values)
+    assert any("find_missing" in value for value in values)
+
+
 def test_panel_emits_selected_lighting_scheme_annotations(qtbot) -> None:
     panel = AIReviewPanel(load_provider_manifests())
     qtbot.addWidget(panel)

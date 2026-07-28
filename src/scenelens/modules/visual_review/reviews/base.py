@@ -68,3 +68,11 @@ class StructuredVisionReviewer:
             reviewer_id=self.descriptor.reviewer_id,
             output=dict(output),
         )
+
+    def normalize_output(
+        self,
+        output: Mapping[str, Any],
+    ) -> tuple[Mapping[str, Any], tuple[str, ...]]:
+        """Apply safe, reviewer-specific technical normalization."""
+
+        return dict(output), ()

@@ -48,6 +48,7 @@ class ReviewRunOutcome:
     merged_findings: tuple[MergedFinding, ...]
     second_opinion_provider_id: str | None = None
     omissions: tuple[str, ...] = ()
+    normalization_warnings: tuple[str, ...] = ()
 
 
 class ReviewCoordinator:
@@ -87,7 +88,10 @@ class ReviewCoordinator:
             credentials.get(options.provider_id, ""),
             cancellation,
         )
-        validated = reviewer.validate_output(primary.output)
+        normalized_output, normalization_warnings = (
+            reviewer.normalize_output(primary.output)
+        )
+        validated = reviewer.validate_output(normalized_output)
         component_validations = (
             validate_lighting_components(
                 validated.output,
@@ -172,6 +176,7 @@ class ReviewCoordinator:
             merged_findings=merged,
             second_opinion_provider_id=second_provider_id,
             omissions=omissions,
+            normalization_warnings=normalization_warnings,
         )
 
     def close(self) -> None:

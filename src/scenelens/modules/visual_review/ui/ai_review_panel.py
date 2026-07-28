@@ -510,6 +510,8 @@ class AIReviewPanel(QWidget):
             )
         for omission in outcome.omissions:
             self.validation_list.addItem(f"第二意见遗漏提示：{omission}")
+        for warning in outcome.normalization_warnings:
+            self.validation_list.addItem(f"结构修复：{warning}")
 
         self.action_plan_list.clear()
         for action in sorted(

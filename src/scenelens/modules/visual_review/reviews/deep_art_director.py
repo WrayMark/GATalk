@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+
 from scenelens.core.schema_validation import (
     SchemaIssue,
     SchemaValidationError,
@@ -41,13 +43,16 @@ class DeepArtDirectorReview(StructuredVisionReviewer):
         "写出画面依据和不确定性。保留当前有效优点，最多提炼五个跨维度核心"
         "问题，并给出有依赖顺序的 UE 执行动作和下一版本验证方法。需要本地像素"
         "复核的结论必须填写 evidence_claims；若没有合适的可测指标则留空，"
-        "不能伪造阈值。不得输出总分。只输出符合给定 JSON Schema 的 JSON。"
+        "不能伪造阈值。dimension_reviews.linked_finding_ids 和 "
+        "action_plan.finding_ids 只能引用本次 findings 中真实存在的 "
+        "finding_id；没有对应问题时必须使用空数组。不得输出总分。只输出符合"
+        "给定 JSON Schema 的 JSON。"
     )
     descriptor = ReviewerDescriptor(
         module_id="scenelens.visual_review",
         reviewer_id="deep_art_director_review",
         display_name="深度主美审阅（八维）",
-        version="2.0.0",
+        version="2.0.1",
         supported_inputs=(
             "creative_intent",
             "reference_visual_brief",
@@ -65,6 +70,39 @@ class DeepArtDirectorReview(StructuredVisionReviewer):
             "deep_art_director_review.schema.json"
         ),
     )
+
+    def normalize_output(
+        self,
+        output,
+    ) -> tuple[dict, tuple[str, ...]]:
+        """Drop only dangling finding links without guessing replacements."""
+
+        generic = StructuredVisionReviewer.validate_output(self, output)
+        normalized = copy.deepcopy(dict(generic.output))
+        known_findings = {
+            str(item["finding_id"]) for item in normalized["findings"]
+        }
+        warnings: list[str] = []
+        link_groups = (
+            ("dimension_reviews", "linked_finding_ids", "审阅维度"),
+            ("action_plan", "finding_ids", "执行动作"),
+        )
+        for group_name, field_name, label in link_groups:
+            for index, item in enumerate(normalized[group_name]):
+                values = [str(value) for value in item[field_name]]
+                unknown = [
+                    value for value in values if value not in known_findings
+                ]
+                if not unknown:
+                    continue
+                item[field_name] = [
+                    value for value in values if value in known_findings
+                ]
+                warnings.append(
+                    f"{label} {index + 1} 引用了不存在的问题 ID："
+                    f"{'、'.join(unknown)}；已取消无效链接，正文未改动。"
+                )
+        return normalized, tuple(warnings)
 
     def validate_output(self, output) -> ValidatedReview:
         validated = super().validate_output(output)

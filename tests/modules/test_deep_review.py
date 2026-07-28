@@ -21,6 +21,7 @@ from scenelens.providers.contracts import (
 )
 from scenelens.providers.mock import MockProvider, _default_mock_output
 from scenelens.providers.registry import ProviderRegistry
+from scenelens.providers.schema_adapters import schema_output_template
 
 
 def _context() -> ReviewContext:
@@ -156,4 +157,61 @@ def test_deep_review_claim_conflict_is_retained_and_confidence_downgraded() -> N
     assert validation.status.value == "conflict"
     assert validation.adjusted_confidence < 0.9
     assert outcome.output["findings"][0]["observation"] == "当前画面整体偏暗。"
+    coordinator.close()
+
+
+def test_deep_review_drops_only_dangling_finding_links() -> None:
+    reviewer = DeepArtDirectorReview()
+    output = copy.deepcopy(_default_mock_output(reviewer.output_schema))
+    finding = schema_output_template(
+        reviewer.output_schema["properties"]["findings"]["items"]
+    )
+    finding["finding_id"] = "find-real"
+    finding["dimension_ids"] = ["composition"]
+    finding["evidence_claims"] = []
+    output["findings"] = [finding]
+    output["dimension_reviews"][0]["linked_finding_ids"] = [
+        "find-real",
+        "find_smoke_particle",
+    ]
+    output["dimension_reviews"][3]["linked_finding_ids"] = [
+        "find_skybox_color"
+    ]
+    action = schema_output_template(
+        reviewer.output_schema["properties"]["action_plan"]["items"]
+    )
+    action["order"] = 1
+    action["finding_ids"] = ["find-real", "find_action_missing"]
+    output["action_plan"] = [action]
+    registry = ProviderRegistry()
+    registry.register(MockProvider(output=output))
+    coordinator = ReviewCoordinator(
+        registry,
+        {"deep_art_director_review": reviewer},
+    )
+    image = np.full((16, 16, 3), 100, dtype=np.uint8)
+
+    outcome = coordinator.run(
+        options=ReviewRunOptions("deep_art_director_review", "mock"),
+        context=_context(),
+        images=_images(),
+        current_rgb=image,
+        reference_rgb=image,
+        credentials={},
+        cancellation=CancellationToken(),
+    )
+
+    assert output["dimension_reviews"][0]["linked_finding_ids"] == [
+        "find-real",
+        "find_smoke_particle",
+    ]
+    assert outcome.output["dimension_reviews"][0]["linked_finding_ids"] == [
+        "find-real"
+    ]
+    assert outcome.output["dimension_reviews"][3]["linked_finding_ids"] == []
+    assert outcome.output["action_plan"][0]["finding_ids"] == ["find-real"]
+    assert len(outcome.normalization_warnings) == 3
+    assert "find_smoke_particle" in outcome.normalization_warnings[0]
+    assert "find_skybox_color" in outcome.normalization_warnings[1]
+    assert "find_action_missing" in outcome.normalization_warnings[2]
     coordinator.close()
