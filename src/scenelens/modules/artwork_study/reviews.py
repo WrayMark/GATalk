@@ -162,7 +162,7 @@ def load_artwork_study_schema() -> Mapping[str, Any]:
 
 
 class ArtworkMasterStudyReview:
-    max_output_tokens = 16000
+    max_output_tokens = 32768
     system_instruction = (
         "你是一位严谨、博学、善于教学的资深 CG 主美与视觉开发导师。"
         "你的任务是带一位有专业基础的美术从业者逐层研究单张作品，而不是"
@@ -180,6 +180,9 @@ class ArtworkMasterStudyReview:
         "评价要说明何种目标下有效、代价是什么，不使用总分。语言面向美术"
         "从业者，可以准确使用专业术语，但每个关键术语要由画面证据解释。"
         "复刻与制作步骤只占很低比例；transferable_principles 侧重学习规律。"
+        "深度来自证据和关系，不来自冗长重复：每个维度的单个文字字段控制在"
+        "180 个简体中文字符以内；证据、关系和学习点每项控制在 100 字以内；"
+        "避免同一观察在多个字段重复。"
         "【语言硬性要求】除 JSON 键名、固定 ID、枚举值、十六进制颜色、数值和"
         "Oklab、CG、UE5、P10 等必要技术标识外，所有可见自然语言字段必须使用"
         "中国大陆通行的简体中文。不得输出英文句子、英文段落或繁体中文。"
@@ -190,7 +193,7 @@ class ArtworkMasterStudyReview:
         module_id=MODULE_ID,
         reviewer_id="artwork_master_study",
         display_name="CG 主美作品深度研究",
-        version="1.1.0",
+        version="1.2.0",
         supported_inputs=(
             "single_artwork_image",
             "study_goal",

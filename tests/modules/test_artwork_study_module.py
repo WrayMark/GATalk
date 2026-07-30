@@ -78,6 +78,8 @@ def test_artwork_reviewer_mock_covers_twelve_dimensions_and_validates_schema():
         user_initiated=True,
         disclosure_confirmed=True,
     )
+    assert request.max_output_tokens == 32768
+    assert "180 个简体中文字符" in request.system_instruction
     response = MockProvider().review(request, "", CancellationToken())
     output = reviewer.validate_output(response.output)
 

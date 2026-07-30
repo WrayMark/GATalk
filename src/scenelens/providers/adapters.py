@@ -506,6 +506,9 @@ class GeminiVisionProvider:
         repaired = False
         if repair_issues:
             cancellation.raise_if_cancelled()
+            repair_max_output_tokens = request.max_output_tokens
+            if finish_reason == "MAX_TOKENS":
+                repair_max_output_tokens = 65536
             repair_request = VisionReviewRequest(
                 system_instruction=(
                     "你是 JSON 语法与结构纠错器。修复给定审阅结果，使其成为"
@@ -529,7 +532,7 @@ class GeminiVisionProvider:
                 user_initiated=request.user_initiated,
                 disclosure_confirmed=request.disclosure_confirmed,
                 timeout_seconds=request.timeout_seconds,
-                max_output_tokens=request.max_output_tokens,
+                max_output_tokens=repair_max_output_tokens,
             )
             wire, response = self._send_with_schema_fallback(
                 repair_request,

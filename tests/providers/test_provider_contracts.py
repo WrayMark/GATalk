@@ -374,6 +374,12 @@ def test_gemini_repairs_invalid_json_from_exact_report_location_once():
     assert "line=461,column=17" in repair_payload
     assert "MAX_TOKENS" in repair_payload
     assert "invalid_output" in repair_payload
+    assert (
+        transport.requests[1].body["generationConfig"][
+            "maxOutputTokens"
+        ]
+        == 65536
+    )
 
 
 def test_gemini_joins_multiple_text_parts_before_parsing():
