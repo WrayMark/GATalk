@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SceneLens Artwork Master Study",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "reviewer_id",
+    "reading_scope",
+    "executive_thesis",
+    "dimension_studies",
+    "causal_chains",
+    "scene_breakdown",
+    "strengths",
+    "limitations",
+    "annotations",
+    "transferable_principles",
+    "study_questions",
+    "confidence_notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "reviewer_id": {"const": "artwork_master_study"},
+    "reading_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["visible_content", "assumed_context", "viewing_strategy", "uncertainties"],
+      "properties": {
+        "visible_content": {"type": "string", "minLength": 1},
+        "assumed_context": {"type": "string"},
+        "viewing_strategy": {"type": "string", "minLength": 1},
+        "uncertainties": {"type": "array", "maxItems": 8, "items": {"type": "string"}}
+      }
+    },
+    "executive_thesis": {"type": "string", "minLength": 1},
+    "dimension_studies": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "dimension_id",
+          "observation",
+          "visual_evidence",
+          "measurement_evidence",
+          "interpretation",
+          "effect_on_viewer",
+          "evaluation_status",
+          "evaluation",
+          "relationships",
+          "learning_points",
+          "confidence",
+          "uncertainty"
+        ],
+        "properties": {
+          "dimension_id": {
+            "type": "string",
+            "enum": [
+              "composition",
+              "visual_hierarchy",
+              "value_structure",
+              "colour_design",
+              "lighting",
+              "spatial_depth",
+              "shape_language",
+              "edge_detail_control",
+              "material_surface",
+              "environment_storytelling",
+              "style_technique",
+              "emotional_impact"
+            ]
+          },
+          "observation": {"type": "string", "minLength": 1},
+          "visual_evidence": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "measurement_evidence": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "interpretation": {"type": "string", "minLength": 1},
+          "effect_on_viewer": {"type": "string", "minLength": 1},
+          "evaluation_status": {
+            "type": "string",
+            "enum": [
+              "strong",
+              "effective_with_tradeoffs",
+              "mixed",
+              "limited",
+              "insufficient_evidence"
+            ]
+          },
+          "evaluation": {"type": "string", "minLength": 1},
+          "relationships": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "learning_points": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+          "uncertainty": {"type": "string"}
+        }
+      }
+    },
+    "causal_chains": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["cause", "mechanism", "effect", "linked_dimensions", "evidence", "confidence"],
+        "properties": {
+          "cause": {"type": "string", "minLength": 1},
+          "mechanism": {"type": "string", "minLength": 1},
+          "effect": {"type": "string", "minLength": 1},
+          "linked_dimensions": {
+            "type": "array",
+            "minItems": 2,
+            "items": {"type": "string"}
+          },
+          "evidence": {"type": "string", "minLength": 1},
+          "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0}
+        }
+      }
+    },
+    "scene_breakdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scene_content",
+        "spatial_layers",
+        "architecture_and_design_language",
+        "terrain_vegetation_and_atmosphere",
+        "materials_and_surfaces",
+        "camera_and_perspective",
+        "narrative_clues",
+        "production_inferences"
+      ],
+      "properties": {
+        "scene_content": {"type": "array", "items": {"type": "string"}},
+        "spatial_layers": {"type": "array", "items": {"type": "string"}},
+        "architecture_and_design_language": {"type": "array", "items": {"type": "string"}},
+        "terrain_vegetation_and_atmosphere": {"type": "array", "items": {"type": "string"}},
+        "materials_and_surfaces": {"type": "array", "items": {"type": "string"}},
+        "camera_and_perspective": {"type": "array", "items": {"type": "string"}},
+        "narrative_clues": {"type": "array", "items": {"type": "string"}},
+        "production_inferences": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "strengths": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["statement", "evidence", "why_it_works", "transfer_value"],
+        "properties": {
+          "statement": {"type": "string"},
+          "evidence": {"type": "string"},
+          "why_it_works": {"type": "string"},
+          "transfer_value": {"type": "string"}
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["statement", "evidence", "tradeoff", "scope_condition"],
+        "properties": {
+          "statement": {"type": "string"},
+          "evidence": {"type": "string"},
+          "tradeoff": {"type": "string"},
+          "scope_condition": {"type": "string"}
+        }
+      }
+    },
+    "annotations": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["annotation_id", "label", "normalized_rect", "evidence_type", "explanation", "linked_dimensions"],
+        "properties": {
+          "annotation_id": {"type": "string", "minLength": 1},
+          "label": {"type": "string", "minLength": 1},
+          "normalized_rect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["x", "y", "width", "height"],
+            "properties": {
+              "x": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+              "y": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+              "width": {"type": "number", "minimum": 0.01, "maximum": 1.0},
+              "height": {"type": "number", "minimum": 0.01, "maximum": 1.0}
+            }
+          },
+          "evidence_type": {
+            "type": "string",
+            "enum": [
+              "visible_image_evidence",
+              "local_measurement",
+              "expert_inference",
+              "contextual_hypothesis"
+            ]
+          },
+          "explanation": {"type": "string", "minLength": 1},
+          "linked_dimensions": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "transferable_principles": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 10,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "study_questions": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 10,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "confidence_notes": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {"type": "string"}
+    }
+  }
+}

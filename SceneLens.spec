@@ -14,6 +14,30 @@ a = Analysis(
                 / 'src'
                 / 'scenelens'
                 / 'modules'
+                / 'artwork_study'
+                / 'config'
+                / 'presets.json'
+            ),
+            'scenelens/modules/artwork_study/config',
+        ),
+        (
+            str(
+                project_root
+                / 'src'
+                / 'scenelens'
+                / 'modules'
+                / 'artwork_study'
+                / 'schemas'
+                / '*.json'
+            ),
+            'scenelens/modules/artwork_study/schemas',
+        ),
+        (
+            str(
+                project_root
+                / 'src'
+                / 'scenelens'
+                / 'modules'
                 / 'visual_review'
                 / 'config'
                 / 'presets.json'

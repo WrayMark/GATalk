@@ -121,6 +121,105 @@ class MockProvider:
 
 def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
     title = str(schema.get("title", ""))
+    if title == "SceneLens Artwork Master Study":
+        dimensions = (
+            "composition",
+            "visual_hierarchy",
+            "value_structure",
+            "colour_design",
+            "lighting",
+            "spatial_depth",
+            "shape_language",
+            "edge_detail_control",
+            "material_surface",
+            "environment_storytelling",
+            "style_technique",
+            "emotional_impact",
+        )
+        return {
+            "schema_version": "1.0",
+            "reviewer_id": "artwork_master_study",
+            "reading_scope": {
+                "visible_content": "离线 Mock 不读取图片语义。",
+                "assumed_context": "",
+                "viewing_strategy": "仅验证十二维结构化流程。",
+                "uncertainties": ["Mock 没有执行视觉模型推理。"],
+            },
+            "executive_thesis": (
+                "离线 Mock：作品研究结构、保存和界面流程可用；"
+                "此内容不是实际美术分析。"
+            ),
+            "dimension_studies": [
+                {
+                    "dimension_id": dimension,
+                    "observation": "Mock 未观察图片。",
+                    "visual_evidence": ["仅验证结构化字段"],
+                    "measurement_evidence": [],
+                    "interpretation": "连接真实视觉 Provider 后生成。",
+                    "effect_on_viewer": "Mock 无法判断。",
+                    "evaluation_status": "insufficient_evidence",
+                    "evaluation": "证据不足，不能评价。",
+                    "relationships": [],
+                    "learning_points": ["Mock 输出不能作为学习结论。"],
+                    "confidence": 0.0,
+                    "uncertainty": "未执行视觉推理。",
+                }
+                for dimension in dimensions
+            ],
+            "causal_chains": [
+                {
+                    "cause": "Mock 输入",
+                    "mechanism": "结构化流程验证",
+                    "effect": "确认界面可以显示因果链",
+                    "linked_dimensions": ["composition", "value_structure"],
+                    "evidence": "仅流程证据",
+                    "confidence": 0.0,
+                },
+                {
+                    "cause": "Mock 输入",
+                    "mechanism": "Schema 验证",
+                    "effect": "确认十二维字段完整",
+                    "linked_dimensions": ["colour_design", "lighting"],
+                    "evidence": "仅流程证据",
+                    "confidence": 0.0,
+                },
+                {
+                    "cause": "Mock 输入",
+                    "mechanism": "保存恢复验证",
+                    "effect": "确认研究结果可以持久化",
+                    "linked_dimensions": [
+                        "environment_storytelling",
+                        "emotional_impact",
+                    ],
+                    "evidence": "仅流程证据",
+                    "confidence": 0.0,
+                },
+            ],
+            "scene_breakdown": {
+                "scene_content": [],
+                "spatial_layers": [],
+                "architecture_and_design_language": [],
+                "terrain_vegetation_and_atmosphere": [],
+                "materials_and_surfaces": [],
+                "camera_and_perspective": [],
+                "narrative_clues": [],
+                "production_inferences": [],
+            },
+            "strengths": [],
+            "limitations": [],
+            "annotations": [],
+            "transferable_principles": [
+                "真实分析需要视觉 Provider。",
+                "本地测量不等于语义判断。",
+                "所有推断都应保留不确定性。",
+            ],
+            "study_questions": [
+                "作品的第一视觉组织是什么？",
+                "跨维度关系如何产生效果？",
+                "哪些结论有可复核证据？",
+            ],
+            "confidence_notes": ["Mock 输出不能作为美术结论。"],
+        }
     if title == "SceneLens Art Director Review":
         return {
             "schema_version": "1.0",

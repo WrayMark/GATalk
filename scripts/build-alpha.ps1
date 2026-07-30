@@ -10,6 +10,8 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
 
 Set-Location -LiteralPath $projectRoot
 $env:PYTHONNOUSERSITE = "1"
+$env:PYTHONUSERBASE = Join-Path $projectRoot ".artifacts\python-userbase"
+New-Item -ItemType Directory -Force -Path $env:PYTHONUSERBASE | Out-Null
 & $venvPython -m PyInstaller `
     --noconfirm `
     --clean `

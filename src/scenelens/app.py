@@ -11,6 +11,7 @@ from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PySide6.QtWidgets import QApplication
 
 from scenelens.ui.main_window import MainWindow
+from scenelens.ui.workspace_hub import WorkspaceHubWindow
 
 
 APP_STYLESHEET = """
@@ -109,6 +110,7 @@ def _run_internal_smoke_check() -> None:
         SafeGradeRecipe,
         apply_safe_grade,
     )
+    from scenelens.analysis.artwork_study import analyze_artwork
     from scenelens.analysis.match_profile import build_match_profile
     from scenelens.analysis.preview_validation import (
         validate_concept_preview,
@@ -148,13 +150,23 @@ def _run_internal_smoke_check() -> None:
     from scenelens.storage.project_store import utc_now
     from scenelens.storage.workbench_store import WorkbenchStore
     from scenelens.modules.visual_review import MODULE_ID
+    from scenelens.modules.artwork_study.reviews import (
+        ArtworkMasterStudyReview,
+        ArtworkStudyContext,
+    )
+    from scenelens.modules.artwork_study.storage import ArtworkStudyStore
 
     rgb = np.empty((64, 96, 3), dtype=np.uint8)
     rgb[:, :48] = (35, 75, 120)
     rgb[:, 48:] = (180, 125, 55)
     measurements = measure_image(rgb, palette_colours=8)
+    artwork_analysis = analyze_artwork(rgb, measurements)
     rendered = render_image(rgb, RenderSettings(mode="grayscale", blur_sigma=1.0))
-    if len(measurements.palette) != 2 or rendered.shape != rgb.shape:
+    if (
+        len(measurements.palette) != 2
+        or rendered.shape != rgb.shape
+        or len(artwork_analysis.spatial_cells) != 9
+    ):
         raise RuntimeError("Internal image-analysis smoke check failed.")
     original = rgb.copy()
     graded = apply_safe_grade(
@@ -243,12 +255,48 @@ def _run_internal_smoke_check() -> None:
     )
     if concept_response.image_bytes != image_bytes:
         raise RuntimeError("Internal M3 image-edit Mock smoke check failed.")
+    artwork_reviewer = ArtworkMasterStudyReview()
+    artwork_request = artwork_reviewer.create_request(
+        ArtworkStudyContext(
+            study_id="smoke-study",
+            title="作品研究烟测",
+            work_type="environment_concept",
+            study_goal="验证结构化研究流程",
+            known_context="",
+            image_metadata={"width": 96, "height": 64},
+            local_evidence=artwork_analysis.to_dict(),
+        ),
+        (ProviderImage("artwork", "image/png", image_bytes),),
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    artwork_output = provider_registry.get("mock").review(
+        artwork_request,
+        "",
+        CancellationToken(),
+    )
+    validated_artwork = artwork_reviewer.validate_output(
+        artwork_output.output
+    )
+    if len(validated_artwork["dimension_studies"]) != 12:
+        raise RuntimeError("Internal artwork-study review smoke check failed.")
     coordinator.close()
 
     with tempfile.TemporaryDirectory(prefix="scenelens-smoke-中文-") as temporary:
         folder = Path(temporary)
         source = folder / "输入 图片.png"
         Image.fromarray(rgb).save(source)
+        artwork_store = ArtworkStudyStore.create(
+            folder / "作品研究.scenelens-study",
+            "作品研究烟测",
+        )
+        artwork_state = artwork_store.import_image(source)
+        if (
+            not artwork_state.image_sha256
+            or artwork_store.image_path() is None
+            or artwork_store.image_path().read_bytes() != source.read_bytes()
+        ):
+            raise RuntimeError("Internal artwork-study storage smoke check failed.")
         store = ProjectStore.create(
             folder / "烟测 项目.scenelens",
             "烟测项目",
@@ -384,8 +432,45 @@ def main() -> int:
         except Exception:
             return 2
 
-    window = MainWindow()
-    window.show()
+    hub = WorkspaceHubWindow()
+    active_windows: list[QApplication | MainWindow | object] = []
+
+    def show_hub() -> None:
+        for value in tuple(active_windows):
+            close = getattr(value, "close", None)
+            if callable(close):
+                close()
+        active_windows.clear()
+        hub.show()
+        hub.raise_()
+        hub.activateWindow()
+
+    def open_workspace(workspace_id: str) -> None:
+        if workspace_id == "scene_art_control":
+            window = MainWindow()
+        elif workspace_id == "artwork_study":
+            from scenelens.modules.artwork_study.ui.window import (
+                ArtworkStudyWindow,
+            )
+
+            window = ArtworkStudyWindow()
+        else:
+            return
+        window.workspace_home_requested.connect(show_hub)
+        window.destroyed.connect(
+            lambda *_args, value=window: (
+                active_windows.remove(value)
+                if value in active_windows
+                else None
+            )
+        )
+        active_windows.append(window)
+        hub.hide()
+        window.show()
+
+    hub.workspace_selected.connect(open_workspace)
+    hub.show()
     if smoke_test:
+        QTimer.singleShot(0, lambda: open_workspace("artwork_study"))
         QTimer.singleShot(1_000, app.quit)
     return app.exec()

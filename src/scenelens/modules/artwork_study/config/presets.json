@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "work_types": [
+    {"id": "environment_concept", "label": "环境概念设计"},
+    {"id": "colour_key", "label": "Color Key / 氛围图"},
+    {"id": "game_environment", "label": "游戏场景截图"},
+    {"id": "matte_painting", "label": "Matte Painting"},
+    {"id": "illustration", "label": "插画"},
+    {"id": "visual_development", "label": "视觉开发"},
+    {"id": "architectural_visualization", "label": "建筑表现"},
+    {"id": "other", "label": "其他 / 自定义"}
+  ],
+  "study_prompts": [
+    "这张作品用什么视觉秩序控制第一眼、第二眼和停留位置？",
+    "明度、色彩、光、形状和边缘如何共同建立空间与情绪？",
+    "具体场景内容承担了哪些叙事、尺度和世界观功能？",
+    "哪些选择在当前目标下有效，代价或适用边界是什么？",
+    "哪些规律可以迁移到其他作品，而不是机械复制表面效果？"
+  ]
+}

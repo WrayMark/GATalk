@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
-from PySide6.QtCore import QThread, QThreadPool, QTimer, Qt
+from PySide6.QtCore import QThread, QThreadPool, QTimer, Qt, Signal
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -219,6 +219,8 @@ class ImagePane(QWidget):
 
 
 class MainWindow(QMainWindow):
+    workspace_home_requested = Signal()
+
     def __init__(self, recent_projects: RecentProjects | None = None) -> None:
         super().__init__()
         self.setWindowTitle("SceneLens — 游戏场景美术控制工作台")
@@ -358,6 +360,11 @@ class MainWindow(QMainWindow):
         )
 
     def _build_actions_and_menus(self) -> None:
+        self.home_action = QAction("工作台首页", self)
+        self.home_action.triggered.connect(
+            lambda _checked=False: self.workspace_home_requested.emit()
+        )
+
         self.new_project_action = QAction("新建项目…", self)
         self.new_project_action.setShortcut(QKeySequence.StandardKey.New)
         self.new_project_action.triggered.connect(self._new_project_dialog)
@@ -372,6 +379,8 @@ class MainWindow(QMainWindow):
         self.save_project_action.triggered.connect(self._save_project_action)
 
         file_menu = self.menuBar().addMenu("文件")
+        file_menu.addAction(self.home_action)
+        file_menu.addSeparator()
         file_menu.addAction(self.new_project_action)
         file_menu.addAction(self.open_project_action)
         file_menu.addAction(self.save_project_action)
