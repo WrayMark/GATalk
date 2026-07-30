@@ -11,13 +11,14 @@
   试用点。
 - M4“深度主美审阅与构图诊断”内部候选已完成。
 - M5“作品研究”新增应用首页与独立单图学习模块，当前等待真实作品试用。
+- M6“资产拆分工作台”完整候选已完成，当前等待真实场景与真实供应商人工试用。
 - 不实现本地大型模型、视频、CUDA、自由多边形、动态第三方代码加载、插件市场
   或隐式联网。
 
 ## 模块与依赖边界
 
-- 采用模块化单体；当前业务模块 ID 为 `scenelens.visual_review` 和
-  `scenelens.artwork_study`。
+- 采用模块化单体；当前业务模块 ID 为 `scenelens.visual_review`、
+  `scenelens.artwork_study` 和 `scenelens.asset_breakdown`。
 - `core` 只保存真正跨模块复用的契约，不依赖具体业务模块。
 - `modules/<module_id>` 可拥有分析器、配置、业务服务、数据表和未来 UI 入口。
 - `analysis` 只处理 NumPy 数据，不导入 PySide6。

@@ -217,13 +217,32 @@ Gemini 容量回退修正版：`v0.6.0a3-m5-fallback`
 - 公开研究方法与版权边界记录在
   `docs/ARTWORK_STUDY_RESEARCH_2026-07-30.md`。
 
-## M6：离线交换与知识沉淀
+## M6：资产拆分工作台
+
+状态：完整候选完成，等待真实项目人工试用
+
+正式大版本：`v0.7.0-asset-breakdown`
+
+- 第三个内置工作区 `scenelens.asset_breakdown`。
+- 主场景原画与补充参考只读导入、SHA-256 和独立项目包。
+- 场景类型配置、严格资产清单 Schema、层级、复用组、制作优先级和证据边界。
+- 原图归一化矩形、GrabCut 可见像素近似遮罩和用户移动/缩放。
+- 用户新增、改名、分类、父子层级、拆分、合并、删除和持久保存。
+- 只生成勾选资产；独立概念图、保守遮挡补全图与评审展示图。
+- 单项失败不删除成功项；支持取消、有限重试、主动发送和系统凭据。
+- 本地资产展示板、单项图片和结构化清单导出。
+- 不捆绑 PyTorch、SAM 2、Grounding DINO、Florence-2、CUDA 或模型权重。
+- 不把 AI 推断、不可见背面或生成补全伪装成原画事实。
+
+验证记录：`M6_ASSET_BREAKDOWN_VALIDATION.md`。
+
+## M7：离线交换与知识沉淀
 
 - 完善隐私可控的审阅包导出和严格 JSON 文件/粘贴导入。
 - 增加 Source Document、审阅模板、历史证据检索和报告编排。
 - 不以 Markdown 自由解析替代正式交换 Schema。
 
-## M7：Windows Alpha
+## M8：Windows Alpha
 
 - 干净 Windows 机器验收。
 - 用户可理解的错误与日志打包。

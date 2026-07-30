@@ -2,7 +2,7 @@
 
 状态：M1A 已复核
 初始日期：2026-07-18
-最近复核：2026-07-19
+最近复核：2026-07-30
 
 本文件用于工程跟踪，不替代正式法律意见。正式对外发行前必须核对最终打包
 产物、传递依赖、许可证文本和通知义务。
@@ -35,7 +35,19 @@ M1A 使用 Python 3.11 标准库 `sqlite3` 和 `hashlib` 实现项目存储与�
 - scikit-image：M0.5 无具体必要算法，不加入初始运行依赖。
 - Depth Anything V2：模型权重、PyTorch 和商业许可证风险，推迟。
 - SAM 2：Windows/CUDA 打包复杂，推迟。
+- Grounding DINO：Apache-2.0；开放词汇检测有价值，但会引入 PyTorch、
+  模型权重和新的打包边界，0.7.0 不集成、不复制代码。
+- Florence-2 base：模型页标注 MIT；仍需 Transformers/PyTorch 和权重，
+  0.7.0 不集成。
+- LaMa：Apache-2.0；旧 PyTorch/CUDA 环境和外部权重不进入当前安装包。
+- Zero123++：代码 Apache-2.0，但模型权重 CC-BY-NC 4.0，不作为未来商业
+  默认能力。
+- TripoSR：代码与权重 MIT；约 6 GB VRAM 的 3D 路线仅作为未来候选，本版
+  不集成。
 - Tauri、Electron、Web 服务框架：不符合当前单栈目标。
+
+M6 资产拆分只复用已锁定的 OpenCV GrabCut 和 Pillow，没有复制调研仓库代码、
+提示词或模型权重，也没有新增运行依赖。
 
 ## Qt LGPL 待办
 

@@ -182,7 +182,7 @@ def build() -> None:
     metadata.paragraph_format.space_after = Pt(14)
     set_font(
         metadata.add_run(
-            "适用版本：0.6.0a3（Gemini 容量回退修正版）"
+            "适用版本：0.7.0（资产拆分工作台）"
             "　更新日期：2026-07-30"
         ),
         size=9.5,
@@ -210,6 +210,7 @@ def build() -> None:
     for text in (
         "场景美术控制：参考图与自己的 UE 截图对比、审阅、任务和版本复查。",
         "作品研究：分析一张原画、概念图、Color Key 或优秀场景作品。",
+        "资产拆分工作台：把复杂场景原画整理为资产清单、区域、生成图和展示板。",
         "模块内选择“文件 → 工作台首页”可返回。",
     ):
         add_list_item(document, text, bullet_id)
@@ -253,7 +254,39 @@ def build() -> None:
         ".scenelens-study 目录保存原图副本、SHA-256、本地证据、AI 结果、研究目标、已知背景、观察状态和个人笔记。原始图片不会被覆盖。",
     )
 
-    add_heading(document, "4. 场景美术控制最短流程")
+    add_heading(document, "4. 资产拆分工作台")
+    add_heading(document, "最短流程", 2)
+    for text in (
+        "在首页进入“资产拆分工作台”，新建资产项目。",
+        "选择场景类型，填写制作目标，导入主原画；补充参考可选。",
+        "选择视觉供应商，查看发送清单并主动确认。",
+        "检查资产分类、层级、复用组、优先级和原图区域。",
+        "拖动区域或在“资产详情”修改名称、分类、父级、证据和制作策略。",
+        "可新增、拆分、合并或删除资产；用户修订不会被后续 AI 覆盖。",
+        "在清单第一列勾选需要生成的资产。",
+        "在“生成与导出”选择独立概念图、保守遮挡补全图或评审展示图。",
+        "查看发送清单并确认；取消时已完成项仍会保留。",
+        "导出单项图片、asset_board.png 和 asset_manifest.json。",
+    ):
+        add_list_item(document, text, decimal_id)
+    add_heading(document, "画布与遮罩", 2)
+    for text in (
+        "“框选资产”后在原画拖出矩形；可移动或拉动手柄调整。",
+        "“可见遮罩”只显示矩形内的算法近似像素，不是精确实例分割。",
+        "按 Esc 退出框选或遮罩。原始图片不会被修改。",
+    ):
+        add_list_item(document, text, bullet_id)
+    add_heading(document, "信息来源", 2)
+    for text in (
+        "原画可见证据：能直接从图中核对。",
+        "AI 推断：类别、模块边界、复用或结构判断。",
+        "用户补充／修订：用户确认后的内容，优先级最高。",
+        "AI 生成补全：不可见部分的概念假设，不是原画事实。",
+        "离线 Mock 只验证清单、保存、遮罩、生成和导出流程，不分析图片语义。",
+    ):
+        add_list_item(document, text, bullet_id)
+
+    add_heading(document, "5. 场景美术控制最短流程")
     for text in (
         "点击“新建项目”，选择保存位置并命名。",
         "在左侧打开“制作意图”，填写目标风格、时间、天气、情绪、焦点和限制。",
@@ -267,7 +300,7 @@ def build() -> None:
         add_list_item(document, text, decimal_id)
     add_body(document, "项目会自动保存。Ctrl+S 可立即保存。")
 
-    add_heading(document, "5. 场景图片查看与基础分析")
+    add_heading(document, "6. 场景图片查看与基础分析")
     for text in (
         "滚轮缩放；左键拖动平移；双击画布恢复适配。",
         "开启“同步视图”可同步左右缩放和平移。",
@@ -282,7 +315,7 @@ def build() -> None:
         "灯光明度代理图不是真正灰模，不能剥离材质和纹理。",
     )
 
-    add_heading(document, "6. 对比分析")
+    add_heading(document, "7. 对比分析")
     add_heading(document, "共享色板", 2)
     add_body(
         document,
@@ -306,7 +339,7 @@ def build() -> None:
         "区域可移动、缩放、删除和保存。新 Version 可复制上一版本区域，复制后必须人工检查位置。",
     )
 
-    add_heading(document, "7. 制作意图与参考图视觉简报")
+    add_heading(document, "8. 制作意图与参考图视觉简报")
     for text in (
         "“制作意图”记录你希望最终画面达到什么目标。",
         "“参考图视觉简报”记录参考图实际呈现的视觉特征。",
@@ -315,7 +348,7 @@ def build() -> None:
     ):
         add_list_item(document, text, bullet_id)
 
-    add_heading(document, "8. AI 审阅与灯光审片")
+    add_heading(document, "9. AI 审阅与灯光审片")
     for text in (
         "优先选择“深度主美审阅（八维）”；专项灯光问题选择“灯光专项审阅”。",
         "无 API Key 时选择“离线 Mock”验证流程。",
@@ -341,6 +374,7 @@ def build() -> None:
         "http_400：请求参数或模型不兼容。新版会自动处理 Gemini 深度审阅的复杂 Schema；仍失败时先确认正在运行 0.5.0a4，再恢复默认模型重试。",
         "若错误包含 generation_config.response_format.text.mime_type，说明仍在运行旧版；关闭旧程序后改用本次 Gemini 接口修正版。",
         "Gemini 首次返回的 JSON 语法损坏、被截断或结构不完整时，SceneLens 最多自动纠错一次。确认发送窗口会提示该过程可能再次发送同一审阅副本并增加少量费用。",
+        "finish_reason=MAX_TOKENS：AI 回答过长导致 JSON 尾部被截断，不表示 API Key 错误。新版会压缩内容，并只在明确截断时用更高预算纠错一次。",
         "错误中的 line 和 column 表示 AI 返回文本的 JSON 损坏位置，不表示 API Key 错误。0.5.0a4 会把原始返回交给同一模型压缩并修复；第二次仍损坏时停止，不会无限重试。",
         "若 AI 引用了本次报告中不存在的问题 ID，0.5.0a3 会取消无效链接并继续显示完整报告，不追加 API 调用。界面的“结构修复”只表示链接已取消，正文和真实问题没有被改写。",
         "http_401：Key 错误、过期或不属于该供应商。",
@@ -358,7 +392,7 @@ def build() -> None:
         "错误窗口会显示供应商返回的脱敏原因。不要把 API Key 截图或复制给他人。",
     )
 
-    add_heading(document, "9. 优化实验室")
+    add_heading(document, "10. 优化实验室")
     add_heading(document, "目标匹配画像", 2)
     add_body(
         document,
@@ -390,7 +424,7 @@ def build() -> None:
         "AI 输出只保存为 AIConceptPreview，不会成为真实 UE Version。出现“仅适合概念参考”时，不应把预演当作可直接复现的场景结果。",
     )
 
-    add_heading(document, "10. 文件与安全")
+    add_heading(document, "11. 文件与安全")
     for text in (
         "assets：导入原图，保留原始字节和 SHA-256。",
         "artifacts：可重建分析结果和 AIConceptPreview。",
@@ -398,16 +432,19 @@ def build() -> None:
         "API Key 不写入项目、SQLite、JSON、日志或 Git。",
         "同一项目只能由一个进程写入；第二个进程可只读打开。",
         "作品研究的 assets 同样保留导入图片原始字节；study.json 保存研究状态。",
+        "资产拆分项目使用 .scenelens-assets 目录；生成图、遮罩和导出记录与原图分开保存。",
     ):
         add_list_item(document, text, bullet_id)
 
-    add_heading(document, "11. 当前限制")
+    add_heading(document, "12. 当前限制")
     for text in (
         "只支持静态图片和矩形区域。",
         "不支持视频、HDR/EXR、多边形、自动分割或 UE 工程扫描。",
         "真实 AI 供应商需要单独验证账号、地区、模型和费用。",
         "AI 预演必须回到 UE 实施，并用新的真实截图 Version 正式复查。",
         "作品研究暂不支持多图研究、引用资料库、自动语义分割或本地大型视觉模型。",
+        "资产拆分不捆绑本地视觉大模型、SAM 2 或 CUDA，也不生成生产可用三维模型。",
+        "AI 资产分类、遮挡补全和生成图仍需用户人工校正。",
     ):
         add_list_item(document, text, bullet_id)
 

@@ -5,6 +5,8 @@ SceneLens 是 Windows 本地游戏美术工作台。启动后可选择：
 - **场景美术控制**：参考图、UE 截图、证据化审阅、任务、优化预演和版本复查。
 - **作品研究**：对一张原画、概念图或优秀场景作品进行本地证据观察、CG 主美
   十二维拆解和个人学习记录。
+- **资产拆分工作台**：把复杂场景原画整理为可校正的资产清单、原图区域、
+  模块关系、制作优先级、独立概念图和资产展示板。
 
 原图始终只读。没有 API Key 时，本地测量、项目/研究保存和离线 Mock 流程仍可
 使用；真实网络发送只在用户查看清单并确认后发生。
@@ -13,8 +15,8 @@ SceneLens 是一款面向游戏场景美术、UE 地编和环境艺术作品的 
 本地游戏场景美术控制工作台。它将制作目标、参考图、当前截图、证据测量、
 AI 专项审阅、修改任务、优化预演、新版本复查和质量门禁串成可追踪的工作流。
 
-M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前
-`0.6.0a3` 为 **M5 Gemini 容量回退修正版**。
+M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前 `0.7.0`
+为 **资产拆分工作台完整候选版**。
 
 ## 环境要求
 
@@ -47,6 +49,9 @@ M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前
 
 作品研究：新建研究 → 导入一张作品 → 查看本地证据 → AI 十二维拆解 →
 个人学习笔记 → 保存。
+
+资产拆分：新建资产项目 → 导入场景原画与补充参考 → AI 拆分 → 用户校正 →
+勾选资产生成 → 导出单图、展示板和结构化清单。
 
 ## 测试
 
@@ -86,4 +91,10 @@ M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前
 - [docs/COMPETITOR_REVIEW_M2.md](docs/COMPETITOR_REVIEW_M2.md)：M2 竞品审查
 - [docs/M4_DEEP_REVIEW_ARCHITECTURE.md](docs/M4_DEEP_REVIEW_ARCHITECTURE.md)：
   八维审阅、证据校验与构图辅助边界
+- [docs/ASSET_BREAKDOWN_RESEARCH_2026-07-30.md](docs/ASSET_BREAKDOWN_RESEARCH_2026-07-30.md)：
+  资产识别、分割、补全、视图重建和商业工具调研
+- [docs/ASSET_BREAKDOWN_ARCHITECTURE.md](docs/ASSET_BREAKDOWN_ARCHITECTURE.md)：
+  资产拆分模块、数据模型、Provider 与真实性边界
+- [M6_ASSET_BREAKDOWN_VALIDATION.md](M6_ASSET_BREAKDOWN_VALIDATION.md)：
+  自动验证、限制和人工试用步骤
 - [docs/M1B2_REGION_DATA_MODEL.md](docs/M1B2_REGION_DATA_MODEL.md)：区域 schema 与 Version 语义
