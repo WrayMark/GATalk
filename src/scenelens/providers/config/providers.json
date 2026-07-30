@@ -72,7 +72,13 @@
       },
       "credential_target": "SceneLens/provider/google_gemini",
       "optional": true,
-      "mainland_priority": 90
+      "mainland_priority": 90,
+      "options": {
+        "fallback_models": {
+          "vision_review": ["gemini-2.5-flash"],
+          "structured_output": ["gemini-2.5-flash"]
+        }
+      }
     },
     {
       "provider_id": "xai_grok",

@@ -143,6 +143,17 @@ class ArtworkDisclosureDialog(QDialog):
         retry_notice.setWordWrap(True)
         retry_notice.setStyleSheet("color: #E6B450;")
         layout.addWidget(retry_notice)
+        if preview.fallback_model_ids:
+            fallback_notice = QLabel(
+                "若当前模型在重试后仍返回 503 容量不足，SceneLens 会在同一"
+                f"供应商内改用备用模型 {preview.fallback_model_ids[0]} "
+                "再发送一次。"
+                "不会跨供应商；实际使用的模型会写入结果。此操作可能增加"
+                "一次调用费用。"
+            )
+            fallback_notice.setWordWrap(True)
+            fallback_notice.setStyleSheet("color: #E6B450;")
+            layout.addWidget(fallback_notice)
         language_notice = QLabel(
             "作品研究固定输出简体中文。若模型首次返回英文或繁体中文，"
             "最多追加 1 次不含图片的中文规范化请求，可能产生额外费用。"
@@ -802,6 +813,7 @@ class ArtworkStudyWindow(QMainWindow):
             disclosure_confirmed=True,
         )
         preview = disclosure_preview(manifest, request)
+        fallback_model_ids = preview.fallback_model_ids
         if ArtworkDisclosureDialog(preview, self).exec() != QDialog.DialogCode.Accepted:
             return
         self._generation["ai"] += 1
@@ -811,23 +823,29 @@ class ArtworkStudyWindow(QMainWindow):
         self.run_ai_button.setEnabled(False)
         self.cancel_ai_button.setEnabled(True)
         self.ai_status.setText(
-            "正在后台执行作品深度研究；临时断线会自动重试…"
+            "正在后台执行作品深度研究；临时断线会自动重试，"
+            "容量不足时会按发送清单尝试备用模型…"
         )
 
         def operation():
             provider = self._provider_registry.get(provider_id)
-            response, output, language_normalized = (
+            response, output, language_normalized, execution_result = (
                 self._execute_review_with_language_contract(
                     provider,
                     request,
                     credential,
                     cancellation,
+                    fallback_model_ids,
                 )
             )
             return {
                 "provider_id": response.provider_id,
                 "provider_display_name": manifest.display_name,
                 "model_id": response.model_id,
+                "requested_model_id": execution_result.requested_model_id,
+                "attempted_model_ids": execution_result.attempted_model_ids,
+                "fallback_used": execution_result.fallback_used,
+                "fallback_reason": execution_result.fallback_reason,
                 "output": output,
                 "language_normalized": language_normalized,
             }
@@ -840,13 +858,16 @@ class ArtworkStudyWindow(QMainWindow):
         request,
         credential: str,
         cancellation: CancellationToken,
+        fallback_model_ids: tuple[str, ...] = (),
     ):
-        response = self._execution.run_review(
+        execution_result = self._execution.run_review_with_model_fallback(
             provider,
             request,
             credential,
             cancellation,
+            fallback_model_ids,
         )
+        response = execution_result.response
         language_normalized = False
         try:
             output = self._reviewer.validate_output(response.output)
@@ -869,7 +890,7 @@ class ArtworkStudyWindow(QMainWindow):
                 normalized_response.output
             )
             language_normalized = True
-        return response, output, language_normalized
+        return response, output, language_normalized, execution_result
 
     def _apply_ai_result(self, result: object) -> None:
         value = dict(result)
@@ -881,6 +902,12 @@ class ArtworkStudyWindow(QMainWindow):
                 ai_run={
                     "provider_id": value["provider_id"],
                     "model_id": value["model_id"],
+                    "requested_model_id": value["requested_model_id"],
+                    "attempted_model_ids": list(
+                        value["attempted_model_ids"]
+                    ),
+                    "model_fallback_used": bool(value["fallback_used"]),
+                    "model_fallback_reason": value["fallback_reason"],
                     "reviewer_id": self._reviewer.descriptor.reviewer_id,
                     "reviewer_version": self._reviewer.descriptor.version,
                     "image_sha256": self._state.image_sha256,
@@ -900,9 +927,15 @@ class ArtworkStudyWindow(QMainWindow):
             if value["language_normalized"]
             else "；简体中文"
         )
+        fallback_note = (
+            f"；原模型 {value['requested_model_id']} 容量不足，"
+            f"已改用备用模型 {value['model_id']}"
+            if value["fallback_used"]
+            else ""
+        )
         self.ai_status.setText(
             f"完成：{value['provider_display_name']}"
-            f"（模型 {value['model_id']}）{language_note}"
+            f"（模型 {value['model_id']}）{fallback_note}{language_note}"
         )
         self._update_report()
 

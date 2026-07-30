@@ -41,6 +41,27 @@ class ProviderManifest:
                 f"{self.provider_id} 未配置 {capability.value} 默认模型。"
             ) from exc
 
+    def fallback_models_for(
+        self,
+        capability: ProviderCapability,
+        requested_model: str | None = None,
+    ) -> tuple[str, ...]:
+        configured = self.options.get("fallback_models", {})
+        if not isinstance(configured, Mapping):
+            return ()
+        values = configured.get(capability.value, ())
+        if isinstance(values, str):
+            values = (values,)
+        if not isinstance(values, (list, tuple)):
+            return ()
+        current = self.model_for(capability, requested_model)
+        result: list[str] = []
+        for value in values:
+            model_id = str(value).strip()
+            if model_id and model_id != current and model_id not in result:
+                result.append(model_id)
+        return tuple(result)
+
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> ProviderManifest:
         return cls(
@@ -167,6 +188,7 @@ class DataDisclosurePreview:
     model_id: str
     payload_fields: tuple[str, ...]
     images: tuple[DisclosureImage, ...]
+    fallback_model_ids: tuple[str, ...] = ()
 
 
 class CancellationToken:
@@ -282,6 +304,10 @@ def disclosure_preview(
                 sha256=image.sha256,
             )
             for image in request.images
+        ),
+        fallback_model_ids=manifest.fallback_models_for(
+            capability,
+            request.model_id,
         ),
     )
 

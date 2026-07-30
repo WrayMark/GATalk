@@ -64,6 +64,14 @@ def _manifest(provider_id: str):
     )
 
 
+def test_gemini_manifest_declares_stable_capacity_fallback():
+    manifest = _manifest("google_gemini")
+
+    assert manifest.fallback_models_for(
+        ProviderCapability.VISION_REVIEW
+    ) == ("gemini-2.5-flash",)
+
+
 @pytest.mark.parametrize("provider_id", ["aliyun_bailian", "siliconflow"])
 def test_openai_chat_provider_contract_is_offline_and_configurable(provider_id):
     transport = RecordingJsonTransport(

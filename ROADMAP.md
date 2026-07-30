@@ -203,6 +203,8 @@ M1B 不自动生成好坏评分或美术结论，不接入 AI API、模型、CUD
 
 简体中文输出修正版：`v0.6.0a2-m5-zhcn`
 
+Gemini 容量回退修正版：`v0.6.0a3-m5-fallback`
+
 - 应用启动首页和内置工作区选择。
 - 独立 `scenelens.artwork_study` 模块与 `.scenelens-study` 研究包。
 - 单图只读资产、哈希、本地证据、观察状态、个人笔记和 AI 结果保存恢复。

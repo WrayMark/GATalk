@@ -94,6 +94,15 @@ class DataDisclosureDialog(QDialog):
         retry_notice.setWordWrap(True)
         retry_notice.setStyleSheet("color: #E6B450;")
         layout.addWidget(retry_notice)
+        if preview.fallback_model_ids:
+            fallback_notice = QLabel(
+                "若当前模型重试后仍返回 503 容量不足，将在同一供应商内"
+                f"改用备用模型 {preview.fallback_model_ids[0]} 再发送一次。"
+                "不会跨供应商；结果会记录实际模型，可能增加一次调用费用。"
+            )
+            fallback_notice.setWordWrap(True)
+            fallback_notice.setStyleSheet("color: #E6B450;")
+            layout.addWidget(fallback_notice)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel
             | QDialogButtonBox.StandardButton.Ok
@@ -574,8 +583,15 @@ class AIReviewPanel(QWidget):
             self.scheme_combo.count() > 0
         )
         self._scheme_changed(self.scheme_combo.currentIndex())
+        fallback_note = (
+            f"（原模型 {outcome.requested_model_id} 容量不足，"
+            "已自动回退）"
+            if outcome.model_fallback_used
+            else ""
+        )
         self.status_label.setText(
-            f"完成：{outcome.provider_id} / {outcome.model_id}。"
+            f"完成：{outcome.provider_id} / {outcome.model_id}"
+            f"{fallback_note}。"
         )
 
     def show_error(self, message: str) -> None:

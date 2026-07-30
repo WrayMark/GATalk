@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import pytest
 
@@ -119,6 +119,126 @@ def test_retry_exhaustion_reports_attempt_count():
 
     assert provider.calls == 3
     assert "retry_attempts=3" in exc_info.value.technical_detail
+
+
+def test_review_falls_back_once_after_primary_http_503():
+    service = ProviderExecutionService(sleep=lambda _delay: None)
+
+    @dataclass
+    class CapacityProvider:
+        manifest: ProviderManifest
+
+        def __post_init__(self):
+            self.models = []
+
+        def review(self, request, _credential, _cancellation):
+            self.models.append(request.model_id)
+            if request.model_id == "primary-model":
+                raise ProviderError(
+                    "temporarily unavailable",
+                    code="http_503",
+                    retryable=True,
+                )
+            return ProviderResponse(
+                "capacity",
+                request.model_id,
+                {"ok": True},
+            )
+
+    provider = CapacityProvider(
+        replace(
+            FlakyProvider(0).manifest,
+            provider_id="capacity",
+            default_models={"vision_review": "primary-model"},
+        )
+    )
+    try:
+        result = service.run_review_with_model_fallback(
+            provider,
+            _request(),
+            "secret",
+            CancellationToken(),
+            ("fallback-model",),
+            RetryPolicy(max_attempts=3, initial_backoff_seconds=0),
+        )
+    finally:
+        service.close()
+
+    assert provider.models == [
+        "primary-model",
+        "primary-model",
+        "primary-model",
+        "fallback-model",
+    ]
+    assert result.response.model_id == "fallback-model"
+    assert result.requested_model_id == "primary-model"
+    assert result.attempted_model_ids == (
+        "primary-model",
+        "fallback-model",
+    )
+    assert result.fallback_used is True
+    assert result.fallback_reason == "http_503"
+
+
+def test_review_does_not_fall_back_for_non_capacity_error():
+    service = ProviderExecutionService(sleep=lambda _delay: None)
+
+    @dataclass
+    class InvalidRequestProvider:
+        manifest: ProviderManifest
+
+        def review(self, _request, _credential, _cancellation):
+            raise ProviderError(
+                "invalid request",
+                code="http_400",
+                retryable=False,
+            )
+
+    provider = InvalidRequestProvider(
+        replace(
+            FlakyProvider(0).manifest,
+            provider_id="invalid",
+            default_models={"vision_review": "primary-model"},
+        )
+    )
+    try:
+        with pytest.raises(ProviderError) as exc_info:
+            service.run_review_with_model_fallback(
+                provider,
+                _request(),
+                "secret",
+                CancellationToken(),
+                ("fallback-model",),
+            )
+    finally:
+        service.close()
+
+    assert exc_info.value.code == "http_400"
+
+
+def test_manifest_fallback_models_are_configured_and_deduplicated():
+    manifest = ProviderManifest(
+        provider_id="test",
+        display_name="Test",
+        api_style="test",
+        base_url="",
+        capabilities=(ProviderCapability.VISION_REVIEW,),
+        default_models={"vision_review": "primary"},
+        credential_target="SceneLens/provider/test",
+        options={
+            "fallback_models": {
+                "vision_review": [
+                    "primary",
+                    "fallback",
+                    "fallback",
+                ]
+            }
+        },
+    )
+
+    assert manifest.fallback_models_for(
+        ProviderCapability.VISION_REVIEW
+    ) == ("fallback",)
 
 
 def test_execution_cancellation_stops_before_provider_call():

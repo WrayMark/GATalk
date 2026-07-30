@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable
 
 from scenelens.providers.contracts import (
@@ -12,6 +12,7 @@ from scenelens.providers.contracts import (
     ImageEditRequest,
     ImageEditResponse,
     ProviderCancelledError,
+    ProviderCapability,
     ProviderError,
     ProviderResponse,
     VisionReviewProvider,
@@ -33,6 +34,15 @@ class ProviderJob:
     def cancel(self) -> bool:
         self.cancellation.cancel()
         return self.future.cancel()
+
+
+@dataclass(frozen=True)
+class ReviewExecutionResult:
+    response: ProviderResponse
+    requested_model_id: str
+    attempted_model_ids: tuple[str, ...]
+    fallback_used: bool = False
+    fallback_reason: str = ""
 
 
 class ProviderExecutionService:
@@ -100,6 +110,81 @@ class ProviderExecutionService:
                 cancellation.raise_if_cancelled()
                 self._sleep(delay)
         raise AssertionError("retry loop ended unexpectedly")
+
+    def run_review_with_model_fallback(
+        self,
+        provider: VisionReviewProvider,
+        request: VisionReviewRequest,
+        credential: str,
+        cancellation: CancellationToken,
+        fallback_model_ids: tuple[str, ...] = (),
+        retry_policy: RetryPolicy | None = None,
+    ) -> ReviewExecutionResult:
+        requested_model_id = provider.manifest.model_for(
+            ProviderCapability.VISION_REVIEW,
+            request.model_id,
+        )
+        primary_request = replace(request, model_id=requested_model_id)
+        try:
+            response = self.run_review(
+                provider,
+                primary_request,
+                credential,
+                cancellation,
+                retry_policy,
+            )
+        except ProviderError as primary_error:
+            candidates = tuple(
+                model_id
+                for model_id in fallback_model_ids
+                if model_id and model_id != requested_model_id
+            )
+            if primary_error.code != "http_503" or not candidates:
+                raise
+            fallback_model_id = candidates[0]
+            fallback_request = replace(
+                primary_request,
+                model_id=fallback_model_id,
+            )
+            cancellation.raise_if_cancelled()
+            try:
+                response = self.run_review(
+                    provider,
+                    fallback_request,
+                    credential,
+                    cancellation,
+                    RetryPolicy(max_attempts=1),
+                )
+            except ProviderError as fallback_error:
+                detail = fallback_error.technical_detail.strip()
+                route = (
+                    "model_fallback="
+                    f"{requested_model_id}->{fallback_model_id}"
+                )
+                technical_detail = (
+                    f"{detail} | {route}" if detail else route
+                )
+                raise ProviderError(
+                    "当前模型和备用模型都暂时不可用，请稍后重试。",
+                    code=fallback_error.code,
+                    retryable=fallback_error.retryable,
+                    technical_detail=technical_detail,
+                ) from fallback_error
+            return ReviewExecutionResult(
+                response=response,
+                requested_model_id=requested_model_id,
+                attempted_model_ids=(
+                    requested_model_id,
+                    fallback_model_id,
+                ),
+                fallback_used=True,
+                fallback_reason=primary_error.code,
+            )
+        return ReviewExecutionResult(
+            response=response,
+            requested_model_id=requested_model_id,
+            attempted_model_ids=(requested_model_id,),
+        )
 
     def submit_image_edit(
         self,

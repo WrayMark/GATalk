@@ -1372,6 +1372,23 @@ class MainWindow(QMainWindow):
             self._last_review_outcome = result
             self._persist_review_annotations(result)
             self.ai_review_panel.show_outcome(result)
+            if self._active_ai_run is not None:
+                manifest = dict(self._active_ai_run.input_manifest)
+                manifest["requested_model_id"] = result.requested_model_id
+                manifest["attempted_model_ids"] = list(
+                    result.attempted_model_ids
+                )
+                manifest["model_fallback_used"] = (
+                    result.model_fallback_used
+                )
+                manifest["model_fallback_reason"] = (
+                    result.model_fallback_reason
+                )
+                self._active_ai_run = replace(
+                    self._active_ai_run,
+                    model_id=result.model_id,
+                    input_manifest=manifest,
+                )
             self._finish_ai_run(
                 status=AIRunStatus.COMPLETE,
                 output=dict(result.output),

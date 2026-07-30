@@ -55,6 +55,26 @@ def test_gemini_disclosure_warns_about_one_structure_repair_call(
     assert any("增加少量费用" in text for text in labels)
 
 
+def test_disclosure_shows_capacity_fallback_and_extra_cost(qtbot) -> None:
+    dialog = DataDisclosureDialog(
+        DataDisclosurePreview(
+            provider_id="google_gemini",
+            model_id="gemini-3.5-flash",
+            payload_fields=("creative_intent",),
+            images=(),
+            fallback_model_ids=("gemini-2.5-flash",),
+        ),
+        second_opinion=False,
+    )
+    qtbot.addWidget(dialog)
+
+    labels = [item.text() for item in dialog.findChildren(QLabel)]
+
+    assert any("503 容量不足" in text for text in labels)
+    assert any("gemini-2.5-flash" in text for text in labels)
+    assert any("不会跨供应商" in text for text in labels)
+
+
 def test_panel_displays_conflicts_instead_of_hiding_them(qtbot) -> None:
     panel = AIReviewPanel(load_provider_manifests())
     qtbot.addWidget(panel)

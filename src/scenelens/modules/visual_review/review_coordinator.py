@@ -22,6 +22,7 @@ from scenelens.modules.visual_review.reviews import ReviewContext
 from scenelens.modules.visual_review.reviews.base import load_review_schema
 from scenelens.providers.contracts import (
     CancellationToken,
+    ProviderCapability,
     ProviderImage,
     VisionReviewRequest,
 )
@@ -49,6 +50,10 @@ class ReviewRunOutcome:
     second_opinion_provider_id: str | None = None
     omissions: tuple[str, ...] = ()
     normalization_warnings: tuple[str, ...] = ()
+    requested_model_id: str = ""
+    attempted_model_ids: tuple[str, ...] = ()
+    model_fallback_used: bool = False
+    model_fallback_reason: str = ""
 
 
 class ReviewCoordinator:
@@ -82,12 +87,17 @@ class ReviewCoordinator:
             user_initiated=True,
             disclosure_confirmed=True,
         )
-        primary = self.execution.run_review(
+        primary_execution = self.execution.run_review_with_model_fallback(
             provider,
             request,
             credentials.get(options.provider_id, ""),
             cancellation,
+            provider.manifest.fallback_models_for(
+                ProviderCapability.VISION_REVIEW,
+                options.model_id,
+            ),
         )
+        primary = primary_execution.response
         normalized_output, normalization_warnings = (
             reviewer.normalize_output(primary.output)
         )
@@ -177,6 +187,10 @@ class ReviewCoordinator:
             second_opinion_provider_id=second_provider_id,
             omissions=omissions,
             normalization_warnings=normalization_warnings,
+            requested_model_id=primary_execution.requested_model_id,
+            attempted_model_ids=primary_execution.attempted_model_ids,
+            model_fallback_used=primary_execution.fallback_used,
+            model_fallback_reason=primary_execution.fallback_reason,
         )
 
     def close(self) -> None:

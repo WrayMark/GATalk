@@ -164,6 +164,28 @@ def test_artwork_english_response_gets_one_chinese_normalization_call(qtbot):
             self.requests.append(value)
             return self.responses.pop(0)
 
+        def run_review_with_model_fallback(
+            self,
+            provider,
+            value,
+            credential,
+            cancellation,
+            _fallback_model_ids=(),
+        ):
+            from scenelens.providers.execution import ReviewExecutionResult
+
+            response = self.run_review(
+                provider,
+                value,
+                credential,
+                cancellation,
+            )
+            return ReviewExecutionResult(
+                response=response,
+                requested_model_id=str(value.model_id),
+                attempted_model_ids=(str(value.model_id),),
+            )
+
         def close(self):
             pass
 
@@ -173,7 +195,7 @@ def test_artwork_english_response_gets_one_chinese_normalization_call(qtbot):
     execution = SequenceExecution()
     window._execution = execution
 
-    response, output, normalized = (
+    response, output, normalized, execution_result = (
         window._execute_review_with_language_contract(
             object(),
             request,
@@ -185,5 +207,6 @@ def test_artwork_english_response_gets_one_chinese_normalization_call(qtbot):
     assert response.provider_id == "test"
     assert output["dimension_studies"][0]["observation"] == "Mock 未观察图片。"
     assert normalized is True
+    assert execution_result.fallback_used is False
     assert len(execution.requests) == 2
     assert execution.requests[1].images == ()
