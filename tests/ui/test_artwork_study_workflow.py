@@ -1,10 +1,23 @@
+from copy import deepcopy
+from io import BytesIO
+
 import numpy as np
 from PIL import Image
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QPushButton
 
+from scenelens.modules.artwork_study.reviews import (
+    ArtworkMasterStudyReview,
+    ArtworkStudyContext,
+)
 from scenelens.modules.artwork_study.storage import ArtworkStudyStore
 from scenelens.modules.artwork_study.ui.window import ArtworkStudyWindow
+from scenelens.providers.contracts import (
+    CancellationToken,
+    ProviderImage,
+    ProviderResponse,
+)
+from scenelens.providers.mock import MockProvider
 from scenelens.ui.workspace_hub import WorkspaceHubWindow
 
 
@@ -56,3 +69,121 @@ def test_artwork_study_window_loads_analyzes_and_restores_project(
     assert reopened.state.study_goal == "学习空间与色彩"
     assert reopened.state.personal_notes == "个人判断"
     assert reopened.state.local_analysis["analyzer_id"]
+
+
+def test_artwork_result_status_is_chinese_and_old_english_is_hidden(qtbot):
+    buffer = BytesIO()
+    Image.fromarray(np.zeros((24, 32, 3), dtype=np.uint8)).save(
+        buffer, format="PNG"
+    )
+    reviewer = ArtworkMasterStudyReview()
+    request = reviewer.create_request(
+        ArtworkStudyContext(
+            study_id="study",
+            title="test",
+            work_type="environment_concept",
+            study_goal="理解构图",
+            known_context="",
+            image_metadata={"width": 32, "height": 24},
+            local_evidence={},
+        ),
+        (
+            ProviderImage(
+                "artwork",
+                "image/png",
+                buffer.getvalue(),
+            ),
+        ),
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    output = MockProvider().review(
+        request, "", CancellationToken()
+    ).output
+    window = ArtworkStudyWindow()
+    qtbot.addWidget(window)
+
+    window._show_ai_output(output)
+    assert window.ai_dimension_tree.topLevelItem(0).text(1) == "证据不足"
+
+    english = deepcopy(output)
+    english["dimension_studies"][0]["observation"] = (
+        "The composition directs the eye through a diagonal."
+    )
+    assert window._review_is_current_and_chinese(english) is False
+    window._clear_ai_output()
+    assert window.ai_dimension_tree.topLevelItemCount() == 0
+
+
+def test_artwork_english_response_gets_one_chinese_normalization_call(qtbot):
+    buffer = BytesIO()
+    Image.fromarray(np.zeros((24, 32, 3), dtype=np.uint8)).save(
+        buffer, format="PNG"
+    )
+    reviewer = ArtworkMasterStudyReview()
+    request = reviewer.create_request(
+        ArtworkStudyContext(
+            study_id="study",
+            title="test",
+            work_type="environment_concept",
+            study_goal="理解构图",
+            known_context="",
+            image_metadata={"width": 32, "height": 24},
+            local_evidence={},
+        ),
+        (
+            ProviderImage(
+                "artwork",
+                "image/png",
+                buffer.getvalue(),
+            ),
+        ),
+        model_id="test-model",
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    chinese = MockProvider().review(
+        request, "", CancellationToken()
+    ).output
+    english = deepcopy(chinese)
+    english["dimension_studies"][0]["observation"] = (
+        "The composition directs the eye through a diagonal."
+    )
+
+    class SequenceExecution:
+        def __init__(self):
+            self.requests = []
+            self.responses = [
+                ProviderResponse("test", "test-model", english),
+                ProviderResponse("test", "test-model", chinese),
+            ]
+
+        def run_review(
+            self, _provider, value, _credential, _cancellation
+        ):
+            self.requests.append(value)
+            return self.responses.pop(0)
+
+        def close(self):
+            pass
+
+    window = ArtworkStudyWindow()
+    qtbot.addWidget(window)
+    window._execution.close()
+    execution = SequenceExecution()
+    window._execution = execution
+
+    response, output, normalized = (
+        window._execute_review_with_language_contract(
+            object(),
+            request,
+            "secret",
+            CancellationToken(),
+        )
+    )
+
+    assert response.provider_id == "test"
+    assert output["dimension_studies"][0]["observation"] == "Mock 未观察图片。"
+    assert normalized is True
+    assert len(execution.requests) == 2
+    assert execution.requests[1].images == ()

@@ -1,13 +1,18 @@
 from dataclasses import replace
+from copy import deepcopy
 from io import BytesIO
 import numpy as np
 from PIL import Image
+import pytest
 
 from scenelens.core.workspaces import WorkbenchRegistry
 from scenelens.modules.artwork_study.reviews import (
+    ArtworkStudyLanguageError,
     ArtworkMasterStudyReview,
     ArtworkStudyContext,
     STUDY_DIMENSIONS,
+    evaluation_status_label,
+    non_simplified_chinese_paths,
 )
 from scenelens.modules.artwork_study.storage import ArtworkStudyStore
 from scenelens.modules.artwork_study.workbench import (
@@ -82,6 +87,81 @@ def test_artwork_reviewer_mock_covers_twelve_dimensions_and_validates_schema():
     assert dimensions == set(STUDY_DIMENSIONS)
     assert output["reading_scope"]["visible_content"].startswith("离线 Mock")
     assert "不是实际美术分析" in output["executive_thesis"]
+    assert non_simplified_chinese_paths(output) == ()
+    assert evaluation_status_label("insufficient_evidence") == "证据不足"
+
+
+def test_artwork_reviewer_requires_simplified_chinese_and_builds_normalizer():
+    reviewer = ArtworkMasterStudyReview()
+    request = reviewer.create_request(
+        ArtworkStudyContext(
+            study_id="study",
+            title="test",
+            work_type="environment_concept",
+            study_goal="理解构图与气氛",
+            known_context="",
+            image_metadata={"width": 64, "height": 48},
+            local_evidence={"value_structure": {}},
+        ),
+        (ProviderImage("artwork", "image/png", _png_bytes()),),
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    output = MockProvider().review(
+        request, "", CancellationToken()
+    ).output
+    english = deepcopy(output)
+    english["dimension_studies"][0]["observation"] = (
+        "The composition uses a strong diagonal to direct the eye."
+    )
+
+    with pytest.raises(ArtworkStudyLanguageError) as exc_info:
+        reviewer.validate_output(english)
+
+    assert "$.dimension_studies[0].observation" in exc_info.value.paths
+    normalization = reviewer.create_language_normalization_request(
+        english,
+        model_id="test-model",
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    assert normalization.images == ()
+    assert normalization.model_id == "test-model"
+    assert "简体中文" in normalization.system_instruction
+    assert normalization.payload["source_output"] == english
+
+    traditional = deepcopy(output)
+    traditional["dimension_studies"][0]["observation"] = (
+        "畫面利用明暗關係建立視覺層級。"
+    )
+    with pytest.raises(ArtworkStudyLanguageError):
+        reviewer.validate_output(traditional)
+
+
+def test_artwork_reviewer_rejects_unknown_internal_status():
+    reviewer = ArtworkMasterStudyReview()
+    request = reviewer.create_request(
+        ArtworkStudyContext(
+            study_id="study",
+            title="test",
+            work_type="environment_concept",
+            study_goal="理解构图与气氛",
+            known_context="",
+            image_metadata={"width": 64, "height": 48},
+            local_evidence={"value_structure": {}},
+        ),
+        (ProviderImage("artwork", "image/png", _png_bytes()),),
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    output = MockProvider().review(
+        request, "", CancellationToken()
+    ).output
+    invalid = deepcopy(output)
+    invalid["dimension_studies"][0]["evaluation_status"] = "string"
+
+    with pytest.raises(ValueError, match="必须是以下值之一"):
+        reviewer.validate_output(invalid)
 
 
 def test_artwork_workbench_registers_as_independent_module():

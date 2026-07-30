@@ -57,8 +57,10 @@ from scenelens.imaging.qt import numpy_to_qimage
 from scenelens.modules.artwork_study.models import ArtworkStudyState
 from scenelens.modules.artwork_study.presets import load_artwork_study_presets
 from scenelens.modules.artwork_study.reviews import (
+    ArtworkStudyLanguageError,
     ArtworkMasterStudyReview,
     ArtworkStudyContext,
+    evaluation_status_label,
     format_artwork_review_report,
 )
 from scenelens.modules.artwork_study.storage import ArtworkStudyStore
@@ -141,6 +143,13 @@ class ArtworkDisclosureDialog(QDialog):
         retry_notice.setWordWrap(True)
         retry_notice.setStyleSheet("color: #E6B450;")
         layout.addWidget(retry_notice)
+        language_notice = QLabel(
+            "作品研究固定输出简体中文。若模型首次返回英文或繁体中文，"
+            "最多追加 1 次不含图片的中文规范化请求，可能产生额外费用。"
+        )
+        language_notice.setWordWrap(True)
+        language_notice.setStyleSheet("color: #E6B450;")
+        layout.addWidget(language_notice)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
             | QDialogButtonBox.StandardButton.Cancel
@@ -574,7 +583,14 @@ class ArtworkStudyWindow(QMainWindow):
         else:
             self._load_image(image_path, reset_view=False)
         if state.ai_review:
-            self._show_ai_output(state.ai_review)
+            if self._review_is_current_and_chinese(state.ai_review):
+                self._show_ai_output(state.ai_review)
+            else:
+                self._clear_ai_output()
+                self.ai_status.setText(
+                    "当前保存的是旧版英文或无效结果，已停止显示。"
+                    "请重新执行一次专家拆解以生成简体中文结果。"
+                )
 
     def _choose_image(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -800,19 +816,60 @@ class ArtworkStudyWindow(QMainWindow):
 
         def operation():
             provider = self._provider_registry.get(provider_id)
-            response = self._execution.run_review(
-                provider,
-                request,
-                credential,
-                cancellation,
+            response, output, language_normalized = (
+                self._execute_review_with_language_contract(
+                    provider,
+                    request,
+                    credential,
+                    cancellation,
+                )
             )
             return {
                 "provider_id": response.provider_id,
+                "provider_display_name": manifest.display_name,
                 "model_id": response.model_id,
-                "output": self._reviewer.validate_output(response.output),
+                "output": output,
+                "language_normalized": language_normalized,
             }
 
         self._submit("ai", generation, operation, self._apply_ai_result)
+
+    def _execute_review_with_language_contract(
+        self,
+        provider,
+        request,
+        credential: str,
+        cancellation: CancellationToken,
+    ):
+        response = self._execution.run_review(
+            provider,
+            request,
+            credential,
+            cancellation,
+        )
+        language_normalized = False
+        try:
+            output = self._reviewer.validate_output(response.output)
+        except ArtworkStudyLanguageError:
+            normalization_request = (
+                self._reviewer.create_language_normalization_request(
+                    response.output,
+                    model_id=response.model_id,
+                    user_initiated=True,
+                    disclosure_confirmed=True,
+                )
+            )
+            normalized_response = self._execution.run_review(
+                provider,
+                normalization_request,
+                credential,
+                cancellation,
+            )
+            output = self._reviewer.validate_output(
+                normalized_response.output
+            )
+            language_normalized = True
+        return response, output, language_normalized
 
     def _apply_ai_result(self, result: object) -> None:
         value = dict(result)
@@ -827,6 +884,10 @@ class ArtworkStudyWindow(QMainWindow):
                     "reviewer_id": self._reviewer.descriptor.reviewer_id,
                     "reviewer_version": self._reviewer.descriptor.version,
                     "image_sha256": self._state.image_sha256,
+                    "language": "zh-CN",
+                    "language_normalized": bool(
+                        value["language_normalized"]
+                    ),
                     "completed_at": utc_now(),
                 },
             )
@@ -834,8 +895,14 @@ class ArtworkStudyWindow(QMainWindow):
             self._save_state()
         self._show_ai_output(output)
         self.tabs.setCurrentIndex(1)
+        language_note = (
+            "；已自动规范为简体中文"
+            if value["language_normalized"]
+            else "；简体中文"
+        )
         self.ai_status.setText(
-            f"完成：{value['provider_id']} / {value['model_id']}"
+            f"完成：{value['provider_display_name']}"
+            f"（模型 {value['model_id']}）{language_note}"
         )
         self._update_report()
 
@@ -860,7 +927,7 @@ class ArtworkStudyWindow(QMainWindow):
             node = QTreeWidgetItem(
                 [
                     labels.get(str(item["dimension_id"]), str(item["dimension_id"])),
-                    str(item["evaluation_status"]),
+                    evaluation_status_label(item["evaluation_status"]),
                     evidence,
                     f"{float(item['confidence']):.2f}",
                 ]
@@ -922,7 +989,15 @@ class ArtworkStudyWindow(QMainWindow):
         if self._local_analysis is not None:
             parts.append(format_local_analysis_summary(self._local_analysis))
         if self._state is not None and self._state.ai_review:
-            parts.append(format_artwork_review_report(self._state.ai_review))
+            if self._review_is_current_and_chinese(self._state.ai_review):
+                parts.append(
+                    format_artwork_review_report(self._state.ai_review)
+                )
+            else:
+                parts.append(
+                    "旧版 AI 结果不是完整简体中文，已停止显示。"
+                    "请重新执行专家拆解。"
+                )
         if self.notes_edit.toPlainText().strip():
             parts.append("个人学习笔记\n" + self.notes_edit.toPlainText().strip())
         self.report_text.setPlainText("\n\n".join(parts))
@@ -1087,6 +1162,21 @@ class ArtworkStudyWindow(QMainWindow):
         self.ai_detail.clear()
         self.causal_list.clear()
         self.report_text.clear()
+
+    def _clear_ai_output(self) -> None:
+        self.ai_dimension_tree.clear()
+        self.ai_detail.clear()
+        self.causal_list.clear()
+        self.canvas.clear_annotation_overlays()
+
+    def _review_is_current_and_chinese(
+        self, output: Mapping[str, Any]
+    ) -> bool:
+        try:
+            self._reviewer.validate_output(output)
+        except ValueError:
+            return False
+        return True
 
     def _submit(
         self,

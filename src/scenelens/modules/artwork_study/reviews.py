@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from importlib.resources import files
 import json
+import re
 from typing import Any, Mapping
 
 from scenelens.core.schema_validation import require_valid_json_schema
@@ -26,6 +27,87 @@ STUDY_DIMENSIONS = (
     "style_technique",
     "emotional_impact",
 )
+
+EVALUATION_STATUS_LABELS = {
+    "strong": "表现突出",
+    "effective_with_tradeoffs": "有效但有取舍",
+    "mixed": "效果混合",
+    "limited": "作用有限",
+    "insufficient_evidence": "证据不足",
+}
+
+_INTERNAL_TEXT_FIELDS = {
+    "schema_version",
+    "reviewer_id",
+    "dimension_id",
+    "evaluation_status",
+    "annotation_id",
+    "evidence_type",
+    "linked_dimensions",
+}
+_CJK_PATTERN = re.compile(r"[\u3400-\u9fff]")
+_LATIN_PATTERN = re.compile(r"[A-Za-z]")
+_COMMON_TRADITIONAL_CHARS = set(
+    "體這與為會個來時裏裡後於從還進過讓顯壓質學術風場畫圖構層"
+    "邊遠點線鏡頭觀覺應關敘節陰陽顏實將種說較區間難轉優勢問題"
+)
+
+
+class ArtworkStudyLanguageError(ValueError):
+    def __init__(self, paths: tuple[str, ...]) -> None:
+        self.paths = paths
+        super().__init__(
+            "作品研究结果没有完整使用简体中文，需执行一次中文规范化。"
+        )
+
+    def to_user_message(self) -> str:
+        return (
+            "AI 第二次返回仍未完整使用简体中文。"
+            "请稍后重试或更换模型。"
+        )
+
+
+def evaluation_status_label(value: object) -> str:
+    return EVALUATION_STATUS_LABELS.get(str(value), "未知状态")
+
+
+def non_simplified_chinese_paths(
+    output: Mapping[str, Any],
+) -> tuple[str, ...]:
+    issues: list[str] = []
+
+    def visit(value: Any, path: str, field: str | None = None) -> None:
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                visit(item, f"{path}.{key}", str(key))
+            return
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                visit(item, f"{path}[{index}]", field)
+            return
+        if not isinstance(value, str) or field in _INTERNAL_TEXT_FIELDS:
+            return
+        text = value.strip()
+        if not text:
+            return
+        cjk_count = len(_CJK_PATTERN.findall(text))
+        latin_count = len(_LATIN_PATTERN.findall(text))
+        contains_traditional = any(
+            character in _COMMON_TRADITIONAL_CHARS for character in text
+        )
+        mostly_english = (
+            (cjk_count == 0 and latin_count >= 4)
+            or latin_count > max(24, cjk_count * 3)
+        )
+        if contains_traditional or mostly_english:
+            issues.append(path)
+
+    visit(output, "$")
+    return tuple(issues)
+
+
+def is_simplified_chinese_review(output: Mapping[str, Any]) -> bool:
+    return not non_simplified_chinese_paths(output)
 
 
 @dataclass(frozen=True)
@@ -98,13 +180,17 @@ class ArtworkMasterStudyReview:
         "评价要说明何种目标下有效、代价是什么，不使用总分。语言面向美术"
         "从业者，可以准确使用专业术语，但每个关键术语要由画面证据解释。"
         "复刻与制作步骤只占很低比例；transferable_principles 侧重学习规律。"
+        "【语言硬性要求】除 JSON 键名、固定 ID、枚举值、十六进制颜色、数值和"
+        "Oklab、CG、UE5、P10 等必要技术标识外，所有可见自然语言字段必须使用"
+        "中国大陆通行的简体中文。不得输出英文句子、英文段落或繁体中文。"
+        "即使图片含英文文字，也必须用简体中文解释其作用。"
         "只输出符合给定 JSON Schema 的 JSON。"
     )
     descriptor = ReviewerDescriptor(
         module_id=MODULE_ID,
         reviewer_id="artwork_master_study",
         display_name="CG 主美作品深度研究",
-        version="1.0.0",
+        version="1.1.0",
         supported_inputs=(
             "single_artwork_image",
             "study_goal",
@@ -157,7 +243,42 @@ class ArtworkMasterStudyReview:
             raise ValueError(
                 f"作品研究必须完整覆盖十二维；缺少 {missing}，未知 {unexpected}。"
             )
+        language_issues = non_simplified_chinese_paths(output)
+        if language_issues:
+            raise ArtworkStudyLanguageError(language_issues)
         return dict(output)
+
+    def create_language_normalization_request(
+        self,
+        output: Mapping[str, Any],
+        *,
+        model_id: str | None = None,
+        user_initiated: bool = False,
+        disclosure_confirmed: bool = False,
+    ) -> VisionReviewRequest:
+        return VisionReviewRequest(
+            system_instruction=(
+                "你是 SceneLens 的简体中文规范化校对器。输入是一份已经完成的"
+                "作品研究 JSON。只把其中面向用户的自然语言值转换为中国大陆"
+                "通行的简体中文；不得增加、删除、概括或改写美术结论。必须原样"
+                "保留全部 JSON 键、数组顺序、数值、坐标、可信度、颜色、"
+                "schema_version、reviewer_id、dimension_id、evaluation_status、"
+                "evidence_type、annotation_id 和 linked_dimensions。Oklab、CG、"
+                "UE5、P10 等必要技术标识可以保留，但解释必须是简体中文。"
+                "只输出符合给定 JSON Schema 的完整 JSON。"
+            ),
+            payload={
+                "task": "convert_human_readable_values_to_zh_cn",
+                "source_output": dict(output),
+            },
+            images=(),
+            output_schema=self.output_schema,
+            model_id=model_id,
+            user_initiated=user_initiated,
+            disclosure_confirmed=disclosure_confirmed,
+            max_output_tokens=self.max_output_tokens,
+            timeout_seconds=180.0,
+        )
 
 
 def format_artwork_review_report(output: Mapping[str, Any]) -> str:
