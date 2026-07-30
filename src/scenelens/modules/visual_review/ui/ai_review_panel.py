@@ -87,6 +87,13 @@ class DataDisclosureDialog(QDialog):
             repair_notice.setWordWrap(True)
             repair_notice.setStyleSheet("color: #E6B450;")
             layout.addWidget(repair_notice)
+        retry_notice = QLabel(
+            "临时断线、超时或服务繁忙时最多自动尝试 3 次。极少数情况下，"
+            "重复提交可能产生额外调用费用。"
+        )
+        retry_notice.setWordWrap(True)
+        retry_notice.setStyleSheet("color: #E6B450;")
+        layout.addWidget(retry_notice)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel
             | QDialogButtonBox.StandardButton.Ok

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import http.client
 import json
 import socket
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -122,6 +124,70 @@ def _read_http_error_detail(exc: urllib.error.HTTPError) -> str:
     return " | ".join(parts)[:1200]
 
 
+_TRANSIENT_NETWORK_ERRORS = (
+    urllib.error.URLError,
+    TimeoutError,
+    socket.timeout,
+    http.client.RemoteDisconnected,
+    http.client.IncompleteRead,
+    ConnectionResetError,
+    ConnectionAbortedError,
+    ConnectionRefusedError,
+    BrokenPipeError,
+    ssl.SSLError,
+)
+
+
+def _network_provider_error(
+    exc: BaseException,
+    *,
+    image: bool,
+    request_bytes: int | None = None,
+    download: bool = False,
+) -> ProviderError:
+    subject = "AI 图像服务" if image else "AI 服务"
+    disconnected = isinstance(
+        exc,
+        (
+            http.client.RemoteDisconnected,
+            http.client.IncompleteRead,
+            ConnectionResetError,
+            ConnectionAbortedError,
+            BrokenPipeError,
+        ),
+    )
+    if download:
+        message = (
+            "下载 AI 返回图片时连接被中途断开。SceneLens 会自动重试；"
+            "如果仍失败，请检查代理、VPN 或网络稳定性。"
+            if disconnected
+            else "无法下载 AI 返回图片。SceneLens 会自动重试；"
+            "如果仍失败，请检查网络。"
+        )
+        code = "output_connection_closed" if disconnected else "output_download_error"
+    elif disconnected:
+        message = (
+            f"{subject}在返回结果前中断了连接。SceneLens 会自动重试；"
+            "如果仍失败，请检查代理、VPN 或网络稳定性。"
+        )
+        code = "connection_closed"
+    else:
+        message = (
+            f"无法连接{subject}。SceneLens 会自动重试；"
+            "如果仍失败，请检查网络。"
+        )
+        code = "network_error"
+    details = [type(exc).__name__]
+    if request_bytes is not None:
+        details.append(f"request_bytes={request_bytes}")
+    return ProviderError(
+        message,
+        code=code,
+        retryable=True,
+        technical_detail=" | ".join(details),
+    )
+
+
 class UrllibJsonTransport:
     def send(
         self,
@@ -154,12 +220,11 @@ class UrllibJsonTransport:
                 retryable=retryable,
                 technical_detail=_read_http_error_detail(exc),
             ) from exc
-        except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
-            raise ProviderError(
-                "无法连接 AI 服务，请检查网络后重试。",
-                code="network_error",
-                retryable=True,
-                technical_detail=type(exc).__name__,
+        except _TRANSIENT_NETWORK_ERRORS as exc:
+            raise _network_provider_error(
+                exc,
+                image=False,
+                request_bytes=len(encoded),
             ) from exc
         cancellation.raise_if_cancelled()
         try:
@@ -207,12 +272,11 @@ class UrllibBinaryTransport:
                 retryable=retryable,
                 technical_detail=_read_http_error_detail(exc),
             ) from exc
-        except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
-            raise ProviderError(
-                "无法连接 AI 图像服务，请检查网络后重试。",
-                code="network_error",
-                retryable=True,
-                technical_detail=type(exc).__name__,
+        except _TRANSIENT_NETWORK_ERRORS as exc:
+            raise _network_provider_error(
+                exc,
+                image=True,
+                request_bytes=len(request.body),
             ) from exc
         cancellation.raise_if_cancelled()
         try:
@@ -287,12 +351,11 @@ class UrllibBinaryDownloadTransport:
                 retryable=retryable,
                 technical_detail=_read_http_error_detail(exc),
             ) from exc
-        except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
-            raise ProviderError(
-                "无法下载 AI 返回图片，请检查网络后重试。",
-                code="output_download_error",
-                retryable=True,
-                technical_detail=type(exc).__name__,
+        except _TRANSIENT_NETWORK_ERRORS as exc:
+            raise _network_provider_error(
+                exc,
+                image=True,
+                download=True,
             ) from exc
         if len(data) > max_bytes:
             raise ProviderError(

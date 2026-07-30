@@ -101,6 +101,26 @@ def test_execution_retries_retryable_errors_without_real_sleep():
     service.close()
 
 
+def test_retry_exhaustion_reports_attempt_count():
+    service = ProviderExecutionService(sleep=lambda _delay: None)
+    provider = FlakyProvider(failures=3)
+
+    try:
+        with pytest.raises(ProviderError) as exc_info:
+            service.run_review(
+                provider,
+                _request(),
+                "secret",
+                CancellationToken(),
+                RetryPolicy(max_attempts=3, initial_backoff_seconds=0),
+            )
+    finally:
+        service.close()
+
+    assert provider.calls == 3
+    assert "retry_attempts=3" in exc_info.value.technical_detail
+
+
 def test_execution_cancellation_stops_before_provider_call():
     service = ProviderExecutionService(sleep=lambda _delay: None)
     provider = FlakyProvider(failures=0)

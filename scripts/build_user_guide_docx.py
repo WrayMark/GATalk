@@ -182,7 +182,7 @@ def build() -> None:
     metadata.paragraph_format.space_after = Pt(14)
     set_font(
         metadata.add_run(
-            "适用版本：0.6.0a0（M5 作品研究候选）"
+            "适用版本：0.6.0a1（M5 作品研究网络修正版）"
             "　更新日期：2026-07-30"
         ),
         size=9.5,
@@ -332,6 +332,8 @@ def build() -> None:
         add_list_item(document, text, bullet_id)
     add_heading(document, "AI 接口失败时", 2)
     for text in (
+        "connection_closed：远端或中间网络设备提前断开连接，不表示 API Key 错误。新版会自动退避重试 3 次；仍失败时检查代理、VPN 和网络稳定性。",
+        "自动重试可能重复提交同一请求并产生额外费用，发送确认窗口会提前提示。",
         "http_400：请求参数或模型不兼容。新版会自动处理 Gemini 深度审阅的复杂 Schema；仍失败时先确认正在运行 0.5.0a4，再恢复默认模型重试。",
         "若错误包含 generation_config.response_format.text.mime_type，说明仍在运行旧版；关闭旧程序后改用本次 Gemini 接口修正版。",
         "Gemini 首次返回的 JSON 语法损坏、被截断或结构不完整时，SceneLens 最多自动纠错一次。确认发送窗口会提示该过程可能再次发送同一审阅副本并增加少量费用。",

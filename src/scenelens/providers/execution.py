@@ -22,7 +22,7 @@ from scenelens.providers.contracts import (
 @dataclass(frozen=True)
 class RetryPolicy:
     max_attempts: int = 3
-    initial_backoff_seconds: float = 0.25
+    initial_backoff_seconds: float = 1.0
 
 
 @dataclass
@@ -88,6 +88,12 @@ class ProviderExecutionService:
                     exc.technical_detail,
                     credential,
                 )
+                if exc.retryable and attempt >= policy.max_attempts:
+                    detail = exc.technical_detail.strip()
+                    suffix = f"retry_attempts={attempt}"
+                    exc.technical_detail = (
+                        f"{detail} | {suffix}" if detail else suffix
+                    )
                 if not exc.retryable or attempt >= policy.max_attempts:
                     raise
                 delay = policy.initial_backoff_seconds * (2 ** (attempt - 1))
@@ -140,6 +146,12 @@ class ProviderExecutionService:
                     exc.technical_detail,
                     credential,
                 )
+                if exc.retryable and attempt >= policy.max_attempts:
+                    detail = exc.technical_detail.strip()
+                    suffix = f"retry_attempts={attempt}"
+                    exc.technical_detail = (
+                        f"{detail} | {suffix}" if detail else suffix
+                    )
                 if not exc.retryable or attempt >= policy.max_attempts:
                     raise
                 delay = policy.initial_backoff_seconds * (2 ** (attempt - 1))

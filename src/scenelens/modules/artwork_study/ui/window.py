@@ -134,6 +134,13 @@ class ArtworkDisclosureDialog(QDialog):
             repair.setWordWrap(True)
             repair.setStyleSheet("color: #E6B450;")
             layout.addWidget(repair)
+        retry_notice = QLabel(
+            "临时断线、超时或服务繁忙时最多自动尝试 3 次。极少数情况下，"
+            "重复提交可能产生额外调用费用。"
+        )
+        retry_notice.setWordWrap(True)
+        retry_notice.setStyleSheet("color: #E6B450;")
+        layout.addWidget(retry_notice)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
             | QDialogButtonBox.StandardButton.Cancel
@@ -787,7 +794,9 @@ class ArtworkStudyWindow(QMainWindow):
         self._ai_cancellation = cancellation
         self.run_ai_button.setEnabled(False)
         self.cancel_ai_button.setEnabled(True)
-        self.ai_status.setText("正在后台执行作品深度研究…")
+        self.ai_status.setText(
+            "正在后台执行作品深度研究；临时断线会自动重试…"
+        )
 
         def operation():
             provider = self._provider_registry.get(provider_id)
