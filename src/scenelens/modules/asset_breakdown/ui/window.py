@@ -178,6 +178,16 @@ class SendDisclosureDialog(QDialog):
         warning.setWordWrap(True)
         warning.setStyleSheet("color:#E6B450;")
         layout.addWidget(warning)
+        if preview.fallback_model_ids:
+            fallback_chain = " → ".join(preview.fallback_model_ids)
+            fallback = QLabel(
+                "若当前模型持续繁忙或已经下线，将在同一供应商内依次尝试"
+                f"备用模型：{fallback_chain}。不会跨供应商；每次尝试都可能"
+                "产生调用费用。"
+            )
+            fallback.setWordWrap(True)
+            fallback.setStyleSheet("color:#E6B450;")
+            layout.addWidget(fallback)
         if extra_notice:
             extra = QLabel(extra_notice)
             extra.setWordWrap(True)

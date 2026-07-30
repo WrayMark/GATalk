@@ -95,10 +95,12 @@ class DataDisclosureDialog(QDialog):
         retry_notice.setStyleSheet("color: #E6B450;")
         layout.addWidget(retry_notice)
         if preview.fallback_model_ids:
+            fallback_chain = " → ".join(preview.fallback_model_ids)
             fallback_notice = QLabel(
-                "若当前模型重试后仍返回 503 容量不足，将在同一供应商内"
-                f"改用备用模型 {preview.fallback_model_ids[0]} 再发送一次。"
-                "不会跨供应商；结果会记录实际模型，可能增加一次调用费用。"
+                "若当前模型重试后仍繁忙，或模型已下线，将在同一供应商"
+                f"内依次尝试备用模型：{fallback_chain}。"
+                "不会跨供应商；结果会记录实际模型，每次尝试都可能产生"
+                "调用费用。"
             )
             fallback_notice.setWordWrap(True)
             fallback_notice.setStyleSheet("color: #E6B450;")

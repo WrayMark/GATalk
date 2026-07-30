@@ -144,12 +144,12 @@ class ArtworkDisclosureDialog(QDialog):
         retry_notice.setStyleSheet("color: #E6B450;")
         layout.addWidget(retry_notice)
         if preview.fallback_model_ids:
+            fallback_chain = " → ".join(preview.fallback_model_ids)
             fallback_notice = QLabel(
-                "若当前模型在重试后仍返回 503 容量不足，SceneLens 会在同一"
-                f"供应商内改用备用模型 {preview.fallback_model_ids[0]} "
-                "再发送一次。"
-                "不会跨供应商；实际使用的模型会写入结果。此操作可能增加"
-                "一次调用费用。"
+                "若当前模型在重试后仍繁忙，或模型已下线，SceneLens 会在"
+                f"同一供应商内依次尝试备用模型：{fallback_chain}。"
+                "不会跨供应商；实际使用的模型会写入结果，每次尝试都可能"
+                "产生调用费用。"
             )
             fallback_notice.setWordWrap(True)
             fallback_notice.setStyleSheet("color: #E6B450;")

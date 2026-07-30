@@ -59,10 +59,13 @@ def test_disclosure_shows_capacity_fallback_and_extra_cost(qtbot) -> None:
     dialog = DataDisclosureDialog(
         DataDisclosurePreview(
             provider_id="google_gemini",
-            model_id="gemini-3.5-flash",
+            model_id="gemini-3.6-flash",
             payload_fields=("creative_intent",),
             images=(),
-            fallback_model_ids=("gemini-2.5-flash",),
+            fallback_model_ids=(
+                "gemini-3.5-flash",
+                "gemini-3.5-flash-lite",
+            ),
         ),
         second_opinion=False,
     )
@@ -70,8 +73,8 @@ def test_disclosure_shows_capacity_fallback_and_extra_cost(qtbot) -> None:
 
     labels = [item.text() for item in dialog.findChildren(QLabel)]
 
-    assert any("503 容量不足" in text for text in labels)
-    assert any("gemini-2.5-flash" in text for text in labels)
+    assert any("模型已下线" in text for text in labels)
+    assert any("gemini-3.5-flash-lite" in text for text in labels)
     assert any("不会跨供应商" in text for text in labels)
 
 

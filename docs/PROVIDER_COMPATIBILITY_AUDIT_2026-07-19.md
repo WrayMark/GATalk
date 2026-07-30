@@ -6,6 +6,10 @@
 
 ## 已修复
 
+- 2026-07-30 复查 Google 当前稳定模型和弃用表后，默认视觉模型更新为
+  `gemini-3.6-flash`，备用链更新为 `gemini-3.5-flash`、
+  `gemini-3.5-flash-lite`；移除已不再向新用户开放的
+  `gemini-2.5-flash`。404/503 可以越过当前不可用模型继续尝试下一项。
 - 2026-07-28 复查真实 Gemini 400 响应后，将
   `generationConfig.responseFormat.text.mimeType` 从文档示例中的
   `application/json` 改为 v1beta 服务端实际接受的
@@ -59,6 +63,9 @@ Header、请求图片和完整请求正文不写入错误信息。
 
 ## 自动验证结果
 
+- 2026-07-30 Gemini 模型路由修复后，新增默认模型、双备用链、404/503
+  越级回退、全链失败和发送清单测试；完整 207 项通过，源码与新
+  `onedir` 包内烟测退出码均为 0。真实联网烟测仍由用户主动执行。
 - 2026-07-28 Gemini MIME 枚举修复后，149 项完整测试通过。
 - 2026-07-28 修复候选输出到 `dist-gemini-fix/SceneLens/`，包含简明 Word
   使用手册；目录总大小 266,520,924 bytes（约 254.2 MiB），包内
@@ -70,7 +77,11 @@ Header、请求图片和完整请求正文不写入错误信息。
 ## 公开协议依据
 
 - [Gemini Structured Outputs](https://ai.google.dev/gemini-api/docs/generate-content/structured-output)
+- [Gemini 模型列表](https://ai.google.dev/gemini-api/docs/models)
+- [Gemini 模型弃用](https://ai.google.dev/gemini-api/docs/deprecations)
+- [Gemini 3.6 Flash](https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash)
 - [Gemini 3.5 Flash](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash)
+- [Gemini 3.5 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite)
 - [Gemini 图像生成与编辑](https://ai.google.dev/gemini-api/docs/generate-content/image-generation)
 - [百炼 OpenAI 兼容 Chat](https://help.aliyun.com/en/model-studio/qwen-api-via-openai-chat-completions)
 - [百炼 Structured Output](https://help.aliyun.com/en/model-studio/qwen-structured-output)

@@ -216,6 +216,117 @@ def test_review_does_not_fall_back_for_non_capacity_error():
     assert exc_info.value.code == "http_400"
 
 
+@pytest.mark.parametrize("primary_error_code", ["http_404", "http_503"])
+def test_review_skips_unavailable_models_in_fallback_chain(
+    primary_error_code,
+):
+    service = ProviderExecutionService(sleep=lambda _delay: None)
+
+    @dataclass
+    class RoutedProvider:
+        manifest: ProviderManifest
+
+        def __post_init__(self):
+            self.models = []
+
+        def review(self, request, _credential, _cancellation):
+            self.models.append(request.model_id)
+            if request.model_id == "primary-model":
+                raise ProviderError(
+                    "primary unavailable",
+                    code=primary_error_code,
+                    retryable=primary_error_code == "http_503",
+                )
+            if request.model_id == "retired-fallback":
+                raise ProviderError(
+                    "model retired",
+                    code="http_404",
+                    retryable=False,
+                )
+            return ProviderResponse(
+                "routed",
+                request.model_id,
+                {"ok": True},
+            )
+
+    provider = RoutedProvider(
+        replace(
+            FlakyProvider(0).manifest,
+            provider_id="routed",
+            default_models={"vision_review": "primary-model"},
+        )
+    )
+    try:
+        result = service.run_review_with_model_fallback(
+            provider,
+            _request(),
+            "secret",
+            CancellationToken(),
+            ("retired-fallback", "working-fallback"),
+            RetryPolicy(max_attempts=1, initial_backoff_seconds=0),
+        )
+    finally:
+        service.close()
+
+    assert provider.models == [
+        "primary-model",
+        "retired-fallback",
+        "working-fallback",
+    ]
+    assert result.response.model_id == "working-fallback"
+    assert result.attempted_model_ids == (
+        "primary-model",
+        "retired-fallback",
+        "working-fallback",
+    )
+    assert result.fallback_reason == primary_error_code
+
+
+def test_review_reports_complete_route_when_all_models_are_unavailable():
+    service = ProviderExecutionService(sleep=lambda _delay: None)
+
+    @dataclass
+    class UnavailableProvider:
+        manifest: ProviderManifest
+
+        def review(self, request, _credential, _cancellation):
+            raise ProviderError(
+                "model unavailable",
+                code="http_404",
+                retryable=False,
+                technical_detail=f"model={request.model_id}",
+            )
+
+    provider = UnavailableProvider(
+        replace(
+            FlakyProvider(0).manifest,
+            provider_id="unavailable",
+            default_models={"vision_review": "primary-model"},
+        )
+    )
+    try:
+        with pytest.raises(ProviderError) as exc_info:
+            service.run_review_with_model_fallback(
+                provider,
+                _request(),
+                "secret",
+                CancellationToken(),
+                ("fallback-a", "fallback-b"),
+                RetryPolicy(max_attempts=1),
+            )
+    finally:
+        service.close()
+
+    assert exc_info.value.code == "http_404"
+    assert "已配置的备用模型均不可用" in exc_info.value.public_message
+    assert (
+        "model_attempts=primary-model->fallback-a->fallback-b"
+        in exc_info.value.technical_detail
+    )
+    assert "fallback-a:http_404" in exc_info.value.technical_detail
+    assert "fallback-b:http_404" in exc_info.value.technical_detail
+
+
 def test_manifest_fallback_models_are_configured_and_deduplicated():
     manifest = ProviderManifest(
         provider_id="test",

@@ -64,12 +64,15 @@ def _manifest(provider_id: str):
     )
 
 
-def test_gemini_manifest_declares_stable_capacity_fallback():
+def test_gemini_manifest_declares_current_default_and_fallback_chain():
     manifest = _manifest("google_gemini")
 
+    assert manifest.model_for(
+        ProviderCapability.VISION_REVIEW
+    ) == "gemini-3.6-flash"
     assert manifest.fallback_models_for(
         ProviderCapability.VISION_REVIEW
-    ) == ("gemini-2.5-flash",)
+    ) == ("gemini-3.5-flash", "gemini-3.5-flash-lite")
 
 
 @pytest.mark.parametrize("provider_id", ["aliyun_bailian", "siliconflow"])

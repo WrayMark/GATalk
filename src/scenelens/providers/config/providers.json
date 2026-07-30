@@ -67,16 +67,22 @@
       "base_url": "https://generativelanguage.googleapis.com/v1beta",
       "capabilities": ["vision_review", "structured_output"],
       "default_models": {
-        "vision_review": "gemini-3.5-flash",
-        "structured_output": "gemini-3.5-flash"
+        "vision_review": "gemini-3.6-flash",
+        "structured_output": "gemini-3.6-flash"
       },
       "credential_target": "SceneLens/provider/google_gemini",
       "optional": true,
       "mainland_priority": 90,
       "options": {
         "fallback_models": {
-          "vision_review": ["gemini-2.5-flash"],
-          "structured_output": ["gemini-2.5-flash"]
+          "vision_review": [
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite"
+          ],
+          "structured_output": [
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite"
+          ]
         }
       }
     },

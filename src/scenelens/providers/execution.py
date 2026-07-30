@@ -45,6 +45,33 @@ class ReviewExecutionResult:
     fallback_reason: str = ""
 
 
+def _fallback_error_with_route(
+    error: ProviderError,
+    attempted_model_ids: list[str],
+    failed_models: list[str],
+    *,
+    all_models_unavailable: bool = False,
+) -> ProviderError:
+    detail = error.technical_detail.strip()
+    route = "model_attempts=" + "->".join(attempted_model_ids)
+    failures = "model_errors=" + ",".join(failed_models)
+    technical_detail = " | ".join(
+        item for item in (detail, route, failures) if item
+    )
+    public_message = error.public_message
+    if all_models_unavailable:
+        public_message = (
+            "当前模型及已配置的备用模型均不可用，"
+            "请稍后重试或在模型 ID 中选择其他可用模型。"
+        )
+    return ProviderError(
+        public_message,
+        code=error.code,
+        retryable=error.retryable,
+        technical_detail=technical_detail,
+    )
+
+
 class ProviderExecutionService:
     def __init__(
         self,
@@ -125,6 +152,7 @@ class ProviderExecutionService:
             request.model_id,
         )
         primary_request = replace(request, model_id=requested_model_id)
+        attempted_model_ids = [requested_model_id]
         try:
             response = self.run_review(
                 provider,
@@ -135,51 +163,58 @@ class ProviderExecutionService:
             )
         except ProviderError as primary_error:
             candidates = tuple(
-                model_id
-                for model_id in fallback_model_ids
-                if model_id and model_id != requested_model_id
+                dict.fromkeys(
+                    model_id.strip()
+                    for model_id in fallback_model_ids
+                    if model_id.strip()
+                    and model_id.strip() != requested_model_id
+                )
             )
-            if primary_error.code != "http_503" or not candidates:
+            recoverable_codes = {"http_404", "http_503"}
+            if primary_error.code not in recoverable_codes or not candidates:
                 raise
-            fallback_model_id = candidates[0]
-            fallback_request = replace(
-                primary_request,
-                model_id=fallback_model_id,
-            )
-            cancellation.raise_if_cancelled()
-            try:
-                response = self.run_review(
-                    provider,
-                    fallback_request,
-                    credential,
-                    cancellation,
-                    RetryPolicy(max_attempts=1),
+            failed_models = [f"{requested_model_id}:{primary_error.code}"]
+            last_error = primary_error
+            for fallback_model_id in candidates:
+                attempted_model_ids.append(fallback_model_id)
+                fallback_request = replace(
+                    primary_request,
+                    model_id=fallback_model_id,
                 )
-            except ProviderError as fallback_error:
-                detail = fallback_error.technical_detail.strip()
-                route = (
-                    "model_fallback="
-                    f"{requested_model_id}->{fallback_model_id}"
+                cancellation.raise_if_cancelled()
+                try:
+                    response = self.run_review(
+                        provider,
+                        fallback_request,
+                        credential,
+                        cancellation,
+                        RetryPolicy(max_attempts=1),
+                    )
+                except ProviderError as fallback_error:
+                    last_error = fallback_error
+                    failed_models.append(
+                        f"{fallback_model_id}:{fallback_error.code}"
+                    )
+                    if fallback_error.code in recoverable_codes:
+                        continue
+                    raise _fallback_error_with_route(
+                        fallback_error,
+                        attempted_model_ids,
+                        failed_models,
+                    ) from fallback_error
+                return ReviewExecutionResult(
+                    response=response,
+                    requested_model_id=requested_model_id,
+                    attempted_model_ids=tuple(attempted_model_ids),
+                    fallback_used=True,
+                    fallback_reason=primary_error.code,
                 )
-                technical_detail = (
-                    f"{detail} | {route}" if detail else route
-                )
-                raise ProviderError(
-                    "当前模型和备用模型都暂时不可用，请稍后重试。",
-                    code=fallback_error.code,
-                    retryable=fallback_error.retryable,
-                    technical_detail=technical_detail,
-                ) from fallback_error
-            return ReviewExecutionResult(
-                response=response,
-                requested_model_id=requested_model_id,
-                attempted_model_ids=(
-                    requested_model_id,
-                    fallback_model_id,
-                ),
-                fallback_used=True,
-                fallback_reason=primary_error.code,
-            )
+            raise _fallback_error_with_route(
+                last_error,
+                attempted_model_ids,
+                failed_models,
+                all_models_unavailable=True,
+            ) from last_error
         return ReviewExecutionResult(
             response=response,
             requested_model_id=requested_model_id,

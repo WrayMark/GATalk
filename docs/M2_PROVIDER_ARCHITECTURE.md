@@ -39,10 +39,11 @@
 模型和协议会变化，因此这些 URL 只解释初始 Manifest 的来源。真实发布前必须
 重新核对控制台可用模型、区域端点、价格、配额、数据保留和条款。
 
-Provider Manifest 还可按能力声明 `fallback_models`。当前仅 Google Gemini
-视觉审阅配置稳定 `gemini-2.5-flash` 作为容量回退：主模型有限重试后仍返回
-503 才会使用；只尝试一个备用模型，不跨供应商。发送清单和 AI Run 都记录
-该行为。
+Provider Manifest 还可按能力声明有序的 `fallback_models`。当前 Google
+Gemini 默认使用稳定版 `gemini-3.6-flash`，备用链为
+`gemini-3.5-flash`、`gemini-3.5-flash-lite`。主模型或备用模型返回 404
+（模型已下线）或 503（服务繁忙）时，才继续尝试下一项；每个备用模型只调用
+一次，不跨供应商。发送清单和 AI Run 都记录该行为。
 
 ## 3. 图像编辑能力位置
 
