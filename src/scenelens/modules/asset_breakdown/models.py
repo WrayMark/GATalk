@@ -1,0 +1,287 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field, replace
+from typing import Any, Mapping
+
+
+ASSET_CATEGORIES = (
+    "building",
+    "modular_piece",
+    "prop",
+    "vegetation",
+    "terrain",
+    "material",
+    "decal",
+    "background",
+    "lighting_vfx",
+    "character_vehicle",
+    "unknown",
+)
+
+EVIDENCE_KINDS = (
+    "visible_evidence",
+    "ai_inference",
+    "user_added",
+    "ai_generated_completion",
+)
+
+
+def validate_normalized_rect(
+    value: tuple[float, float, float, float] | list[float],
+) -> tuple[float, float, float, float]:
+    if len(value) != 4:
+        raise ValueError("区域坐标必须包含 x、y、width、height。")
+    x, y, width, height = (float(item) for item in value)
+    if (
+        x < 0.0
+        or y < 0.0
+        or width <= 0.0
+        or height <= 0.0
+        or x + width > 1.000001
+        or y + height > 1.000001
+    ):
+        raise ValueError("区域必须位于图片内，宽度和高度必须大于零。")
+    return (
+        max(0.0, min(1.0, x)),
+        max(0.0, min(1.0, y)),
+        max(0.0, min(1.0 - x, width)),
+        max(0.0, min(1.0 - y, height)),
+    )
+
+
+@dataclass(frozen=True)
+class SourceImage:
+    image_id: str
+    role: str
+    relative_path: str
+    sha256: str
+    original_filename: str
+    width: int
+    height: int
+    imported_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> SourceImage:
+        return cls(
+            image_id=str(value["image_id"]),
+            role=str(value["role"]),
+            relative_path=str(value["relative_path"]),
+            sha256=str(value["sha256"]),
+            original_filename=str(value["original_filename"]),
+            width=int(value.get("width", 0)),
+            height=int(value.get("height", 0)),
+            imported_at=str(value["imported_at"]),
+        )
+
+
+@dataclass(frozen=True)
+class AssetItem:
+    asset_id: str
+    name: str
+    category: str
+    semantic_type: str
+    parent_asset_id: str = ""
+    level: int = 0
+    normalized_rect: tuple[float, float, float, float] = (
+        0.25,
+        0.25,
+        0.5,
+        0.5,
+    )
+    evidence_kind: str = "visible_evidence"
+    visible_evidence: str = ""
+    inferred_details: str = ""
+    uncertainty: str = ""
+    confidence: float = 0.5
+    occlusion_status: str = "none"
+    reuse_group: str = ""
+    instance_count: int = 1
+    production_priority: str = "medium"
+    production_strategy: str = ""
+    module_pieces: tuple[str, ...] = ()
+    variants: tuple[str, ...] = ()
+    material_notes: str = ""
+    selected_for_generation: bool = False
+    user_modified: bool = False
+    source_image_id: str = ""
+    mask_relative_path: str = ""
+    mask_method: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "normalized_rect",
+            validate_normalized_rect(self.normalized_rect),
+        )
+        if self.category not in ASSET_CATEGORIES:
+            object.__setattr__(self, "category", "unknown")
+        if self.evidence_kind not in EVIDENCE_KINDS:
+            raise ValueError("未知的资产信息来源。")
+        object.__setattr__(
+            self,
+            "confidence",
+            max(0.0, min(1.0, float(self.confidence))),
+        )
+        object.__setattr__(self, "instance_count", max(1, int(self.instance_count)))
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> AssetItem:
+        return cls(
+            asset_id=str(value["asset_id"]),
+            name=str(value["name"]),
+            category=str(value.get("category", "unknown")),
+            semantic_type=str(value.get("semantic_type", "")),
+            parent_asset_id=str(value.get("parent_asset_id", "")),
+            level=int(value.get("level", 0)),
+            normalized_rect=tuple(
+                float(item)
+                for item in value.get(
+                    "normalized_rect", (0.25, 0.25, 0.5, 0.5)
+                )
+            ),
+            evidence_kind=str(value.get("evidence_kind", "visible_evidence")),
+            visible_evidence=str(value.get("visible_evidence", "")),
+            inferred_details=str(value.get("inferred_details", "")),
+            uncertainty=str(value.get("uncertainty", "")),
+            confidence=float(value.get("confidence", 0.5)),
+            occlusion_status=str(value.get("occlusion_status", "none")),
+            reuse_group=str(value.get("reuse_group", "")),
+            instance_count=int(value.get("instance_count", 1)),
+            production_priority=str(
+                value.get("production_priority", "medium")
+            ),
+            production_strategy=str(value.get("production_strategy", "")),
+            module_pieces=tuple(
+                str(item) for item in value.get("module_pieces", ())
+            ),
+            variants=tuple(str(item) for item in value.get("variants", ())),
+            material_notes=str(value.get("material_notes", "")),
+            selected_for_generation=bool(
+                value.get("selected_for_generation", False)
+            ),
+            user_modified=bool(value.get("user_modified", False)),
+            source_image_id=str(value.get("source_image_id", "")),
+            mask_relative_path=str(value.get("mask_relative_path", "")),
+            mask_method=str(value.get("mask_method", "")),
+            created_at=str(value.get("created_at", "")),
+            updated_at=str(value.get("updated_at", "")),
+        )
+
+    def user_edit(self, *, updated_at: str, **changes: Any) -> AssetItem:
+        return replace(
+            self,
+            **changes,
+            user_modified=True,
+            updated_at=updated_at,
+        )
+
+
+@dataclass(frozen=True)
+class GenerationRecord:
+    generation_id: str
+    asset_id: str
+    output_kind: str
+    source_image_sha256: str
+    source_rect: tuple[float, float, float, float]
+    provider_id: str
+    model_id: str
+    parameters: Mapping[str, Any]
+    relative_path: str
+    status: str
+    error_message: str = ""
+    created_at: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> GenerationRecord:
+        return cls(
+            generation_id=str(value["generation_id"]),
+            asset_id=str(value["asset_id"]),
+            output_kind=str(value["output_kind"]),
+            source_image_sha256=str(value["source_image_sha256"]),
+            source_rect=tuple(float(item) for item in value["source_rect"]),
+            provider_id=str(value["provider_id"]),
+            model_id=str(value["model_id"]),
+            parameters=dict(value.get("parameters", {})),
+            relative_path=str(value.get("relative_path", "")),
+            status=str(value["status"]),
+            error_message=str(value.get("error_message", "")),
+            created_at=str(value["created_at"]),
+        )
+
+
+@dataclass(frozen=True)
+class AssetBreakdownState:
+    project_id: str
+    title: str
+    scene_type: str = "general_environment"
+    production_goal: str = ""
+    notes: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    source_images: tuple[SourceImage, ...] = ()
+    assets: tuple[AssetItem, ...] = ()
+    generations: tuple[GenerationRecord, ...] = ()
+    ai_runs: tuple[Mapping[str, Any], ...] = ()
+    exports: tuple[Mapping[str, Any], ...] = ()
+    selected_asset_id: str = ""
+    zoom_factor: float = 1.0
+    center_x: float = 0.5
+    center_y: float = 0.5
+    regions_visible: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        value = asdict(self)
+        return value
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> AssetBreakdownState:
+        required = {"project_id", "title", "created_at", "updated_at"}
+        missing = required - set(value)
+        if missing:
+            raise ValueError(f"资产拆分项目缺少字段：{sorted(missing)}")
+        return cls(
+            project_id=str(value["project_id"]),
+            title=str(value["title"]),
+            scene_type=str(value.get("scene_type", "general_environment")),
+            production_goal=str(value.get("production_goal", "")),
+            notes=str(value.get("notes", "")),
+            created_at=str(value["created_at"]),
+            updated_at=str(value["updated_at"]),
+            source_images=tuple(
+                SourceImage.from_dict(item)
+                for item in value.get("source_images", ())
+            ),
+            assets=tuple(
+                AssetItem.from_dict(item) for item in value.get("assets", ())
+            ),
+            generations=tuple(
+                GenerationRecord.from_dict(item)
+                for item in value.get("generations", ())
+            ),
+            ai_runs=tuple(dict(item) for item in value.get("ai_runs", ())),
+            exports=tuple(dict(item) for item in value.get("exports", ())),
+            selected_asset_id=str(value.get("selected_asset_id", "")),
+            zoom_factor=float(value.get("zoom_factor", 1.0)),
+            center_x=float(value.get("center_x", 0.5)),
+            center_y=float(value.get("center_y", 0.5)),
+            regions_visible=bool(value.get("regions_visible", True)),
+        )
+
+    @property
+    def main_image(self) -> SourceImage | None:
+        return next(
+            (image for image in self.source_images if image.role == "main"),
+            None,
+        )
+

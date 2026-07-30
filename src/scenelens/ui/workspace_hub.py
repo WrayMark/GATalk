@@ -3,7 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
-    QHBoxLayout,
+    QGridLayout,
     QLabel,
     QMainWindow,
     QPushButton,
@@ -31,7 +31,7 @@ class WorkspaceCard(QFrame):
             "#workspaceCard {background:#292A2D;border:1px solid #4A4D52;"
             "border-radius:10px;} #workspaceCard:hover {border-color:#8AB4F8;}"
         )
-        self.setMinimumSize(390, 360)
+        self.setMinimumSize(320, 350)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(14)
@@ -67,8 +67,8 @@ class WorkspaceHubWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("SceneLens — 游戏美术工作台")
-        self.resize(1120, 720)
-        self.setMinimumSize(880, 620)
+        self.resize(1420, 760)
+        self.setMinimumSize(1040, 650)
         root = QWidget()
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(48, 36, 48, 42)
@@ -78,12 +78,12 @@ class WorkspaceHubWindow(QMainWindow):
         title.setStyleSheet("font-size:28pt;font-weight:800;color:#F1F3F4;")
         root_layout.addWidget(title)
         subtitle = QLabel(
-            "游戏场景美术控制与作品学习工作台\n选择本次要完成的工作。"
+            "游戏美术控制、作品学习与资产规划工作台\n选择本次要完成的工作。"
         )
         subtitle.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         subtitle.setStyleSheet("font-size:12pt;color:#BDC1C6;")
         root_layout.addWidget(subtitle)
-        cards = QHBoxLayout()
+        cards = QGridLayout()
         cards.setSpacing(24)
         visual = WorkspaceCard(
             "scene_art_control",
@@ -107,9 +107,20 @@ class WorkspaceHubWindow(QMainWindow):
                 "个人学习笔记、画面标注与综合研究报告",
             ),
         )
-        for card in (visual, artwork):
+        asset_breakdown = WorkspaceCard(
+            "asset_breakdown",
+            "资产拆分工作台",
+            "把复杂游戏场景原画转换为可校正、可追溯的结构化生产资产清单。",
+            (
+                "建筑模块、道具、植被、地形、材质、贴花与远景分类",
+                "原画区域、可见像素遮罩、层级、复用关系与制作优先级",
+                "用户拆分、合并、重命名、补充和持久保存",
+                "按需生成独立概念图、遮挡补全图和资产展示板",
+            ),
+        )
+        for index, card in enumerate((visual, artwork, asset_breakdown)):
             card.selected.connect(self.workspace_selected)
-            cards.addWidget(card)
+            cards.addWidget(card, 0, index)
         root_layout.addLayout(cards, 1)
         footer = QLabel(
             "所有本地功能均可在无 API Key 时使用；网络发送只在你确认后发生。"

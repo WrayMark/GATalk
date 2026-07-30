@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scenelens"
-version = "0.6.0a3"
+version = "0.7.0"
 description = "Local visual review workbench for game environment art."
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -34,6 +34,8 @@ where = ["src"]
 "scenelens.modules.visual_review.schemas" = ["*.json"]
 "scenelens.modules.artwork_study.config" = ["*.json"]
 "scenelens.modules.artwork_study.schemas" = ["*.json"]
+"scenelens.modules.asset_breakdown.config" = ["*.json"]
+"scenelens.modules.asset_breakdown.schemas" = ["*.json"]
 "scenelens.providers.config" = ["*.json"]
 
 [tool.pytest.ini_options]

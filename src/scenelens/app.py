@@ -155,6 +155,12 @@ def _run_internal_smoke_check() -> None:
         ArtworkStudyContext,
     )
     from scenelens.modules.artwork_study.storage import ArtworkStudyStore
+    from scenelens.modules.asset_breakdown.reviews import (
+        AssetBreakdownContext,
+        AssetBreakdownReview,
+    )
+    from scenelens.modules.asset_breakdown.service import asset_from_ai
+    from scenelens.modules.asset_breakdown.storage import AssetBreakdownStore
 
     rgb = np.empty((64, 96, 3), dtype=np.uint8)
     rgb[:, :48] = (35, 75, 120)
@@ -297,6 +303,54 @@ def _run_internal_smoke_check() -> None:
             or artwork_store.image_path().read_bytes() != source.read_bytes()
         ):
             raise RuntimeError("Internal artwork-study storage smoke check failed.")
+        asset_store = AssetBreakdownStore.create(
+            folder / "资产拆分.scenelens-assets",
+            "资产拆分烟测",
+        )
+        asset_source = asset_store.import_image(source, "main")
+        asset_reviewer = AssetBreakdownReview()
+        asset_request = asset_reviewer.create_request(
+            AssetBreakdownContext(
+                project_id=asset_store.state.project_id,
+                title=asset_store.state.title,
+                scene_type="general_environment",
+                scene_focus=("建筑", "道具"),
+                production_goal="验证完整结构化流程",
+                image_metadata={"width": 96, "height": 64},
+                supplemental_references=(),
+            ),
+            (
+                ProviderImage(
+                    "main_concept",
+                    "image/png",
+                    image_bytes,
+                ),
+            ),
+            user_initiated=True,
+            disclosure_confirmed=True,
+        )
+        asset_output = asset_reviewer.validate_output(
+            provider_registry.get("mock")
+            .review(
+                asset_request,
+                "",
+                CancellationToken(),
+            )
+            .output
+        )
+        asset_store.add_or_replace_asset(
+            asset_from_ai(
+                asset_output["assets"][0],
+                source_image_id=asset_source.image_id,
+            )
+        )
+        if (
+            not asset_store.state.assets
+            or asset_store.image_path(asset_source).read_bytes()
+            != source.read_bytes()
+        ):
+            raise RuntimeError("Internal asset-breakdown smoke check failed.")
+        asset_store.close()
         store = ProjectStore.create(
             folder / "烟测 项目.scenelens",
             "烟测项目",
@@ -454,6 +508,12 @@ def main() -> int:
             )
 
             window = ArtworkStudyWindow()
+        elif workspace_id == "asset_breakdown":
+            from scenelens.modules.asset_breakdown.ui.window import (
+                AssetBreakdownWindow,
+            )
+
+            window = AssetBreakdownWindow()
         else:
             return
         window.workspace_home_requested.connect(show_hub)
@@ -471,6 +531,6 @@ def main() -> int:
     hub.workspace_selected.connect(open_workspace)
     hub.show()
     if smoke_test:
-        QTimer.singleShot(0, lambda: open_workspace("artwork_study"))
+        QTimer.singleShot(0, lambda: open_workspace("asset_breakdown"))
         QTimer.singleShot(1_000, app.quit)
     return app.exec()

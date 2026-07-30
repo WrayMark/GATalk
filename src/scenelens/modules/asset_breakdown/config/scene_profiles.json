@@ -1,0 +1,54 @@
+{
+  "format_version": 1,
+  "scene_types": [
+    {
+      "id": "general_environment",
+      "label": "通用环境",
+      "focus": ["建筑", "道具", "植被", "地形", "材质", "远景"]
+    },
+    {
+      "id": "medieval_village",
+      "label": "历史／中世纪聚落",
+      "focus": ["建筑模块套件", "屋顶和立面变体", "街道道具", "地表材质", "植被群落"]
+    },
+    {
+      "id": "urban_street",
+      "label": "现代／未来城市",
+      "focus": ["立面模块", "道路系统", "标识贴花", "车辆道具", "远景天际线"]
+    },
+    {
+      "id": "scifi_industrial",
+      "label": "科幻／工业",
+      "focus": ["结构模块", "管线系统", "机械道具", "面板变体", "特效与灯光代理"]
+    },
+    {
+      "id": "natural_landscape",
+      "label": "自然景观",
+      "focus": ["地形层", "岩石组", "植被物种", "群落层级", "远景卡片与大气"]
+    },
+    {
+      "id": "interior",
+      "label": "室内空间",
+      "focus": ["墙地顶模块", "门窗", "家具组合", "陈设道具", "材质与贴花"]
+    },
+    {
+      "id": "stylized_environment",
+      "label": "风格化环境",
+      "focus": ["大形语言", "模块重复", "夸张变体", "手绘材质", "色块型远景"]
+    }
+  ],
+  "categories": [
+    {"id": "building", "label": "建筑"},
+    {"id": "modular_piece", "label": "模块构件"},
+    {"id": "prop", "label": "道具"},
+    {"id": "vegetation", "label": "植被"},
+    {"id": "terrain", "label": "地形"},
+    {"id": "material", "label": "材质"},
+    {"id": "decal", "label": "贴花／标识"},
+    {"id": "background", "label": "远景／纯视觉元素"},
+    {"id": "lighting_vfx", "label": "灯光／特效代理"},
+    {"id": "character_vehicle", "label": "角色／载具"},
+    {"id": "unknown", "label": "待分类"}
+  ]
+}
+

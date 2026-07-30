@@ -121,6 +121,77 @@ class MockProvider:
 
 def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
     title = str(schema.get("title", ""))
+    if title == "SceneLens Asset Breakdown":
+        return {
+            "schema_version": "1.0",
+            "reviewer_id": "asset_breakdown_review",
+            "scene_understanding": {
+                "scene_type": "未分析",
+                "summary": (
+                    "离线 Mock 不读取图像语义；仅提供可编辑的示例资产结构，"
+                    "用于验证保存、遮罩、生成和导出流程。"
+                ),
+                "spatial_layers": ["前景", "中景", "远景"],
+                "breakdown_rule": "按制作职能建立示例层级，不作为真实识别结论。",
+            },
+            "production_strategy": {
+                "hero_assets": ["示例主体"],
+                "modular_kits": ["示例建筑模块"],
+                "repeatable_assets": ["示例重复道具"],
+                "materials_and_decals": ["示例地表材质"],
+                "background_only": ["示例远景"],
+            },
+            "assets": [
+                {
+                    "asset_id": "mock_hero_structure",
+                    "name": "示例主体建筑",
+                    "category": "building",
+                    "semantic_type": "英雄资产示例",
+                    "parent_asset_id": "",
+                    "level": 0,
+                    "normalized_rect": [0.18, 0.18, 0.45, 0.54],
+                    "evidence_kind": "ai_inference",
+                    "visible_evidence": "Mock 未读取图片；此矩形只是流程示例。",
+                    "inferred_details": "需由用户连接真实视觉 Provider 或手动修订。",
+                    "uncertainty": "没有实际视觉证据。",
+                    "confidence": 0.0,
+                    "occlusion_status": "uncertain",
+                    "reuse_group": "",
+                    "instance_count": 1,
+                    "production_priority": "high",
+                    "production_strategy": "先校正区域和分类，再决定制作方式。",
+                    "module_pieces": ["墙段示例", "开口示例"],
+                    "variants": [],
+                    "material_notes": "",
+                },
+                {
+                    "asset_id": "mock_ground",
+                    "name": "示例地表",
+                    "category": "terrain",
+                    "semantic_type": "地形与材质示例",
+                    "parent_asset_id": "",
+                    "level": 0,
+                    "normalized_rect": [0.0, 0.65, 1.0, 0.35],
+                    "evidence_kind": "ai_inference",
+                    "visible_evidence": "Mock 未读取图片。",
+                    "inferred_details": "可能需要区分几何、混合材质和贴花。",
+                    "uncertainty": "没有实际视觉证据。",
+                    "confidence": 0.0,
+                    "occlusion_status": "none",
+                    "reuse_group": "surface_example",
+                    "instance_count": 1,
+                    "production_priority": "medium",
+                    "production_strategy": "由用户判断模型与材质边界。",
+                    "module_pieces": [],
+                    "variants": [],
+                    "material_notes": "示例字段。",
+                },
+            ],
+            "relationships": [],
+            "uncertainties": [
+                "离线 Mock 没有执行视觉推理，所有语义和矩形均为流程占位。"
+            ],
+        }
     if title == "SceneLens Artwork Master Study":
         dimensions = (
             "composition",

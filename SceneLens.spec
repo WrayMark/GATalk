@@ -14,6 +14,30 @@ a = Analysis(
                 / 'src'
                 / 'scenelens'
                 / 'modules'
+                / 'asset_breakdown'
+                / 'config'
+                / 'scene_profiles.json'
+            ),
+            'scenelens/modules/asset_breakdown/config',
+        ),
+        (
+            str(
+                project_root
+                / 'src'
+                / 'scenelens'
+                / 'modules'
+                / 'asset_breakdown'
+                / 'schemas'
+                / '*.json'
+            ),
+            'scenelens/modules/asset_breakdown/schemas',
+        ),
+        (
+            str(
+                project_root
+                / 'src'
+                / 'scenelens'
+                / 'modules'
                 / 'artwork_study'
                 / 'config'
                 / 'presets.json'
