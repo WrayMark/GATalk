@@ -269,6 +269,7 @@ class ImageCanvas(QGraphicsView):
     region_created = Signal(object)
     region_creation_rejected = Signal(str)
     region_selected = Signal(str)
+    regions_selected = Signal(object)
     region_geometry_changed = Signal(str, object)
 
     def __init__(self, placeholder: str, parent=None) -> None:
@@ -301,6 +302,7 @@ class ImageCanvas(QGraphicsView):
         self._guide_items: list[QGraphicsItem] = []
         self._region_drag_start: QPointF | None = None
         self._region_rubber_band: QGraphicsRectItem | None = None
+        self._region_selection_drag = False
         self._zoom_factor = 1.0
         self._center_normalized = QPointF(0.5, 0.5)
         self._updating_view = False
@@ -585,11 +587,23 @@ class ImageCanvas(QGraphicsView):
         return len(self._guide_items)
 
     def select_region(self, region_id: str | None) -> None:
+        self.select_regions((region_id,) if region_id else ())
+
+    def select_regions(self, region_ids) -> None:
+        selected = {str(item) for item in region_ids if item}
         for item_id, item in self._region_items.items():
-            item.setSelected(item_id == region_id)
+            item.setSelected(item_id in selected)
+
+    def selected_region_ids(self) -> tuple[str, ...]:
+        return tuple(
+            item_id
+            for item_id, item in self._region_items.items()
+            if item.isSelected()
+        )
 
     def cancel_region_creation(self) -> None:
         self._region_drag_start = None
+        self._region_selection_drag = False
         if self._region_rubber_band is not None:
             self._scene.removeItem(self._region_rubber_band)
             self._region_rubber_band = None
@@ -677,13 +691,24 @@ class ImageCanvas(QGraphicsView):
                     self.mapToScene(event.position().toPoint())
                 )
                 self._region_drag_start = start
+                self._region_selection_drag = bool(
+                    event.modifiers()
+                    & Qt.KeyboardModifier.ShiftModifier
+                )
                 self._region_rubber_band = QGraphicsRectItem(QRectF(start, start))
                 pen = QPen(QColor("#4FC3F7"))
                 pen.setCosmetic(True)
                 pen.setStyle(Qt.PenStyle.DashLine)
                 self._region_rubber_band.setPen(pen)
                 self._region_rubber_band.setBrush(
-                    QBrush(QColor(79, 195, 247, 35))
+                    QBrush(
+                        QColor(
+                            255 if self._region_selection_drag else 79,
+                            209 if self._region_selection_drag else 195,
+                            102 if self._region_selection_drag else 247,
+                            35,
+                        )
+                    )
                 )
                 self._region_rubber_band.setZValue(20.0)
                 self._scene.addItem(self._region_rubber_band)
@@ -709,8 +734,18 @@ class ImageCanvas(QGraphicsView):
                 self.mapToScene(event.position().toPoint())
             )
             rect = QRectF(self._region_drag_start, current).normalized()
+            selecting = self._region_selection_drag
             self.cancel_region_creation()
             image_rect = self.image_scene_rect()
+            if selecting:
+                selected = set(self.selected_region_ids())
+                for item_id, item in self._region_items.items():
+                    if rect.intersects(item.scene_geometry()):
+                        selected.add(item_id)
+                self.select_regions(selected)
+                self.regions_selected.emit(tuple(selected))
+                event.accept()
+                return
             if (
                 image_rect.width() > 0
                 and image_rect.height() > 0

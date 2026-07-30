@@ -62,6 +62,30 @@ class ProviderManifest:
                 result.append(model_id)
         return tuple(result)
 
+    def model_choices_for(
+        self,
+        capability: ProviderCapability,
+    ) -> tuple[tuple[str, str], ...]:
+        configured = self.options.get("model_choices", {})
+        if not isinstance(configured, Mapping):
+            return ()
+        values = configured.get(capability.value, ())
+        if not isinstance(values, (list, tuple)):
+            return ()
+        result: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for value in values:
+            if isinstance(value, Mapping):
+                model_id = str(value.get("id", "")).strip()
+                label = str(value.get("label", model_id)).strip()
+            else:
+                model_id = str(value).strip()
+                label = model_id
+            if model_id and model_id not in seen:
+                result.append((model_id, label or model_id))
+                seen.add(model_id)
+        return tuple(result)
+
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> ProviderManifest:
         return cls(

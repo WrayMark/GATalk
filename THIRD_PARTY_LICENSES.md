@@ -49,6 +49,10 @@ M1A 使用 Python 3.11 标准库 `sqlite3` 和 `hashlib` 实现项目存储与�
 M6 资产拆分只复用已锁定的 OpenCV GrabCut 和 Pillow，没有复制调研仓库代码、
 提示词或模型权重，也没有新增运行依赖。
 
+0.8.0 未新增运行依赖，也未复制外部仓库代码、模型权重或提示词。SAM 2、
+Grounded SAM 2、Florence-2 与 Qwen2.5-VL 仅用于技术路线调研，当前安装包
+未包含它们。Nano Banana 是远程服务产品名，不是随程序分发的第三方库。
+
 ## Qt LGPL 待办
 
 正式发布前至少完成：

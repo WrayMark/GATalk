@@ -5,6 +5,7 @@ import pytest
 from scenelens.providers.contracts import (
     CancellationToken,
     ImageEditRequest,
+    ProviderError,
 )
 from scenelens.providers.factory import create_default_provider_registry
 from scenelens.providers.image_adapters import (
@@ -83,6 +84,64 @@ def test_gemini_image_adapter_is_offline_contract_test() -> None:
     assert result.image_bytes == PNG
     assert ":generateContent" in transport.requests[0].url
     assert transport.requests[0].headers["x-goog-api-key"] == "secret"
+    parts = transport.requests[0].body["contents"][0]["parts"]
+    assert parts[0] == {"text": "IMAGE_ROLE=current"}
+    assert parts[2] == {"text": "IMAGE_ROLE=reference"}
+
+
+def test_gemini_current_nano_banana_models_and_resolution_contract() -> None:
+    provider = GeminiImageEditProvider(
+        _manifest("google_gemini_image"),
+        RecordingJsonTransport([]),
+    )
+    request = ImageEditRequest(
+        instruction={
+            "output_type": "AssetConceptArtifact",
+            "output_resolution": "2K",
+        },
+        images=(ProviderImage("current", "image/png", PNG),),
+        model_id="gemini-3-pro-image",
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    wire = provider.build_request(request, "secret")
+    assert "/models/gemini-3-pro-image:generateContent" in wire.url
+    assert wire.body["generationConfig"]["responseFormat"] == {
+        "image": {"imageSize": "2K"}
+    }
+
+    lite = ImageEditRequest(
+        instruction={"output_resolution": "2K"},
+        images=request.images,
+        model_id="gemini-3.1-flash-lite-image",
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    with pytest.raises(ProviderError) as error:
+        provider.build_request(lite, "secret")
+    assert error.value.code == "unsupported_image_resolution"
+
+
+def test_gemini_missing_image_reports_finish_reason() -> None:
+    provider = GeminiImageEditProvider(
+        _manifest("google_gemini_image"),
+        RecordingJsonTransport(
+            [
+                {
+                    "candidates": [
+                        {
+                            "finishReason": "SAFETY",
+                            "finishMessage": "blocked",
+                        }
+                    ]
+                }
+            ]
+        ),
+    )
+    with pytest.raises(ProviderError) as error:
+        provider.edit_image(_request(), "secret", CancellationToken())
+    assert error.value.code == "missing_image_output"
+    assert "finish_reason=SAFETY" in error.value.technical_detail
 
 
 def test_dashscope_image_adapter_builds_structured_request() -> None:

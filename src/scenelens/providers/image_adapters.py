@@ -45,15 +45,17 @@ class GeminiImageEditProvider:
             ProviderCapability.IMAGE_EDIT,
             request.model_id,
         )
-        parts: list[dict[str, Any]] = [
-            {
-                "inlineData": {
-                    "mimeType": image.media_type,
-                    "data": base64.b64encode(image.data).decode("ascii"),
+        parts: list[dict[str, Any]] = []
+        for image in request.images:
+            parts.append({"text": f"IMAGE_ROLE={image.role}"})
+            parts.append(
+                {
+                    "inlineData": {
+                        "mimeType": image.media_type,
+                        "data": base64.b64encode(image.data).decode("ascii"),
+                    }
                 }
-            }
-            for image in request.images
-        ]
+            )
         parts.append(
             {
                 "text": json.dumps(
@@ -64,6 +66,37 @@ class GeminiImageEditProvider:
                 )
             }
         )
+        resolution = str(
+            request.instruction.get("output_resolution", "")
+        ).upper()
+        aspect_ratio = str(
+            request.instruction.get("output_aspect_ratio", "")
+        ).strip()
+        if resolution and resolution not in {"1K", "2K", "4K"}:
+            raise ProviderError(
+                "Gemini 图片分辨率只能使用 1K、2K 或 4K。",
+                code="invalid_image_resolution",
+            )
+        if model == "gemini-3.1-flash-lite-image" and resolution not in {
+            "",
+            "1K",
+        }:
+            raise ProviderError(
+                "Nano Banana 2 Lite 仅支持 1K 输出，请调整分辨率。",
+                code="unsupported_image_resolution",
+            )
+        image_format = {}
+        if resolution:
+            image_format["imageSize"] = resolution
+        if aspect_ratio:
+            image_format["aspectRatio"] = aspect_ratio
+        generation_config: dict[str, Any] = {
+            "responseModalities": ["IMAGE"],
+        }
+        if image_format:
+            generation_config["responseFormat"] = {
+                "image": image_format,
+            }
         return JsonTransportRequest(
             url=f"{self.manifest.base_url}/models/{model}:generateContent",
             headers={
@@ -72,9 +105,7 @@ class GeminiImageEditProvider:
             },
             body={
                 "contents": [{"role": "user", "parts": parts}],
-                "generationConfig": {
-                    "responseModalities": ["IMAGE"],
-                },
+                "generationConfig": generation_config,
             },
             timeout_seconds=request.timeout_seconds,
         )
@@ -107,9 +138,14 @@ class GeminiImageEditProvider:
             TypeError,
             ValueError,
         ) as exc:
+            detail = _gemini_image_failure_detail(response)
             raise ProviderError(
-                "Gemini 图像响应缺少可用图片。",
+                (
+                    "Gemini 没有返回图片，可能是内容安全限制、模型权限"
+                    "或请求未完成。"
+                ),
                 code="missing_image_output",
+                technical_detail=detail,
             ) from exc
         return ImageEditResponse(
             self.manifest.provider_id,
@@ -121,6 +157,28 @@ class GeminiImageEditProvider:
             data,
             {"usage": dict(response.get("usageMetadata", {}))},
         )
+
+
+def _gemini_image_failure_detail(response: Mapping[str, Any]) -> str:
+    details = []
+    try:
+        candidate = response["candidates"][0]
+    except (KeyError, IndexError, TypeError):
+        candidate = {}
+    if isinstance(candidate, Mapping):
+        finish_reason = candidate.get("finishReason")
+        if finish_reason:
+            details.append(f"finish_reason={finish_reason}")
+        finish_message = candidate.get("finishMessage")
+        if finish_message:
+            details.append(f"finish_message={finish_message}")
+        safety = candidate.get("safetyRatings")
+        if safety:
+            details.append(f"safety_ratings={safety}")
+    feedback = response.get("promptFeedback")
+    if feedback:
+        details.append(f"prompt_feedback={feedback}")
+    return " | ".join(str(item) for item in details)[:1200]
 
 
 class DashScopeImageEditProvider:

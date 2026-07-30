@@ -75,6 +75,16 @@ def test_gemini_manifest_declares_current_default_and_fallback_chain():
     ) == ("gemini-3.5-flash", "gemini-3.5-flash-lite")
 
 
+def test_gemini_image_manifest_exposes_current_nano_banana_choices():
+    manifest = _manifest("google_gemini_image")
+    choices = dict(
+        manifest.model_choices_for(ProviderCapability.IMAGE_EDIT)
+    )
+    assert "gemini-3.1-flash-image" in choices
+    assert "gemini-3-pro-image" in choices
+    assert "gemini-3.1-flash-lite-image" in choices
+
+
 @pytest.mark.parametrize("provider_id", ["aliyun_bailian", "siliconflow"])
 def test_openai_chat_provider_contract_is_offline_and_configurable(provider_id):
     transport = RecordingJsonTransport(

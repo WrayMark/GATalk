@@ -8,6 +8,7 @@ import uuid
 
 from scenelens.imaging.loader import load_image
 from scenelens.modules.asset_breakdown.models import (
+    AutomaticAssetRun,
     AssetBreakdownState,
     AssetItem,
     GenerationRecord,
@@ -19,7 +20,7 @@ from scenelens.storage.project_store import utc_now
 
 
 FORMAT_ID = "scenelens.asset_breakdown"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 ENTRY_FILENAME = "asset_project.json"
 
 
@@ -49,6 +50,8 @@ class AssetBreakdownStore:
             "artifacts/masks",
             "artifacts/generated",
             "artifacts/boards",
+            "artifacts/automatic",
+            "backups",
             "exports",
         ):
             (folder / name).mkdir(parents=True, exist_ok=True)
@@ -89,7 +92,26 @@ class AssetBreakdownStore:
             state.project_id,
             utc_now(),
         )
-        return cls(folder, state, write_lock)
+        store = cls(folder, state, write_lock)
+        try:
+            for name in (
+                "artifacts/automatic",
+                "backups",
+            ):
+                (folder / name).mkdir(parents=True, exist_ok=True)
+            if version < FORMAT_VERSION:
+                timestamp = utc_now().replace(":", "-")
+                backup = (
+                    folder
+                    / "backups"
+                    / f"asset_project.v{version}.{timestamp}.json"
+                )
+                shutil.copyfile(folder / ENTRY_FILENAME, backup)
+                store.save()
+        except Exception:
+            write_lock.release()
+            raise
+        return store
 
     @property
     def recovered_stale_lock(self) -> bool:
@@ -107,7 +129,7 @@ class AssetBreakdownStore:
             {
                 "format": FORMAT_ID,
                 "format_version": FORMAT_VERSION,
-                "module_schema_version": 1,
+                "module_schema_version": 2,
                 "state": self.state.to_dict(),
             },
         )
@@ -159,6 +181,7 @@ class AssetBreakdownStore:
                 self.state,
                 assets=(),
                 generations=(),
+                automatic_runs=(),
                 ai_runs=(),
                 selected_asset_id="",
             )
@@ -221,6 +244,13 @@ class AssetBreakdownStore:
         self.state = replace(
             self.state,
             generations=(*self.state.generations, record),
+        )
+        self.save()
+
+    def append_automatic_run(self, run: AutomaticAssetRun) -> None:
+        self.state = replace(
+            self.state,
+            automatic_runs=(*self.state.automatic_runs, run),
         )
         self.save()
 

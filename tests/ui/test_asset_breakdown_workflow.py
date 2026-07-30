@@ -10,7 +10,10 @@ from PySide6.QtWidgets import QLabel
 
 from scenelens.modules.asset_breakdown.service import create_manual_asset
 from scenelens.modules.asset_breakdown.storage import AssetBreakdownStore
-from scenelens.modules.asset_breakdown.ui.window import AssetBreakdownWindow
+from scenelens.modules.asset_breakdown.ui.window import (
+    AssetBreakdownWindow,
+    _combo_model_id,
+)
 from scenelens.providers.contracts import ImageEditResponse
 from scenelens.ui.workspace_hub import WorkspaceHubWindow
 
@@ -99,6 +102,10 @@ def test_asset_window_loads_and_edits_region(qtbot, tmp_path: Path) -> None:
     )
     assert window._store.state.assets[0].name == "用户修订名称"
     assert window._store.state.assets[0].evidence_kind == "user_added"
+    window._undo_stack.undo()
+    assert window._store.state.assets[0].name == "旧名称"
+    window._undo_stack.redo()
+    assert window._store.state.assets[0].name == "用户修订名称"
     window.close()
 
 
@@ -160,4 +167,20 @@ def test_asset_generation_keeps_partial_success(
         "failed",
     ]
     assert window._store.artifact_path(records[0].relative_path).is_file()
+    window.close()
+
+
+def test_gemini_image_choice_sends_model_id_not_display_label(qtbot) -> None:
+    window = AssetBreakdownWindow()
+    qtbot.addWidget(window)
+    index = window.image_provider_combo.findData("google_gemini_image")
+    window.image_provider_combo.setCurrentIndex(index)
+    model_index = window.image_model_combo.findData(
+        "gemini-3-pro-image"
+    )
+    window.image_model_combo.setCurrentIndex(model_index)
+    assert window.image_model_combo.currentText().startswith(
+        "Nano Banana Pro"
+    )
+    assert _combo_model_id(window.image_model_combo) == "gemini-3-pro-image"
     window.close()

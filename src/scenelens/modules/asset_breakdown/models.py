@@ -221,6 +221,62 @@ class GenerationRecord:
 
 
 @dataclass(frozen=True)
+class AutomaticAssetRun:
+    """A self-contained one-click result, independent from the editable list."""
+
+    run_id: str
+    status: str
+    source_image_sha256: str
+    vision_provider_id: str
+    vision_model_id: str
+    image_provider_id: str
+    image_model_id: str
+    output_kind: str
+    asset_limit: int
+    assets: tuple[AssetItem, ...] = ()
+    generations: tuple[GenerationRecord, ...] = ()
+    board_relative_path: str = ""
+    manifest_relative_path: str = ""
+    repair_notes: tuple[str, ...] = ()
+    error_summary: str = ""
+    created_at: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> AutomaticAssetRun:
+        return cls(
+            run_id=str(value["run_id"]),
+            status=str(value.get("status", "completed")),
+            source_image_sha256=str(value["source_image_sha256"]),
+            vision_provider_id=str(value["vision_provider_id"]),
+            vision_model_id=str(value["vision_model_id"]),
+            image_provider_id=str(value["image_provider_id"]),
+            image_model_id=str(value["image_model_id"]),
+            output_kind=str(value.get("output_kind", "isolated_concept")),
+            asset_limit=max(1, int(value.get("asset_limit", 16))),
+            assets=tuple(
+                AssetItem.from_dict(item)
+                for item in value.get("assets", ())
+            ),
+            generations=tuple(
+                GenerationRecord.from_dict(item)
+                for item in value.get("generations", ())
+            ),
+            board_relative_path=str(value.get("board_relative_path", "")),
+            manifest_relative_path=str(
+                value.get("manifest_relative_path", "")
+            ),
+            repair_notes=tuple(
+                str(item) for item in value.get("repair_notes", ())
+            ),
+            error_summary=str(value.get("error_summary", "")),
+            created_at=str(value.get("created_at", "")),
+        )
+
+
+@dataclass(frozen=True)
 class AssetBreakdownState:
     project_id: str
     title: str
@@ -232,6 +288,7 @@ class AssetBreakdownState:
     source_images: tuple[SourceImage, ...] = ()
     assets: tuple[AssetItem, ...] = ()
     generations: tuple[GenerationRecord, ...] = ()
+    automatic_runs: tuple[AutomaticAssetRun, ...] = ()
     ai_runs: tuple[Mapping[str, Any], ...] = ()
     exports: tuple[Mapping[str, Any], ...] = ()
     selected_asset_id: str = ""
@@ -269,6 +326,10 @@ class AssetBreakdownState:
                 GenerationRecord.from_dict(item)
                 for item in value.get("generations", ())
             ),
+            automatic_runs=tuple(
+                AutomaticAssetRun.from_dict(item)
+                for item in value.get("automatic_runs", ())
+            ),
             ai_runs=tuple(dict(item) for item in value.get("ai_runs", ())),
             exports=tuple(dict(item) for item in value.get("exports", ())),
             selected_asset_id=str(value.get("selected_asset_id", "")),
@@ -284,4 +345,3 @@ class AssetBreakdownState:
             (image for image in self.source_images if image.role == "main"),
             None,
         )
-

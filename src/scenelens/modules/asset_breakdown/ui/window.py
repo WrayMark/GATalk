@@ -9,7 +9,14 @@ import uuid
 import numpy as np
 from PIL import Image
 from PySide6.QtCore import QThread, QThreadPool, Qt, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QKeySequence,
+    QPixmap,
+    QUndoCommand,
+    QUndoStack,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -25,11 +32,13 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QSplitter,
     QTabWidget,
     QToolBar,
@@ -54,8 +63,15 @@ from scenelens.modules.asset_breakdown.artifacts import (
     make_asset_board,
     write_asset_manifest,
 )
+from scenelens.modules.asset_breakdown.automatic import (
+    AutomaticPipelineResult,
+    is_systemic_provider_error,
+    provider_error_message,
+    run_automatic_pipeline,
+)
 from scenelens.modules.asset_breakdown.models import (
     ASSET_CATEGORIES,
+    AutomaticAssetRun,
     AssetBreakdownState,
     AssetItem,
     GenerationRecord,
@@ -79,6 +95,7 @@ from scenelens.providers.contracts import (
     DataDisclosurePreview,
     ImageEditRequest,
     ProviderCapability,
+    ProviderError,
     ProviderImage,
     disclosure_preview,
 )
@@ -203,6 +220,34 @@ class SendDisclosureDialog(QDialog):
         layout.addWidget(buttons)
 
 
+class _AssetStateCommand(QUndoCommand):
+    def __init__(
+        self,
+        window: "AssetBreakdownWindow",
+        *,
+        before_assets: tuple[AssetItem, ...],
+        before_generations: tuple[GenerationRecord, ...],
+        after_assets: tuple[AssetItem, ...],
+        after_generations: tuple[GenerationRecord, ...],
+        select_id: str,
+        text: str,
+    ) -> None:
+        super().__init__(text)
+        self._window = window
+        self._before = (before_assets, before_generations)
+        self._after = (after_assets, after_generations)
+        self._select_id = select_id
+
+    def undo(self) -> None:
+        self._window._restore_asset_state(*self._before)
+
+    def redo(self) -> None:
+        self._window._restore_asset_state(
+            *self._after,
+            select_id=self._select_id,
+        )
+
+
 class AssetBreakdownWindow(QMainWindow):
     workspace_home_requested = Signal()
 
@@ -220,7 +265,9 @@ class AssetBreakdownWindow(QMainWindow):
         self._generation_counter: dict[str, int] = {}
         self._ai_cancellation: CancellationToken | None = None
         self._image_cancellation: CancellationToken | None = None
+        self._automatic_cancellation: CancellationToken | None = None
         self._restoring = False
+        self._undo_stack = QUndoStack(self)
 
         self._thread_pool = QThreadPool(self)
         self._thread_pool.setMaxThreadCount(
@@ -269,6 +316,15 @@ class AssetBreakdownWindow(QMainWindow):
         self.hide_regions_action = QAction("隐藏框", self)
         self.hide_regions_action.setCheckable(True)
         self.reset_view_action = QAction("重置视图", self)
+        self.undo_action = QAction("撤销", self)
+        self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self.undo_action.triggered.connect(self._undo_requested)
+        self.redo_action = QAction("重做", self)
+        self.redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        self.redo_action.triggered.connect(self._redo_requested)
+        self.delete_action = QAction("删除选中资产", self)
+        self.delete_action.setShortcut(QKeySequence.StandardKey.Delete)
+        self.delete_action.triggered.connect(self._delete_shortcut_requested)
 
         menu = self.menuBar().addMenu("文件")
         menu.addActions(
@@ -279,6 +335,14 @@ class AssetBreakdownWindow(QMainWindow):
                 self.save_action,
                 self.import_main_action,
                 self.import_reference_action,
+            ]
+        )
+        edit_menu = self.menuBar().addMenu("编辑")
+        edit_menu.addActions(
+            [
+                self.undo_action,
+                self.redo_action,
+                self.delete_action,
             ]
         )
 
@@ -293,6 +357,8 @@ class AssetBreakdownWindow(QMainWindow):
                 self.save_action,
             ]
         )
+        toolbar.addSeparator()
+        toolbar.addActions([self.undo_action, self.redo_action])
         toolbar.addSeparator()
         toolbar.addActions(
             [
@@ -363,12 +429,18 @@ class AssetBreakdownWindow(QMainWindow):
             "将场景原画拖到这里，或点击“导入主原画”"
         )
         splitter.addWidget(self.canvas)
-        tabs = QTabWidget()
-        tabs.setMinimumWidth(500)
-        tabs.addTab(self._build_inventory_tab(), "资产清单")
-        tabs.addTab(self._build_detail_tab(), "资产详情")
-        tabs.addTab(self._build_generation_tab(), "生成与导出")
-        splitter.addWidget(tabs)
+        self.workflow_tabs = QTabWidget()
+        self.workflow_tabs.setMinimumWidth(520)
+        manual = QTabWidget()
+        manual.addTab(self._build_inventory_tab(), "资产清单")
+        manual.addTab(self._build_detail_tab(), "资产详情")
+        manual.addTab(self._build_generation_tab(), "生成与导出")
+        self.workflow_tabs.addTab(manual, "可校正拆分")
+        self.workflow_tabs.addTab(
+            self._build_automatic_tab(),
+            "全自动资产板",
+        )
+        splitter.addWidget(self.workflow_tabs)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 0)
         splitter.setSizes([980, 520])
@@ -525,7 +597,9 @@ class AssetBreakdownWindow(QMainWindow):
                 provider.manifest.display_name,
                 provider.manifest.provider_id,
             )
-        self.image_model_edit = QLineEdit()
+        self.image_model_combo = QComboBox()
+        self.image_model_combo.setEditable(True)
+        self.image_model_edit = self.image_model_combo.lineEdit()
         self.image_key_edit = QLineEdit()
         self.image_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         image_save_key = QPushButton("存入系统凭据")
@@ -547,10 +621,18 @@ class AssetBreakdownWindow(QMainWindow):
             "occlusion_completion",
         )
         self.generation_kind_combo.addItem("资产评审展示图", "presentation")
+        self.image_resolution_combo = QComboBox()
+        for label, value in (
+            ("1K（推荐，成本较低）", "1K"),
+            ("2K", "2K"),
+            ("4K（成本和耗时较高）", "4K"),
+        ):
+            self.image_resolution_combo.addItem(label, value)
         form.addRow("图片供应商", self.image_provider_combo)
-        form.addRow("模型 ID", self.image_model_edit)
+        form.addRow("模型", self.image_model_combo)
         form.addRow("API Key", key_row)
         form.addRow("生成类型", self.generation_kind_combo)
+        form.addRow("输出分辨率", self.image_resolution_combo)
         warning = QLabel(
             "生成结果是概念辅助，不是原画中不可见结构的事实，也不会自动成为"
             "生产资产。每项结果会保留模型、参数、来源区域和输入哈希。"
@@ -579,10 +661,101 @@ class AssetBreakdownWindow(QMainWindow):
         layout.addWidget(self.generation_list, 1)
         return root
 
+    def _build_automatic_tab(self) -> QWidget:
+        root = QWidget()
+        layout = QVBoxLayout(root)
+        intro = QLabel(
+            "独立的一键流程：原画分析 → 自动资产清单 → 逐项生成 → "
+            "合成一张资产展示板。结果不会写入“可校正拆分”的资产清单，"
+            "两种方式可在同一项目中并存。"
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        group = QGroupBox("全自动生成设置")
+        form = QFormLayout(group)
+        self.auto_vision_provider_combo = QComboBox()
+        for provider in self._provider_registry.for_capability(
+            ProviderCapability.VISION_REVIEW
+        ):
+            self.auto_vision_provider_combo.addItem(
+                provider.manifest.display_name,
+                provider.manifest.provider_id,
+            )
+        self.auto_vision_model_edit = QLineEdit()
+        self.auto_vision_key_edit = QLineEdit()
+        self.auto_vision_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.auto_image_provider_combo = QComboBox()
+        for provider in self._provider_registry.for_capability(
+            ProviderCapability.IMAGE_EDIT
+        ):
+            self.auto_image_provider_combo.addItem(
+                provider.manifest.display_name,
+                provider.manifest.provider_id,
+            )
+        self.auto_image_model_combo = QComboBox()
+        self.auto_image_model_combo.setEditable(True)
+        self.auto_image_model_edit = self.auto_image_model_combo.lineEdit()
+        self.auto_image_key_edit = QLineEdit()
+        self.auto_image_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.auto_asset_limit = QSpinBox()
+        self.auto_asset_limit.setRange(1, 48)
+        self.auto_asset_limit.setValue(16)
+        self.auto_asset_limit.setToolTip(
+            "一次最多生成的资产数量。每项通常会产生一次图片调用。"
+        )
+        self.auto_resolution_combo = QComboBox()
+        for label, value in (
+            ("1K（推荐）", "1K"),
+            ("2K", "2K"),
+            ("4K", "4K"),
+        ):
+            self.auto_resolution_combo.addItem(label, value)
+        form.addRow("清单供应商", self.auto_vision_provider_combo)
+        form.addRow("清单模型 ID", self.auto_vision_model_edit)
+        form.addRow("清单 API Key", self.auto_vision_key_edit)
+        form.addRow("图片供应商", self.auto_image_provider_combo)
+        form.addRow("图片模型", self.auto_image_model_combo)
+        form.addRow("图片 API Key", self.auto_image_key_edit)
+        form.addRow("资产数量上限", self.auto_asset_limit)
+        form.addRow("输出分辨率", self.auto_resolution_combo)
+        self.auto_start_button = QPushButton(
+            "查看发送清单并全自动生成资产板"
+        )
+        self.auto_cancel_button = QPushButton("取消")
+        self.auto_cancel_button.setEnabled(False)
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(self.auto_start_button, 1)
+        row_layout.addWidget(self.auto_cancel_button)
+        form.addRow(row)
+        layout.addWidget(group)
+
+        self.auto_status = QLabel("尚未运行。")
+        self.auto_status.setWordWrap(True)
+        layout.addWidget(self.auto_status)
+        self.auto_run_list = QListWidget()
+        self.auto_run_list.setMaximumHeight(120)
+        layout.addWidget(self.auto_run_list)
+        self.auto_board_preview = QLabel("生成完成后在这里显示资产板。")
+        self.auto_board_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.auto_board_preview.setMinimumHeight(260)
+        self.auto_board_preview.setScaledContents(False)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self.auto_board_preview)
+        layout.addWidget(scroll, 1)
+        self.auto_export_button = QPushButton("导出当前全自动结果")
+        self.auto_export_button.setEnabled(False)
+        layout.addWidget(self.auto_export_button)
+        return root
+
     def _connect_signals(self) -> None:
         self.canvas.file_dropped.connect(self._import_main_path)
         self.canvas.region_created.connect(self._manual_region_created)
         self.canvas.region_selected.connect(self._select_asset_by_id)
+        self.canvas.regions_selected.connect(self._select_assets_by_ids)
         self.canvas.region_geometry_changed.connect(
             self._asset_geometry_changed
         )
@@ -606,6 +779,24 @@ class AssetBreakdownWindow(QMainWindow):
                 self.image_model_edit,
                 self.image_key_edit,
                 ProviderCapability.IMAGE_EDIT,
+                model_combo=self.image_model_combo,
+            )
+        )
+        self.auto_vision_provider_combo.currentIndexChanged.connect(
+            lambda _index: self._provider_changed(
+                self.auto_vision_provider_combo,
+                self.auto_vision_model_edit,
+                self.auto_vision_key_edit,
+                ProviderCapability.VISION_REVIEW,
+            )
+        )
+        self.auto_image_provider_combo.currentIndexChanged.connect(
+            lambda _index: self._provider_changed(
+                self.auto_image_provider_combo,
+                self.auto_image_model_edit,
+                self.auto_image_key_edit,
+                ProviderCapability.IMAGE_EDIT,
+                model_combo=self.auto_image_model_combo,
             )
         )
         self._provider_changed(
@@ -619,6 +810,20 @@ class AssetBreakdownWindow(QMainWindow):
             self.image_model_edit,
             self.image_key_edit,
             ProviderCapability.IMAGE_EDIT,
+            model_combo=self.image_model_combo,
+        )
+        self._provider_changed(
+            self.auto_vision_provider_combo,
+            self.auto_vision_model_edit,
+            self.auto_vision_key_edit,
+            ProviderCapability.VISION_REVIEW,
+        )
+        self._provider_changed(
+            self.auto_image_provider_combo,
+            self.auto_image_model_edit,
+            self.auto_image_key_edit,
+            ProviderCapability.IMAGE_EDIT,
+            model_combo=self.auto_image_model_combo,
         )
         self.title_edit.editingFinished.connect(self._save_fields)
         self.scene_type_combo.currentTextChanged.connect(
@@ -641,6 +846,28 @@ class AssetBreakdownWindow(QMainWindow):
             self._cancel_generation
         )
         self.export_manifest_button.clicked.connect(self._export_package)
+        self.auto_start_button.clicked.connect(
+            self._start_automatic_pipeline
+        )
+        self.auto_cancel_button.clicked.connect(
+            self._cancel_automatic_pipeline
+        )
+        self.auto_export_button.clicked.connect(
+            self._export_automatic_run
+        )
+        self.auto_run_list.itemSelectionChanged.connect(
+            lambda: (
+                self._show_automatic_run(
+                    str(
+                        self.auto_run_list.currentItem().data(
+                            Qt.ItemDataRole.UserRole
+                        )
+                    )
+                )
+                if self.auto_run_list.currentItem() is not None
+                else None
+            )
+        )
 
     def _new_project(self) -> None:
         base = QFileDialog.getExistingDirectory(
@@ -684,6 +911,7 @@ class AssetBreakdownWindow(QMainWindow):
             self._store.close()
         self._store = store
         self._state = store.state
+        self._undo_stack.clear()
         self._restoring = True
         try:
             self.title_edit.setText(self._state.title)
@@ -700,6 +928,7 @@ class AssetBreakdownWindow(QMainWindow):
             self._refresh_reference_list()
             self._refresh_asset_tree()
             self._refresh_generation_list()
+            self._refresh_automatic_runs()
         finally:
             self._restoring = False
         self._load_main_image()
@@ -775,6 +1004,8 @@ class AssetBreakdownWindow(QMainWindow):
             return
         self._refresh_asset_tree()
         self._refresh_generation_list()
+        self._refresh_automatic_runs()
+        self._undo_stack.clear()
         self._load_main_image()
 
     def _load_main_image(self) -> None:
@@ -1017,10 +1248,12 @@ class AssetBreakdownWindow(QMainWindow):
             rect=tuple(float(value) for value in rect),
             source_image_id=main.image_id,
         )
-        self._store.add_or_replace_asset(asset)
-        self._state = self._store.state
-        self._refresh_asset_tree(select_id=asset.asset_id)
-        self._refresh_overlays()
+        self._push_asset_state(
+            (*self._state.assets, asset),
+            self._state.generations,
+            select_id=asset.asset_id,
+            text="新增资产",
+        )
 
     def _split_selected(self) -> None:
         asset = self._selected_asset()
@@ -1030,10 +1263,12 @@ class AssetBreakdownWindow(QMainWindow):
         assets = tuple(
             item for item in self._state.assets if item.asset_id != asset.asset_id
         ) + children
-        self._store.replace_assets(assets)
-        self._state = self._store.state
-        self._refresh_asset_tree(select_id=children[0].asset_id)
-        self._refresh_overlays()
+        self._push_asset_state(
+            assets,
+            self._state.generations,
+            select_id=children[0].asset_id,
+            text="拆分资产",
+        )
 
     def _merge_selected(self) -> None:
         selected = self._selected_assets()
@@ -1060,10 +1295,17 @@ class AssetBreakdownWindow(QMainWindow):
         assets = tuple(
             item for item in self._state.assets if item.asset_id not in selected_ids
         ) + (merged,)
-        self._store.replace_assets(assets)
-        self._state = self._store.state
-        self._refresh_asset_tree(select_id=merged.asset_id)
-        self._refresh_overlays()
+        retained_generations = tuple(
+            item
+            for item in self._state.generations
+            if item.asset_id not in selected_ids
+        )
+        self._push_asset_state(
+            assets,
+            retained_generations,
+            select_id=merged.asset_id,
+            text="合并资产",
+        )
 
     def _delete_selected(self) -> None:
         selected = self._selected_assets()
@@ -1076,12 +1318,24 @@ class AssetBreakdownWindow(QMainWindow):
         )
         if result != QMessageBox.StandardButton.Yes:
             return
-        for asset in selected:
-            self._store.delete_asset(asset.asset_id)
-        self._state = self._store.state
-        self._refresh_asset_tree()
-        self._refresh_generation_list()
-        self._refresh_overlays()
+        selected_ids = {asset.asset_id for asset in selected}
+        assets = tuple(
+            replace(asset, parent_asset_id="")
+            if asset.parent_asset_id in selected_ids
+            else asset
+            for asset in self._state.assets
+            if asset.asset_id not in selected_ids
+        )
+        generations = tuple(
+            item
+            for item in self._state.generations
+            if item.asset_id not in selected_ids
+        )
+        self._push_asset_state(
+            assets,
+            generations,
+            text="删除资产",
+        )
 
     def _apply_detail_edits(self) -> None:
         asset = self._selected_asset()
@@ -1107,10 +1361,16 @@ class AssetBreakdownWindow(QMainWindow):
             material_notes=self.detail_material.toPlainText().strip(),
             evidence_kind="user_added",
         )
-        self._store.add_or_replace_asset(updated)
-        self._state = self._store.state
-        self._refresh_asset_tree(select_id=updated.asset_id)
-        self._refresh_overlays()
+        assets = tuple(
+            updated if item.asset_id == updated.asset_id else item
+            for item in self._state.assets
+        )
+        self._push_asset_state(
+            assets,
+            self._state.generations,
+            select_id=updated.asset_id,
+            text="修改资产",
+        )
         self.statusBar().showMessage("用户修订已保存，不会被后续 AI 覆盖。", 3000)
 
     def _asset_geometry_changed(self, asset_id: str, rect: object) -> None:
@@ -1126,10 +1386,16 @@ class AssetBreakdownWindow(QMainWindow):
             mask_relative_path="",
             mask_method="",
         )
-        self._store.add_or_replace_asset(updated)
-        self._state = self._store.state
-        self._refresh_asset_tree(select_id=asset_id)
-        self._refresh_overlays()
+        assets = tuple(
+            updated if item.asset_id == asset_id else item
+            for item in self._state.assets
+        )
+        self._push_asset_state(
+            assets,
+            self._state.generations,
+            select_id=asset_id,
+            text="移动或缩放资产框",
+        )
 
     def _show_selected_mask(self) -> None:
         asset = self._selected_asset()
@@ -1216,12 +1482,16 @@ class AssetBreakdownWindow(QMainWindow):
         )
         first_mask[top : top + height, left : left + width] = 255
         first_crop = asset_crop_png(self._loaded.rgb, first_asset, first_mask)
+        preview_instruction = asset_generation_instruction(
+            first_asset.to_dict(),
+            output_kind=output_kind,
+            scene_type=self._state.scene_type,
+        )
+        preview_instruction["output_resolution"] = str(
+            self.image_resolution_combo.currentData() or "1K"
+        )
         preview_request = ImageEditRequest(
-            instruction=asset_generation_instruction(
-                first_asset.to_dict(),
-                output_kind=output_kind,
-                scene_type=self._state.scene_type,
-            ),
+            instruction=preview_instruction,
             images=(
                 prepare_provider_image(
                     self._loaded,
@@ -1234,7 +1504,7 @@ class AssetBreakdownWindow(QMainWindow):
                     first_crop,
                 ),
             ),
-            model_id=self.image_model_edit.text().strip() or None,
+            model_id=_combo_model_id(self.image_model_combo),
             change_budget=35,
             user_initiated=True,
             disclosure_confirmed=True,
@@ -1259,7 +1529,10 @@ class AssetBreakdownWindow(QMainWindow):
         full_scene = preview_request.images[0]
         source_hash = self._state.main_image.sha256
         scene_type = self._state.scene_type
-        model_id = self.image_model_edit.text().strip() or None
+        model_id = _combo_model_id(self.image_model_combo)
+        image_resolution = str(
+            self.image_resolution_combo.currentData() or "1K"
+        )
         self.statusBar().showMessage(
             f"正在生成 {len(selected)} 个资产；可以取消，已完成项会保留…"
         )
@@ -1275,12 +1548,14 @@ class AssetBreakdownWindow(QMainWindow):
                     asset.normalized_rect,
                 )
                 crop = asset_crop_png(self._loaded.rgb, asset, mask)
+                instruction = asset_generation_instruction(
+                    asset.to_dict(),
+                    output_kind=output_kind,
+                    scene_type=scene_type,
+                )
+                instruction["output_resolution"] = image_resolution
                 request = ImageEditRequest(
-                    instruction=asset_generation_instruction(
-                        asset.to_dict(),
-                        output_kind=output_kind,
-                        scene_type=scene_type,
-                    ),
+                    instruction=instruction,
                     images=(
                         full_scene,
                         ProviderImage(
@@ -1305,7 +1580,11 @@ class AssetBreakdownWindow(QMainWindow):
                 except Exception as exc:
                     if cancellation.cancelled:
                         break
-                    failures.append((asset.asset_id, str(exc)))
+                    failures.append(
+                        (asset.asset_id, provider_error_message(exc))
+                    )
+                    if is_systemic_provider_error(exc):
+                        break
                     continue
                 successes.append(
                     (
@@ -1317,12 +1596,15 @@ class AssetBreakdownWindow(QMainWindow):
                         request.instruction,
                     )
                 )
+            processed = len(successes) + len(failures)
+            skipped = max(0, len(selected) - processed)
             return (
                 successes,
                 failures,
                 output_kind,
                 source_hash,
                 cancellation.cancelled,
+                skipped,
             )
 
         self._start_worker(
@@ -1337,7 +1619,18 @@ class AssetBreakdownWindow(QMainWindow):
         self.cancel_generation_button.setEnabled(False)
         if self._store is None or self._state is None:
             return
-        successes, failures, output_kind, source_hash, cancelled = result
+        if len(result) == 5:
+            successes, failures, output_kind, source_hash, cancelled = result
+            skipped = 0
+        else:
+            (
+                successes,
+                failures,
+                output_kind,
+                source_hash,
+                cancelled,
+                skipped,
+            ) = result
         for (
             asset_id,
             response,
@@ -1404,7 +1697,7 @@ class AssetBreakdownWindow(QMainWindow):
                     source_image_sha256=source_hash,
                     source_rect=asset.normalized_rect if asset else (0, 0, 1, 1),
                     provider_id=str(self.image_provider_combo.currentData()),
-                    model_id=self.image_model_edit.text().strip(),
+                    model_id=_combo_model_id(self.image_model_combo) or "",
                     parameters={},
                     relative_path="",
                     status="failed",
@@ -1416,14 +1709,490 @@ class AssetBreakdownWindow(QMainWindow):
         self._refresh_generation_list()
         suffix = "；任务已取消" if cancelled else ""
         self.statusBar().showMessage(
-            f"生成结束：成功 {len(successes)}，失败 {len(failures)}{suffix}。",
+            f"生成结束：成功 {len(successes)}，失败 {len(failures)}，"
+            f"未发送 {skipped}{suffix}。",
             6000,
         )
+        if failures and self.isVisible():
+            first_error = failures[0][1]
+            extra = (
+                f"\n\n已停止后续 {skipped} 项，避免重复无效调用。"
+                if skipped
+                else ""
+            )
+            QMessageBox.warning(
+                self,
+                "部分资产生成失败",
+                f"{first_error}{extra}\n\n"
+                "失败记录已保存；在生成列表悬停可再次查看。",
+            )
 
     def _cancel_generation(self) -> None:
         if self._image_cancellation is not None:
             self._image_cancellation.cancel()
             self.statusBar().showMessage("正在取消；已完成的资产图片会保留…")
+
+    def _start_automatic_pipeline(self) -> None:
+        if (
+            self._store is None
+            or self._state is None
+            or self._loaded is None
+            or self._state.main_image is None
+        ):
+            QMessageBox.information(
+                self,
+                "缺少主原画",
+                "请先新建或打开项目并导入主原画。",
+            )
+            return
+        self._save_fields()
+        vision_provider_id = str(
+            self.auto_vision_provider_combo.currentData()
+        )
+        image_provider_id = str(
+            self.auto_image_provider_combo.currentData()
+        )
+        vision_provider = self._provider_registry.get(vision_provider_id)
+        image_provider = self._provider_registry.get(image_provider_id)
+        vision_key = self.auto_vision_key_edit.text().strip()
+        image_key = self.auto_image_key_edit.text().strip()
+        if vision_provider_id != "mock" and not vision_key:
+            QMessageBox.information(
+                self,
+                "缺少清单 API Key",
+                "请输入视觉分析供应商的 API Key。",
+            )
+            return
+        if image_provider_id != "mock" and not image_key:
+            QMessageBox.information(
+                self,
+                "缺少图片 API Key",
+                "请输入图片生成供应商的 API Key。",
+            )
+            return
+
+        main_image = prepare_provider_image(
+            self._loaded,
+            "main_concept",
+            ProviderImageExportOptions(maximum_side=2048),
+        )
+        images = [main_image]
+        supplemental = []
+        for index, reference in enumerate(
+            (
+                image
+                for image in self._state.source_images
+                if image.role == "reference"
+            ),
+            start=1,
+        ):
+            if index > 3:
+                break
+            loaded = load_image(self._store.image_path(reference))
+            images.append(
+                prepare_provider_image(
+                    loaded,
+                    f"supplemental_reference_{index}",
+                    ProviderImageExportOptions(maximum_side=1536),
+                )
+            )
+            supplemental.append(
+                {
+                    "role": f"supplemental_reference_{index}",
+                    "sha256": reference.sha256,
+                    "filename_hidden": True,
+                }
+            )
+        profile = self._current_profile()
+        context = AssetBreakdownContext(
+            project_id=self._state.project_id,
+            title=self._state.title,
+            scene_type=self._state.scene_type,
+            scene_focus=tuple(profile.get("focus", ())),
+            production_goal=self._state.production_goal,
+            image_metadata={
+                "width": self._loaded.working_size[0],
+                "height": self._loaded.working_size[1],
+                "exif_orientation_applied": (
+                    self._loaded.exif_orientation_applied
+                ),
+                "icc_converted_to_srgb": (
+                    self._loaded.icc_converted_to_srgb
+                ),
+                "assumed_srgb": self._loaded.assumed_srgb,
+                "automatic_asset_limit": self.auto_asset_limit.value(),
+            },
+            supplemental_references=tuple(supplemental),
+        )
+        vision_model_id = (
+            self.auto_vision_model_edit.text().strip() or None
+        )
+        image_model_id = _combo_model_id(self.auto_image_model_combo)
+        request = self._reviewer.create_request(
+            context,
+            tuple(images),
+            model_id=vision_model_id,
+            user_initiated=True,
+            disclosure_confirmed=True,
+        )
+        limit = self.auto_asset_limit.value()
+        image_resolution = str(
+            self.auto_resolution_combo.currentData() or "1K"
+        )
+        preview = disclosure_preview(vision_provider.manifest, request)
+        dialog = SendDisclosureDialog(
+            preview,
+            purpose="全自动资产板",
+            extra_notice=(
+                f"确认后会先进行 1 次场景资产分析，再对最多 {limit} 项资产"
+                "分别调用图片生成，最后在本地合成资产板。"
+                "这是可能产生较高费用的批量操作；遇到供应商级错误会立即停止"
+                "后续调用。人工校正清单不会被修改。"
+                f"\n图片供应商：{image_provider.manifest.display_name}；"
+                f"模型：{image_provider.manifest.model_for(ProviderCapability.IMAGE_EDIT, image_model_id)}；"
+                f"分辨率：{image_resolution}。"
+            ),
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        cancellation = CancellationToken()
+        self._automatic_cancellation = cancellation
+        self.auto_start_button.setEnabled(False)
+        self.auto_cancel_button.setEnabled(True)
+        run_id = str(uuid.uuid4())
+        source = self._state.main_image
+        scene_type = self._state.scene_type
+        source_image_id = source.image_id
+        self.auto_status.setText(
+            "正在分析原画并生成资产；可取消，已完成项目会保留。"
+        )
+
+        def operation():
+            return run_automatic_pipeline(
+                reviewer=self._reviewer,
+                review_provider=vision_provider,
+                review_request=request,
+                review_credential=vision_key,
+                image_provider=image_provider,
+                image_credential=image_key,
+                image_model_id=image_model_id,
+                image_resolution=image_resolution,
+                full_scene=main_image,
+                rgb=self._loaded.rgb,
+                source_image_id=source_image_id,
+                scene_type=scene_type,
+                output_kind="isolated_concept",
+                asset_limit=limit,
+                execution=self._execution,
+                cancellation=cancellation,
+            )
+
+        config = {
+            "run_id": run_id,
+            "source_hash": source.sha256,
+            "vision_provider_id": vision_provider_id,
+            "vision_model_id": vision_model_id or "",
+            "image_provider_id": image_provider_id,
+            "image_model_id": image_model_id or "",
+            "image_resolution": image_resolution,
+            "asset_limit": limit,
+        }
+        self._start_worker(
+            "automatic",
+            operation,
+            lambda result: self._automatic_pipeline_finished(
+                result,
+                config,
+            ),
+        )
+
+    def _automatic_pipeline_finished(
+        self,
+        result: AutomaticPipelineResult,
+        config: dict,
+    ) -> None:
+        self._automatic_cancellation = None
+        self.auto_start_button.setEnabled(True)
+        self.auto_cancel_button.setEnabled(False)
+        if self._store is None or self._state is None:
+            return
+        run_id = str(config["run_id"])
+        root_relative = f"artifacts/automatic/{run_id}"
+        generations: list[GenerationRecord] = []
+        board_entries = []
+        saved_assets: dict[str, AssetItem] = {}
+        for generated in result.generated:
+            relative = (
+                f"{root_relative}/assets/"
+                f"{generated.asset.asset_id}.png"
+            )
+            mask_relative = (
+                f"{root_relative}/masks/"
+                f"{generated.asset.asset_id}.png"
+            )
+            output_path = self._store.save_artifact(
+                relative,
+                generated.image_bytes,
+            )
+            self._store.save_artifact(
+                mask_relative,
+                _mask_png(generated.mask),
+            )
+            asset = replace(
+                generated.asset,
+                mask_relative_path=mask_relative,
+                mask_method=generated.mask_method,
+            )
+            saved_assets[asset.asset_id] = asset
+            board_entries.append((asset, output_path))
+            generations.append(
+                GenerationRecord(
+                    generation_id=str(uuid.uuid4()),
+                    asset_id=asset.asset_id,
+                    output_kind="isolated_concept",
+                    source_image_sha256=str(config["source_hash"]),
+                    source_rect=asset.normalized_rect,
+                    provider_id=generated.provider_id,
+                    model_id=generated.model_id,
+                    parameters=dict(generated.instruction),
+                    relative_path=relative,
+                    status="completed",
+                    created_at=utc_now(),
+                )
+            )
+        assets_by_id = {asset.asset_id: asset for asset in result.assets}
+        for asset_id, message in result.failures:
+            asset = assets_by_id.get(asset_id)
+            generations.append(
+                GenerationRecord(
+                    generation_id=str(uuid.uuid4()),
+                    asset_id=asset_id,
+                    output_kind="isolated_concept",
+                    source_image_sha256=str(config["source_hash"]),
+                    source_rect=(
+                        asset.normalized_rect
+                        if asset is not None
+                        else (0.0, 0.0, 1.0, 1.0)
+                    ),
+                    provider_id=str(config["image_provider_id"]),
+                    model_id=str(config["image_model_id"]),
+                    parameters={
+                        "output_resolution": config["image_resolution"]
+                    },
+                    relative_path="",
+                    status="failed",
+                    error_message=message[:1200],
+                    created_at=utc_now(),
+                )
+            )
+
+        board_relative = ""
+        if board_entries:
+            board_relative = f"{root_relative}/asset_board.png"
+            self._store.save_artifact(
+                board_relative,
+                make_asset_board(
+                    board_entries,
+                    title=f"{self._state.title} — 全自动资产板",
+                ),
+            )
+        manifest_relative = f"{root_relative}/asset_manifest.json"
+        run_assets = tuple(
+            saved_assets.get(asset.asset_id, asset)
+            for asset in result.assets
+        )
+        write_asset_manifest(
+            self._store.artifact_path(manifest_relative),
+            project={
+                "project_id": self._state.project_id,
+                "title": self._state.title,
+                "mode": "automatic_asset_board",
+                "run_id": run_id,
+                "main_image_sha256": config["source_hash"],
+            },
+            assets=run_assets,
+            generations=(item.to_dict() for item in generations),
+        )
+        if result.cancelled:
+            status = "cancelled"
+        elif result.failures and result.generated:
+            status = "partial"
+        elif result.failures:
+            status = "failed"
+        else:
+            status = "completed"
+        error_summary = (
+            result.failures[0][1] if result.failures else ""
+        )
+        run = AutomaticAssetRun(
+            run_id=run_id,
+            status=status,
+            source_image_sha256=str(config["source_hash"]),
+            vision_provider_id=result.review_execution.response.provider_id,
+            vision_model_id=result.review_execution.response.model_id,
+            image_provider_id=str(config["image_provider_id"]),
+            image_model_id=str(config["image_model_id"]),
+            output_kind="isolated_concept",
+            asset_limit=int(config["asset_limit"]),
+            assets=run_assets,
+            generations=tuple(generations),
+            board_relative_path=board_relative,
+            manifest_relative_path=manifest_relative,
+            repair_notes=result.repair_notes,
+            error_summary=error_summary,
+            created_at=utc_now(),
+        )
+        self._store.append_automatic_run(run)
+        self._state = self._store.state
+        self._refresh_automatic_runs(select_run_id=run_id)
+        skipped = max(
+            0,
+            len(result.assets)
+            - len(result.generated)
+            - len(result.failures),
+        )
+        self.auto_status.setText(
+            f"自动流程结束：识别 {len(result.assets)} 项，"
+            f"生成 {len(result.generated)} 项，失败 {len(result.failures)} 项，"
+            f"未发送 {skipped} 项。"
+        )
+        if result.failures and self.isVisible():
+            suffix = (
+                f"\n\n已停止后续 {skipped} 项，避免重复无效调用。"
+                if skipped
+                else ""
+            )
+            QMessageBox.warning(
+                self,
+                "全自动资产板部分失败",
+                f"{result.failures[0][1]}{suffix}\n\n"
+                "已成功生成的图片和清单仍然保存。",
+            )
+
+    def _cancel_automatic_pipeline(self) -> None:
+        if self._automatic_cancellation is not None:
+            self._automatic_cancellation.cancel()
+            self.auto_status.setText(
+                "正在取消；当前请求结束后停止，已完成结果会保留。"
+            )
+
+    def _refresh_automatic_runs(self, select_run_id: str = "") -> None:
+        self.auto_run_list.clear()
+        self.auto_board_preview.setPixmap(QPixmap())
+        self.auto_board_preview.setText("生成完成后在这里显示资产板。")
+        self.auto_export_button.setEnabled(False)
+        if self._state is None or self._store is None:
+            return
+        selected_run = None
+        for run in reversed(self._state.automatic_runs):
+            status = {
+                "completed": "完成",
+                "partial": "部分完成",
+                "failed": "失败",
+                "cancelled": "已取消",
+            }.get(run.status, run.status)
+            completed = sum(
+                item.status == "completed" for item in run.generations
+            )
+            item = QListWidgetItem(
+                f"{status} · {run.created_at} · {completed}/{len(run.assets)} 项"
+            )
+            item.setData(Qt.ItemDataRole.UserRole, run.run_id)
+            if run.error_summary:
+                item.setToolTip(run.error_summary)
+            self.auto_run_list.addItem(item)
+            if selected_run is None or run.run_id == select_run_id:
+                selected_run = run
+        if selected_run is not None:
+            self._show_automatic_run(selected_run.run_id)
+
+    def _show_automatic_run(self, run_id: str) -> None:
+        if self._state is None or self._store is None:
+            return
+        run = next(
+            (
+                item
+                for item in self._state.automatic_runs
+                if item.run_id == run_id
+            ),
+            None,
+        )
+        if run is None:
+            return
+        completed = sum(
+            item.status == "completed" for item in run.generations
+        )
+        status = {
+            "completed": "完成",
+            "partial": "部分完成",
+            "failed": "失败",
+            "cancelled": "已取消",
+        }.get(run.status, run.status)
+        self.auto_status.setText(
+            f"当前运行：{status}；识别 {len(run.assets)} 项，"
+            f"生成 {completed} 项。"
+        )
+        self.auto_export_button.setEnabled(bool(run.manifest_relative_path))
+        self.auto_export_button.setProperty("run_id", run.run_id)
+        if run.board_relative_path:
+            path = self._store.artifact_path(run.board_relative_path)
+            pixmap = QPixmap(str(path))
+            if not pixmap.isNull():
+                self.auto_board_preview.setText("")
+                self.auto_board_preview.setPixmap(
+                    pixmap.scaled(
+                        720,
+                        560,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
+                return
+        self.auto_board_preview.setText("该次运行没有可显示的资产板。")
+
+    def _export_automatic_run(self) -> None:
+        if self._state is None or self._store is None:
+            return
+        run_id = str(self.auto_export_button.property("run_id") or "")
+        run = next(
+            (
+                item
+                for item in self._state.automatic_runs
+                if item.run_id == run_id
+            ),
+            None,
+        )
+        if run is None:
+            return
+        destination = QFileDialog.getExistingDirectory(
+            self,
+            "选择全自动资产板导出目录",
+        )
+        if not destination:
+            return
+        folder = Path(destination)
+        folder.mkdir(parents=True, exist_ok=True)
+        relatives = [
+            run.board_relative_path,
+            run.manifest_relative_path,
+            *(
+                record.relative_path
+                for record in run.generations
+                if record.relative_path
+            ),
+        ]
+        copied = 0
+        for relative in dict.fromkeys(item for item in relatives if item):
+            source = self._store.artifact_path(relative)
+            self._store.copy_export(source, folder / source.name)
+            copied += 1
+        QMessageBox.information(
+            self,
+            "导出完成",
+            f"已导出 {copied} 个文件。",
+        )
 
     def _export_package(self) -> None:
         if self._store is None or self._state is None:
@@ -1592,18 +2361,23 @@ class AssetBreakdownWindow(QMainWindow):
             asset = self._asset_by_id(record.asset_id)
             name = asset.name if asset else record.asset_id
             status = "完成" if record.status == "completed" else "失败"
-            self.generation_list.addItem(
+            item = QListWidgetItem(
                 f"{status} · {name} · "
                 f"{GENERATION_KIND_LABELS.get(record.output_kind, record.output_kind)} · "
                 f"{record.provider_id}/{record.model_id}"
             )
+            if record.error_message:
+                item.setToolTip(record.error_message)
+                item.setStatusTip(record.error_message)
+            self.generation_list.addItem(item)
 
     def _refresh_overlays(self) -> None:
         if self._state is None:
             self.canvas.clear_region_overlays()
             return
-        selected = self._selected_asset()
-        selected_id = selected.asset_id if selected else ""
+        selected_ids = {
+            asset.asset_id for asset in self._selected_assets()
+        }
         specs = []
         for index, asset in enumerate(self._state.assets):
             colour = (
@@ -1621,8 +2395,10 @@ class AssetBreakdownWindow(QMainWindow):
                     name=f"{index + 1:02d} {asset.name}",
                     normalized_rect=asset.normalized_rect,
                     colour=colour,
-                    selected=asset.asset_id == selected_id,
-                    muted=bool(selected_id and asset.asset_id != selected_id),
+                    selected=asset.asset_id in selected_ids,
+                    muted=bool(
+                        selected_ids and asset.asset_id not in selected_ids
+                    ),
                 )
             )
         self.canvas.set_region_overlays(specs)
@@ -1635,7 +2411,9 @@ class AssetBreakdownWindow(QMainWindow):
         self._populate_detail(asset)
         self.canvas.clear_overlay()
         self._refresh_overlays()
-        self.canvas.select_region(asset.asset_id)
+        self.canvas.select_regions(
+            item.asset_id for item in self._selected_assets()
+        )
         if self._state is not None and self._store is not None:
             self._state = replace(
                 self._state,
@@ -1658,11 +2436,15 @@ class AssetBreakdownWindow(QMainWindow):
             ),
             updated_at=utc_now(),
         )
-        self._store.add_or_replace_asset(updated)
-        self._state = self._store.state
-        self.inventory_summary.setText(
-            f"共 {len(self._state.assets)} 项；"
-            f"待生成 {sum(item.selected_for_generation for item in self._state.assets)} 项。"
+        assets = tuple(
+            updated if value.asset_id == asset_id else value
+            for value in self._state.assets
+        )
+        self._push_asset_state(
+            assets,
+            self._state.generations,
+            select_id=asset_id,
+            text="更改生成选择",
         )
 
     def _populate_detail(self, asset: AssetItem) -> None:
@@ -1703,6 +2485,29 @@ class AssetBreakdownWindow(QMainWindow):
                 item.setSelected(True)
                 break
 
+    def _select_assets_by_ids(self, asset_ids: object) -> None:
+        selected = {str(item) for item in asset_ids}
+        self.asset_tree.blockSignals(True)
+        try:
+            iterator = self.asset_tree.findItems(
+                "",
+                Qt.MatchFlag.MatchContains | Qt.MatchFlag.MatchRecursive,
+                1,
+            )
+            current = None
+            for item in iterator:
+                asset_id = str(
+                    item.data(0, Qt.ItemDataRole.UserRole) or ""
+                )
+                item.setSelected(asset_id in selected)
+                if current is None and asset_id in selected:
+                    current = item
+            if current is not None:
+                self.asset_tree.setCurrentItem(current)
+        finally:
+            self.asset_tree.blockSignals(False)
+        self._asset_selection_changed()
+
     def _selected_asset(self) -> AssetItem | None:
         items = self.asset_tree.selectedItems()
         if not items:
@@ -1734,6 +2539,67 @@ class AssetBreakdownWindow(QMainWindow):
             None,
         )
 
+    def _push_asset_state(
+        self,
+        assets: tuple[AssetItem, ...],
+        generations: tuple[GenerationRecord, ...],
+        *,
+        select_id: str = "",
+        text: str,
+    ) -> None:
+        if self._state is None or self._store is None:
+            return
+        command = _AssetStateCommand(
+            self,
+            before_assets=self._state.assets,
+            before_generations=self._state.generations,
+            after_assets=tuple(assets),
+            after_generations=tuple(generations),
+            select_id=select_id,
+            text=text,
+        )
+        self._undo_stack.push(command)
+
+    def _restore_asset_state(
+        self,
+        assets: tuple[AssetItem, ...],
+        generations: tuple[GenerationRecord, ...],
+        *,
+        select_id: str = "",
+    ) -> None:
+        if self._state is None or self._store is None:
+            return
+        self._state = replace(
+            self._state,
+            assets=tuple(assets),
+            generations=tuple(generations),
+            selected_asset_id=select_id,
+        )
+        self._store.save(self._state)
+        self._state = self._store.state
+        self._refresh_asset_tree(select_id=select_id)
+        self._refresh_generation_list()
+        self._refresh_overlays()
+
+    def _undo_requested(self) -> None:
+        focus = self.focusWidget()
+        if isinstance(focus, (QLineEdit, QPlainTextEdit)):
+            focus.undo()
+            return
+        self._undo_stack.undo()
+
+    def _redo_requested(self) -> None:
+        focus = self.focusWidget()
+        if isinstance(focus, (QLineEdit, QPlainTextEdit)):
+            focus.redo()
+            return
+        self._undo_stack.redo()
+
+    def _delete_shortcut_requested(self) -> None:
+        focus = self.focusWidget()
+        if focus is self.asset_tree or focus is self.asset_tree.viewport():
+            self._delete_selected()
+
     def _set_regions_visible(self, visible: bool) -> None:
         self.canvas.set_regions_visible(visible)
         if self._state is not None and self._store is not None:
@@ -1764,12 +2630,33 @@ class AssetBreakdownWindow(QMainWindow):
         model_edit: QLineEdit,
         key_edit: QLineEdit,
         capability: ProviderCapability,
+        *,
+        model_combo: QComboBox | None = None,
     ) -> None:
         provider_id = combo.currentData()
         if provider_id is None:
             return
         provider = self._provider_registry.get(str(provider_id))
-        model_edit.setText(provider.manifest.model_for(capability))
+        default_model = provider.manifest.model_for(capability)
+        if model_combo is not None:
+            model_combo.blockSignals(True)
+            try:
+                model_combo.clear()
+                choices = provider.manifest.model_choices_for(capability)
+                if choices:
+                    for model_id, label in choices:
+                        model_combo.addItem(label, model_id)
+                    index = model_combo.findData(default_model)
+                    if index >= 0:
+                        model_combo.setCurrentIndex(index)
+                    else:
+                        model_combo.setEditText(default_model)
+                else:
+                    model_combo.setEditText(default_model)
+            finally:
+                model_combo.blockSignals(False)
+        else:
+            model_edit.setText(default_model)
         secret = self._credential_store.get(
             provider.manifest.credential_target
         )
@@ -1863,6 +2750,12 @@ class AssetBreakdownWindow(QMainWindow):
             self.generate_button.setEnabled(True)
             self.cancel_generation_button.setEnabled(False)
             title = "资产图片生成失败"
+        elif kind == "automatic":
+            self._automatic_cancellation = None
+            self.auto_start_button.setEnabled(True)
+            self.auto_cancel_button.setEnabled(False)
+            self.auto_status.setText("全自动资产板失败；请查看错误原因。")
+            title = "全自动资产板失败"
         else:
             title = "处理失败"
         QMessageBox.warning(self, title, message)
@@ -1885,6 +2778,8 @@ class AssetBreakdownWindow(QMainWindow):
             self._ai_cancellation.cancel()
         if self._image_cancellation is not None:
             self._image_cancellation.cancel()
+        if self._automatic_cancellation is not None:
+            self._automatic_cancellation.cancel()
         self._execution.close()
         if self._store is not None:
             self._store.close()
@@ -1896,6 +2791,15 @@ def _safe_folder_name(value: str) -> str:
     forbidden = '<>:"/\\|?*'
     result = "".join("_" if character in forbidden else character for character in value)
     return result.strip(" .")[:80] or "未命名资产拆分"
+
+
+def _combo_model_id(combo: QComboBox) -> str | None:
+    index = combo.currentIndex()
+    if index >= 0 and combo.currentText() == combo.itemText(index):
+        value = combo.itemData(index)
+        if value:
+            return str(value).strip() or None
+    return combo.currentText().strip() or None
 
 
 def _mask_png(mask: np.ndarray) -> bytes:

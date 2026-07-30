@@ -78,14 +78,16 @@ class AssetBreakdownReview:
         "同一对象不要在父级与零件级重复计数：层级用 parent_asset_id 和"
         "level 表示。asset_id 使用简短稳定的 snake_case ID，引用必须存在。"
         "最多列出 48 个真正影响制作规划的资产，不把每块砖或每片叶子拆成"
-        "独立资产。每个文字字段控制在 120 个简体中文字符以内，避免重复。"
+        "独立资产。如果输入包含 automatic_asset_limit，则资产数量不得超过该值，"
+        "并优先保留英雄资产、关键模块套件和高复用项目。"
+        "每个文字字段控制在 120 个简体中文字符以内，避免重复。"
         "所有自然语言必须是简体中文；只输出符合 JSON Schema 的 JSON。"
     )
     descriptor = ReviewerDescriptor(
         module_id=MODULE_ID,
         reviewer_id="asset_breakdown_review",
         display_name="游戏场景资产拆分",
-        version="1.0.1",
+        version="1.1.0",
         supported_inputs=(
             "main_concept_image",
             "supplemental_reference_images",

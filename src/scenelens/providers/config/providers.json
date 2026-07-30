@@ -123,7 +123,25 @@
       "default_models": {"image_edit": "gemini-3.1-flash-image"},
       "credential_target": "SceneLens/provider/google_gemini",
       "optional": true,
-      "mainland_priority": 90
+      "mainland_priority": 90,
+      "options": {
+        "model_choices": {
+          "image_edit": [
+            {
+              "id": "gemini-3.1-flash-image",
+              "label": "Nano Banana 2（均衡，推荐）"
+            },
+            {
+              "id": "gemini-3-pro-image",
+              "label": "Nano Banana Pro（最高质量）"
+            },
+            {
+              "id": "gemini-3.1-flash-lite-image",
+              "label": "Nano Banana 2 Lite（低成本）"
+            }
+          ]
+        }
+      }
     },
     {
       "provider_id": "openai_image",

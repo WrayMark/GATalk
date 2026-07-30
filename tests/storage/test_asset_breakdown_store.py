@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from pathlib import Path
 
 from PIL import Image
 import pytest
 
-from scenelens.modules.asset_breakdown.models import GenerationRecord
+from scenelens.modules.asset_breakdown.models import (
+    AutomaticAssetRun,
+    GenerationRecord,
+)
 from scenelens.modules.asset_breakdown.service import create_manual_asset
 from scenelens.modules.asset_breakdown.storage import AssetBreakdownStore
 from scenelens.storage.errors import ProjectLockedError
@@ -121,3 +125,62 @@ def test_import_records_exif_corrected_working_dimensions(
     assert (imported.width, imported.height) == (80, 40)
     assert store.image_path(imported).read_bytes() == source.read_bytes()
     store.close()
+
+
+def test_automatic_runs_are_independent_and_restore(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.png"
+    _image(source, (10, 20, 30))
+    root = tmp_path / "automatic.scenelens-assets"
+    store = AssetBreakdownStore.create(root, "自动资产板")
+    main = store.import_image(source, "main")
+    store.append_automatic_run(
+        AutomaticAssetRun(
+            run_id="auto-1",
+            status="completed",
+            source_image_sha256=main.sha256,
+            vision_provider_id="mock",
+            vision_model_id="mock-vision-v1",
+            image_provider_id="mock",
+            image_model_id="mock-image-v1",
+            output_kind="isolated_concept",
+            asset_limit=12,
+            board_relative_path=(
+                "artifacts/automatic/auto-1/asset_board.png"
+            ),
+            created_at=utc_now(),
+        )
+    )
+    assert not store.state.assets
+    store.close()
+    reopened = AssetBreakdownStore.open(root)
+    assert reopened.state.automatic_runs[0].run_id == "auto-1"
+    assert not reopened.state.assets
+    reopened.close()
+
+
+def test_v1_asset_project_is_backed_up_before_v2_migration(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "migrate.scenelens-assets"
+    store = AssetBreakdownStore.create(root, "迁移")
+    store.close()
+    entry = root / "asset_project.json"
+    payload = json.loads(entry.read_text(encoding="utf-8"))
+    payload["format_version"] = 1
+    payload["module_schema_version"] = 1
+    payload["state"].pop("automatic_runs", None)
+    entry.write_text(
+        json.dumps(payload, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    migrated = AssetBreakdownStore.open(root)
+    migrated.close()
+
+    updated = json.loads(entry.read_text(encoding="utf-8"))
+    assert updated["format_version"] == 2
+    assert updated["module_schema_version"] == 2
+    backups = list((root / "backups").glob("asset_project.v1.*.json"))
+    assert len(backups) == 1
