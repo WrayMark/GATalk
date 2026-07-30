@@ -21,11 +21,17 @@
 - 覆盖归一化坐标、遮罩边界、用户优先、拆分合并、中文/空格路径、原始字节、
   EXIF 纠正尺寸、写锁、Schema、Mock、部分生成成功保留、展示板、清单导出、
   首页和窗口恢复。
-- 两种场景夹具：历史聚落和科幻工业；验证分类差异、手工校正和重开持久化。
+- 两种可复现夹具：历史聚落和科幻工业；验证分类差异、手工校正和重开持久化。
+- 两张现有真实项目原画追加验证：赛博雨夜城市和明亮风格化农场。两图都以
+  原始字节只读导入，各保存 6 项生产拆分、2 项本地生成记录和实际运行截图；
+  导入副本与来源文件 SHA-256 一致。
 - 实际运行截图保存在
   `.qa/asset-breakdown-validation/asset-breakdown-village.png` 和
   `.qa/asset-breakdown-validation/asset-breakdown-industrial.png`；可用
   `scripts/render_asset_breakdown_smoke.py` 重建。
+- 真实场景截图保存在
+  `.qa/asset-breakdown-validation/asset-breakdown-real-cyberpunk.png` 和
+  `.qa/asset-breakdown-validation/asset-breakdown-real-stylized.png`。
 - 源码 `--smoke-test` 和打包内 `--smoke-test` 退出码均为 0。
 - Windows `onedir` 共 228 个文件、268,915,419 bytes（约 256.5 MiB）。
 - 主程序 SHA-256：
@@ -35,9 +41,10 @@
 
 ## 验证边界
 
-自动化中的两种场景是可复现的复杂合成夹具，用于验证软件工作流，不证明任一
-远程 VLM 的真实语义质量。内置图像生成服务在本轮准备验证素材时发生网络错误，
-没有改用需要额外 API Key 的命令行路径。
+真实场景验证使用人工规划的生产拆法来核对复杂原画、区域、遮罩、持久化和
+界面，不把它说成 AI 自动识别质量测试。可复现夹具也只验证软件工作流。内置
+图像生成服务在本轮准备验证素材时发生网络错误，没有改用需要额外 API Key
+的命令行路径。
 
 以下项目必须由用户使用自己的 Key 主动验证，不应伪记为已完成：
 

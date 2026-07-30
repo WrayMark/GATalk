@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from dataclasses import replace
 from pathlib import Path
 import shutil
@@ -133,7 +134,7 @@ def populate(store: AssetBreakdownStore, source: Path, scene: str) -> None:
             asset("v_terrain", "坡地、道路与石墙", "terrain", (0.0, 0.68, 1.0, 0.32), main.image_id),
         )
         scene_type = "medieval_village"
-    else:
+    elif scene == "industrial":
         values = (
             asset("s_structure", "工业结构模块组", "building", (0.03, 0.06, 0.94, 0.78), main.image_id, priority="critical"),
             asset("s_bay", "重复框架与面板舱", "modular_piece", (0.03, 0.13, 0.93, 0.68), main.image_id, parent="s_structure", level=1, priority="high"),
@@ -143,6 +144,28 @@ def populate(store: AssetBreakdownStore, source: Path, scene: str) -> None:
             asset("s_light", "青色引导灯与橙色强调", "lighting_vfx", (0.01, 0.08, 0.96, 0.80), main.image_id),
         )
         scene_type = "scifi_industrial"
+    elif scene == "cyberpunk":
+        values = (
+            asset("c_street_kit", "赛博街区建筑套件", "building", (0.00, 0.04, 0.78, 0.64), main.image_id, priority="critical"),
+            asset("c_facade", "高层立面与连桥模块", "modular_piece", (0.47, 0.02, 0.45, 0.57), main.image_id, parent="c_street_kit", level=1, priority="high"),
+            asset("c_signs", "店招、导视与贴花系统", "decal", (0.03, 0.10, 0.91, 0.58), main.image_id, priority="high"),
+            asset("c_vehicle", "飞行载具与地面车辆组", "character_vehicle", (0.05, 0.18, 0.73, 0.62), main.image_id),
+            asset("c_hologram", "巨型全息人与绿色光效", "lighting_vfx", (0.37, 0.04, 0.58, 0.59), main.image_id, priority="high"),
+            asset("c_road", "湿地道路、护栏与灯柱", "terrain", (0.00, 0.56, 1.00, 0.44), main.image_id),
+        )
+        scene_type = "urban_street"
+    elif scene == "stylized":
+        values = (
+            asset("t_house", "覆绿住宅与温室套件", "building", (0.00, 0.00, 0.53, 0.83), main.image_id, priority="critical"),
+            asset("t_trellis", "廊架、栏杆与花箱模块", "modular_piece", (0.00, 0.08, 0.42, 0.69), main.image_id, parent="t_house", level=1, priority="high"),
+            asset("t_airship", "软体运输飞艇变体组", "character_vehicle", (0.33, 0.00, 0.57, 0.57), main.image_id, priority="high"),
+            asset("t_orchard", "果树与花灌木群落", "vegetation", (0.62, 0.01, 0.38, 0.93), main.image_id, priority="high"),
+            asset("t_bicycle", "自行车与门边道具组", "prop", (0.78, 0.46, 0.21, 0.37), main.image_id),
+            asset("t_fields", "农田、太阳能板与远景城市", "background", (0.28, 0.44, 0.72, 0.48), main.image_id),
+        )
+        scene_type = "stylized_environment"
+    else:
+        raise ValueError(f"Unknown validation scene: {scene}")
     store.replace_assets(values)
     store.state = replace(
         store.state,
@@ -178,16 +201,24 @@ def populate(store: AssetBreakdownStore, source: Path, scene: str) -> None:
         )
 
 
-def render(scene: str) -> Path:
-    source = OUTPUT / f"{scene}-concept.png"
-    project = OUTPUT / f"{scene}.scenelens-assets"
+def render(scene: str, source_override: Path | None = None) -> Path:
+    source = (
+        source_override
+        if source_override is not None
+        else OUTPUT / f"{scene}-concept.png"
+    )
+    prefix = "real-" if source_override is not None else ""
+    project = OUTPUT / f"{prefix}{scene}.scenelens-assets"
     output_root = OUTPUT.resolve()
     resolved_project = project.resolve()
     if output_root not in resolved_project.parents:
         raise RuntimeError("Refusing to remove a validation project outside OUTPUT.")
     if project.exists():
         shutil.rmtree(project)
-    make_scene(source, scene)
+    if source_override is None:
+        make_scene(source, scene)
+    elif not source.is_file():
+        raise FileNotFoundError(source)
     store = AssetBreakdownStore.create(project, f"{scene} 资产拆分验证")
     populate(store, source, scene)
     window = AssetBreakdownWindow()
@@ -205,7 +236,7 @@ def render(scene: str) -> Path:
     for _index in range(15):
         app.processEvents()
         time.sleep(0.02)
-    output = OUTPUT / f"asset-breakdown-{scene}.png"
+    output = OUTPUT / f"asset-breakdown-{prefix}{scene}.png"
     window.grab().save(str(output), "PNG")
     window.close()
     app.processEvents()
@@ -213,11 +244,29 @@ def render(scene: str) -> Path:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--case",
+        action="append",
+        default=[],
+        metavar="PROFILE=IMAGE",
+        help="Render an existing image with a validation profile.",
+    )
+    arguments = parser.parse_args()
     OUTPUT.mkdir(parents=True, exist_ok=True)
     app = create_application([])
     del app
-    for scene in ("village", "industrial"):
-        print(render(scene))
+    if not arguments.case:
+        for scene in ("village", "industrial"):
+            print(render(scene))
+        return 0
+    for value in arguments.case:
+        scene, separator, source = value.partition("=")
+        if not separator or scene not in {"cyberpunk", "stylized"}:
+            raise ValueError(
+                "--case must use cyberpunk=IMAGE or stylized=IMAGE."
+            )
+        print(render(scene, Path(source)))
     return 0
 
 
