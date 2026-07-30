@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from importlib.resources import files
 import json
@@ -84,7 +85,7 @@ class AssetBreakdownReview:
         module_id=MODULE_ID,
         reviewer_id="asset_breakdown_review",
         display_name="游戏场景资产拆分",
-        version="1.0.0",
+        version="1.0.1",
         supported_inputs=(
             "main_concept_image",
             "supplemental_reference_images",
@@ -121,34 +122,124 @@ class AssetBreakdownReview:
             max_output_tokens=self.max_output_tokens,
         )
 
-    def validate_output(self, output: Mapping[str, Any]) -> dict[str, Any]:
+    def normalize_output(
+        self,
+        output: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], tuple[str, ...]]:
         require_valid_json_schema(output, self.output_schema)
-        asset_ids = [str(item["asset_id"]) for item in output["assets"]]
-        if len(asset_ids) != len(set(asset_ids)):
-            raise ValueError("AI 资产清单包含重复 asset_id。")
-        known = set(asset_ids)
-        for index, item in enumerate(output["assets"]):
+        normalized = deepcopy(dict(output))
+        assets = normalized["assets"]
+        repair_counts = {
+            "duplicate_id": 0,
+            "missing_parent": 0,
+            "self_parent": 0,
+            "parent_cycle": 0,
+            "rect_clipped": 0,
+            "relationship_removed": 0,
+        }
+
+        assigned: set[str] = set()
+        for item in assets:
+            original_id = str(item["asset_id"])
+            candidate = original_id
+            suffix = 2
+            while candidate in assigned:
+                candidate = f"{original_id}_{suffix}"
+                suffix += 1
+            if candidate != original_id:
+                item["asset_id"] = candidate
+                repair_counts["duplicate_id"] += 1
+            assigned.add(candidate)
+
+        known = set(assigned)
+        for item in assets:
             parent = str(item["parent_asset_id"])
             if parent and parent not in known:
-                raise ValueError(
-                    f"assets[{index}].parent_asset_id 引用了不存在的资产。"
-                )
+                item["parent_asset_id"] = ""
+                repair_counts["missing_parent"] += 1
+            elif parent == str(item["asset_id"]):
+                item["parent_asset_id"] = ""
+                repair_counts["self_parent"] += 1
+
             x, y, width, height = (
                 float(value) for value in item["normalized_rect"]
             )
             if x + width > 1.000001 or y + height > 1.000001:
-                raise ValueError(
-                    f"assets[{index}].normalized_rect 超出图片范围。"
-                )
-        for index, relation in enumerate(output["relationships"]):
-            if (
-                str(relation["source_asset_id"]) not in known
-                or str(relation["target_asset_id"]) not in known
-            ):
-                raise ValueError(
-                    f"relationships[{index}] 引用了不存在的资产。"
-                )
-        return dict(output)
+                epsilon = 0.000001
+                x = min(x, 1.0 - epsilon)
+                y = min(y, 1.0 - epsilon)
+                width = max(epsilon, min(width, 1.0 - x))
+                height = max(epsilon, min(height, 1.0 - y))
+                item["normalized_rect"] = [
+                    x,
+                    y,
+                    width,
+                    height,
+                ]
+                repair_counts["rect_clipped"] += 1
+
+        assets_by_id = {
+            str(item["asset_id"]): item for item in assets
+        }
+        while cycle := _find_parent_cycle(assets_by_id):
+            breaker_id = cycle[-1]
+            assets_by_id[breaker_id]["parent_asset_id"] = ""
+            repair_counts["parent_cycle"] += 1
+
+        valid_relationships = []
+        for relation in normalized["relationships"]:
+            source = str(relation["source_asset_id"])
+            target = str(relation["target_asset_id"])
+            if source not in known or target not in known or source == target:
+                repair_counts["relationship_removed"] += 1
+                continue
+            valid_relationships.append(relation)
+        normalized["relationships"] = valid_relationships
+
+        notes = _asset_repair_notes(repair_counts)
+        require_valid_json_schema(normalized, self.output_schema)
+        return normalized, notes
+
+    def validate_output(self, output: Mapping[str, Any]) -> dict[str, Any]:
+        normalized, _notes = self.normalize_output(output)
+        return normalized
+
+
+def _find_parent_cycle(
+    assets_by_id: Mapping[str, Mapping[str, Any]],
+) -> tuple[str, ...]:
+    for start_id in assets_by_id:
+        path: list[str] = []
+        positions: dict[str, int] = {}
+        current = start_id
+        while current:
+            if current in positions:
+                return tuple(path[positions[current] :])
+            item = assets_by_id.get(current)
+            if item is None:
+                break
+            positions[current] = len(path)
+            path.append(current)
+            current = str(item.get("parent_asset_id", ""))
+    return ()
+
+
+def _asset_repair_notes(
+    counts: Mapping[str, int],
+) -> tuple[str, ...]:
+    labels = (
+        ("duplicate_id", "重命名重复资产 ID"),
+        ("missing_parent", "取消不存在的父级引用"),
+        ("self_parent", "取消资产自引用"),
+        ("parent_cycle", "断开循环父级"),
+        ("rect_clipped", "裁剪越界区域"),
+        ("relationship_removed", "移除无效资产关系"),
+    )
+    return tuple(
+        f"{label} {counts[key]} 项"
+        for key, label in labels
+        if counts.get(key, 0)
+    )
 
 
 def asset_generation_instruction(
@@ -194,4 +285,3 @@ def asset_generation_instruction(
             "不要加入文字、水印或无关道具",
         ],
     }
-

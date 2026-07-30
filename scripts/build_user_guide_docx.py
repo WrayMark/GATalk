@@ -182,7 +182,7 @@ def build() -> None:
     metadata.paragraph_format.space_after = Pt(14)
     set_font(
         metadata.add_run(
-            "适用版本：0.7.0（资产拆分工作台）"
+            "适用版本：0.7.2（资产拆分工作台 · AI 引用修复）"
             "　更新日期：2026-07-30"
         ),
         size=9.5,
@@ -283,6 +283,13 @@ def build() -> None:
         "用户补充／修订：用户确认后的内容，优先级最高。",
         "AI 生成补全：不可见部分的概念假设，不是原画事实。",
         "离线 Mock 只验证清单、保存、遮罩、生成和导出流程，不分析图片语义。",
+    ):
+        add_list_item(document, text, bullet_id)
+    add_heading(document, "AI 清单结构修复", 2)
+    for text in (
+        "AI 偶尔会返回不存在的父资产 ID、重复 ID 或循环父级。新版会保留资产，只取消或修正无法成立的引用，不要求重新消耗一次 API 调用。",
+        "修复发生时会显示中文摘要，并写入该次 AI 运行记录。",
+        "SceneLens 不会借此改写资产名称、分类、画面证据或制作建议。看到修复提示后，请在资产树中人工检查父子层级。",
     ):
         add_list_item(document, text, bullet_id)
 

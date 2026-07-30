@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from io import BytesIO
 from pathlib import Path
 
@@ -108,6 +109,62 @@ def test_asset_ai_schema_mock_and_generation_instruction() -> None:
     assert "不可见" in " ".join(instruction["hard_constraints"])
 
 
+def test_asset_output_repairs_missing_parent_and_invalid_relationship() -> None:
+    reviewer = AssetBreakdownReview()
+    output = _mock_asset_output(reviewer)
+    original = deepcopy(output)
+    output["assets"][0]["parent_asset_id"] = "missing_building"
+    output["assets"][0]["normalized_rect"] = [0.9, 0.8, 0.4, 0.5]
+    output["relationships"].append(
+        {
+            "source_asset_id": output["assets"][0]["asset_id"],
+            "target_asset_id": "missing_prop",
+            "relation": "assembled_with",
+            "evidence": "AI 返回了无法解析的目标引用",
+        }
+    )
+
+    normalized, notes = reviewer.normalize_output(output)
+
+    assert normalized["assets"][0]["parent_asset_id"] == ""
+    assert sum(normalized["assets"][0]["normalized_rect"][::2]) <= 1.000001
+    assert sum(normalized["assets"][0]["normalized_rect"][1::2]) <= 1.000001
+    assert all(
+        relation["target_asset_id"] != "missing_prop"
+        for relation in normalized["relationships"]
+    )
+    assert any("取消不存在的父级引用 1 项" in note for note in notes)
+    assert any("裁剪越界区域 1 项" in note for note in notes)
+    assert any("移除无效资产关系 1 项" in note for note in notes)
+    assert original["assets"][0]["parent_asset_id"] == ""
+
+
+def test_asset_output_repairs_duplicate_ids_and_parent_cycles() -> None:
+    reviewer = AssetBreakdownReview()
+    output = _mock_asset_output(reviewer)
+    first, second = output["assets"][:2]
+    first["asset_id"] = "building_a"
+    first["parent_asset_id"] = "building_b"
+    second["asset_id"] = "building_b"
+    second["parent_asset_id"] = "building_a"
+    duplicate = deepcopy(second)
+    duplicate["name"] = "建筑 B 变体"
+    output["assets"].append(duplicate)
+
+    normalized, notes = reviewer.normalize_output(output)
+    ids = [asset["asset_id"] for asset in normalized["assets"]]
+
+    assert len(ids) == len(set(ids))
+    assert "building_b_2" in ids
+    assert any(
+        not asset["parent_asset_id"]
+        for asset in normalized["assets"]
+        if asset["asset_id"] in {"building_a", "building_b"}
+    )
+    assert any("重命名重复资产 ID 1 项" in note for note in notes)
+    assert any("断开循环父级 1 项" in note for note in notes)
+
+
 def test_asset_workbench_registration() -> None:
     registry = WorkbenchRegistry()
     register_asset_breakdown_workbench(registry)
@@ -115,6 +172,32 @@ def test_asset_workbench_registration() -> None:
     assert (
         registry.reviewers()[0].reviewer_id
         == "asset_breakdown_review"
+    )
+
+
+def _mock_asset_output(reviewer: AssetBreakdownReview) -> dict:
+    request = reviewer.create_request(
+        AssetBreakdownContext(
+            project_id="repair",
+            title="结构修复",
+            scene_type="general_environment",
+            scene_focus=(),
+            production_goal="验证 AI 引用修复",
+            image_metadata={"width": 320, "height": 180},
+            supplemental_references=(),
+        ),
+        (ProviderImage("main_concept", "image/png", b"image"),),
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    return deepcopy(
+        dict(
+            MockProvider().review(
+                request,
+                "",
+                CancellationToken(),
+            ).output
+        )
     )
 
 
@@ -145,4 +228,3 @@ def test_crop_board_and_manifest_are_exportable(tmp_path: Path) -> None:
         generations=(),
     )
     assert "中文 道具" in manifest.read_text(encoding="utf-8")
-

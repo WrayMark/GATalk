@@ -911,8 +911,10 @@ class AssetBreakdownWindow(QMainWindow):
                     request.model_id,
                 ),
             )
-            output = self._reviewer.validate_output(execution.response.output)
-            return output, execution
+            output, repair_notes = self._reviewer.normalize_output(
+                execution.response.output
+            )
+            return output, repair_notes, execution
 
         self._start_worker("ai", operation, self._ai_breakdown_finished)
 
@@ -922,7 +924,7 @@ class AssetBreakdownWindow(QMainWindow):
         self.cancel_analysis_button.setEnabled(False)
         if self._store is None or self._state is None:
             return
-        output, execution = result
+        output, repair_notes, execution = result
         main = self._state.main_image
         if main is None:
             return
@@ -957,6 +959,7 @@ class AssetBreakdownWindow(QMainWindow):
                     "production_strategy": output["production_strategy"],
                     "relationships": output["relationships"],
                     "uncertainties": output["uncertainties"],
+                    "structure_repairs": list(repair_notes),
                 },
                 "created_at": utc_now(),
             }
@@ -964,10 +967,24 @@ class AssetBreakdownWindow(QMainWindow):
         self._state = self._store.state
         self._refresh_asset_tree()
         self._refresh_overlays()
-        self.statusBar().showMessage(
-            f"资产拆分完成：{len(incoming)} 项；AI 推断等待用户校正。",
-            5000,
-        )
+        if repair_notes:
+            repair_text = "；".join(repair_notes)
+            self.statusBar().showMessage(
+                f"资产拆分完成：{len(incoming)} 项；已安全修复返回结构。",
+                8000,
+            )
+            QMessageBox.information(
+                self,
+                "AI 清单已完成并修复结构",
+                "资产内容已经保留。SceneLens 只修复了无法成立的结构引用：\n"
+                f"{repair_text}\n\n"
+                "请在资产树中检查父子层级；修复记录已保存到本次 AI 运行。",
+            )
+        else:
+            self.statusBar().showMessage(
+                f"资产拆分完成：{len(incoming)} 项；AI 推断等待用户校正。",
+                5000,
+            )
 
     def _cancel_analysis(self) -> None:
         if self._ai_cancellation is not None:
