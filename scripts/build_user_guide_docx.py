@@ -182,8 +182,8 @@ def build() -> None:
     metadata.paragraph_format.space_after = Pt(14)
     set_font(
         metadata.add_run(
-            "适用版本：0.5.0a4（M4 Gemini 损坏 JSON 自动恢复候选）"
-            "　更新日期：2026-07-28"
+            "适用版本：0.6.0a0（M5 作品研究候选）"
+            "　更新日期：2026-07-30"
         ),
         size=9.5,
         color=MUTED,
@@ -206,16 +206,50 @@ def build() -> None:
         bullet_id,
     )
 
-    add_heading(document, "2. 界面")
+    add_heading(document, "2. 工作台首页")
     for text in (
-        "左侧：Project、Shot、Version 导航。",
-        "中间：参考图和当前 UE 截图。",
-        "右侧：参考分析、截图分析、对比分析、AI 审阅与任务、优化实验室。",
-        "顶部：导入、显示、模糊、剪影、A/B、同步视图和构图辅助。",
+        "场景美术控制：参考图与自己的 UE 截图对比、审阅、任务和版本复查。",
+        "作品研究：分析一张原画、概念图、Color Key 或优秀场景作品。",
+        "模块内选择“文件 → 工作台首页”可返回。",
     ):
         add_list_item(document, text, bullet_id)
 
-    add_heading(document, "3. 最短工作流程")
+    add_heading(document, "3. 作品研究")
+    add_heading(document, "最短流程", 2)
+    for text in (
+        "在首页选择“作品研究”。",
+        "点击“新建作品研究”，选择目录并输入标题。",
+        "导入一张图片。",
+        "填写作品类型、本次想研究什么和已知背景。",
+        "在“本地证据”查看明度、色板、空间网格和注意力代理。",
+        "在“专家拆解”选择视觉 AI，查看发送清单后主动确认。",
+        "阅读十二维拆解和跨维度因果链。",
+        "在“学习笔记”写下自己的判断，保存。",
+    ):
+        add_list_item(document, text, decimal_id)
+    add_heading(document, "本地观察", 2)
+    for text in (
+        "支持原图、灰度、三阶/五阶明度、伪色、溢出警告、剪影、缩略图、明度模糊和灯光明度代理图。",
+        "构图辅助包括三分法、黄金分割、对角线、中心、三角形和透视线。",
+        "点击 Oklab 色板颜色可查看来源区域；按 Esc 退出。",
+        "注意力代理只综合局部反差、边缘密度和彩度，不是眼动、显著性或好坏判断。",
+    ):
+        add_list_item(document, text, bullet_id)
+    add_heading(document, "AI 专家拆解", 2)
+    for text in (
+        "十二个维度：构图、视觉层级、明度、色彩、光、空间、形状、边缘细节、材质、环境叙事、风格技法和情绪。",
+        "每项包含观察、画面证据、测量证据、解释、观看效果、评价取舍、学习点和不确定性。",
+        "另外显示跨维度因果链、具体场景内容、画面标注、可迁移规律和继续观察问题。",
+        "离线 Mock 只验证流程，不分析图片语义，也不代表本地 AI 推理。",
+    ):
+        add_list_item(document, text, bullet_id)
+    add_heading(document, "保存内容", 2)
+    add_body(
+        document,
+        ".scenelens-study 目录保存原图副本、SHA-256、本地证据、AI 结果、研究目标、已知背景、观察状态和个人笔记。原始图片不会被覆盖。",
+    )
+
+    add_heading(document, "4. 场景美术控制最短流程")
     for text in (
         "点击“新建项目”，选择保存位置并命名。",
         "在左侧打开“制作意图”，填写目标风格、时间、天气、情绪、焦点和限制。",
@@ -229,7 +263,7 @@ def build() -> None:
         add_list_item(document, text, decimal_id)
     add_body(document, "项目会自动保存。Ctrl+S 可立即保存。")
 
-    add_heading(document, "4. 图片查看与基础分析")
+    add_heading(document, "5. 场景图片查看与基础分析")
     for text in (
         "滚轮缩放；左键拖动平移；双击画布恢复适配。",
         "开启“同步视图”可同步左右缩放和平移。",
@@ -244,7 +278,7 @@ def build() -> None:
         "灯光明度代理图不是真正灰模，不能剥离材质和纹理。",
     )
 
-    add_heading(document, "5. 对比分析")
+    add_heading(document, "6. 对比分析")
     add_heading(document, "共享色板", 2)
     add_body(
         document,
@@ -268,7 +302,7 @@ def build() -> None:
         "区域可移动、缩放、删除和保存。新 Version 可复制上一版本区域，复制后必须人工检查位置。",
     )
 
-    add_heading(document, "6. 制作意图与参考图视觉简报")
+    add_heading(document, "7. 制作意图与参考图视觉简报")
     for text in (
         "“制作意图”记录你希望最终画面达到什么目标。",
         "“参考图视觉简报”记录参考图实际呈现的视觉特征。",
@@ -277,7 +311,7 @@ def build() -> None:
     ):
         add_list_item(document, text, bullet_id)
 
-    add_heading(document, "7. AI 审阅与灯光审片")
+    add_heading(document, "8. AI 审阅与灯光审片")
     for text in (
         "优先选择“深度主美审阅（八维）”；专项灯光问题选择“灯光专项审阅”。",
         "无 API Key 时选择“离线 Mock”验证流程。",
@@ -316,7 +350,7 @@ def build() -> None:
         "错误窗口会显示供应商返回的脱敏原因。不要把 API Key 截图或复制给他人。",
     )
 
-    add_heading(document, "8. 优化实验室")
+    add_heading(document, "9. 优化实验室")
     add_heading(document, "目标匹配画像", 2)
     add_body(
         document,
@@ -348,22 +382,24 @@ def build() -> None:
         "AI 输出只保存为 AIConceptPreview，不会成为真实 UE Version。出现“仅适合概念参考”时，不应把预演当作可直接复现的场景结果。",
     )
 
-    add_heading(document, "9. 文件与安全")
+    add_heading(document, "10. 文件与安全")
     for text in (
         "assets：导入原图，保留原始字节和 SHA-256。",
         "artifacts：可重建分析结果和 AIConceptPreview。",
         "exports：审阅包、预览和配方。",
         "API Key 不写入项目、SQLite、JSON、日志或 Git。",
         "同一项目只能由一个进程写入；第二个进程可只读打开。",
+        "作品研究的 assets 同样保留导入图片原始字节；study.json 保存研究状态。",
     ):
         add_list_item(document, text, bullet_id)
 
-    add_heading(document, "10. 当前限制")
+    add_heading(document, "11. 当前限制")
     for text in (
         "只支持静态图片和矩形区域。",
         "不支持视频、HDR/EXR、多边形、自动分割或 UE 工程扫描。",
         "真实 AI 供应商需要单独验证账号、地区、模型和费用。",
         "AI 预演必须回到 UE 实施，并用新的真实截图 Version 正式复查。",
+        "作品研究暂不支持多图研究、引用资料库、自动语义分割或本地大型视觉模型。",
     ):
         add_list_item(document, text, bullet_id)
 
