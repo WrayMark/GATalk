@@ -12,7 +12,7 @@
         "structured_output": "mock-json-v1",
         "image_edit": "mock-image-v1"
       },
-      "credential_target": "SceneLens/provider/mock",
+      "credential_target": "GATalk/provider/mock",
       "optional": false,
       "mainland_priority": 0
     },
@@ -26,7 +26,7 @@
         "vision_review": "qwen3-vl-plus",
         "structured_output": "qwen3-vl-plus"
       },
-      "credential_target": "SceneLens/provider/aliyun_bailian",
+      "credential_target": "GATalk/provider/aliyun_bailian",
       "optional": true,
       "mainland_priority": 10,
       "options": {"structured_output_mode": "json_object"}
@@ -41,7 +41,7 @@
         "vision_review": "Qwen/Qwen2-VL-72B-Instruct",
         "structured_output": "Qwen/Qwen2-VL-72B-Instruct"
       },
-      "credential_target": "SceneLens/provider/siliconflow",
+      "credential_target": "GATalk/provider/siliconflow",
       "optional": true,
       "mainland_priority": 20,
       "options": {"structured_output_mode": "json_object"}
@@ -56,7 +56,7 @@
         "vision_review": "gpt-5",
         "structured_output": "gpt-5"
       },
-      "credential_target": "SceneLens/provider/openai",
+      "credential_target": "GATalk/provider/openai",
       "optional": true,
       "mainland_priority": 80
     },
@@ -70,7 +70,7 @@
         "vision_review": "gemini-3.6-flash",
         "structured_output": "gemini-3.6-flash"
       },
-      "credential_target": "SceneLens/provider/google_gemini",
+      "credential_target": "GATalk/provider/google_gemini",
       "optional": true,
       "mainland_priority": 90,
       "options": {
@@ -96,7 +96,7 @@
         "vision_review": "grok-4.5",
         "structured_output": "grok-4.5"
       },
-      "credential_target": "SceneLens/provider/xai_grok",
+      "credential_target": "GATalk/provider/xai_grok",
       "optional": true,
       "mainland_priority": 100
     },
@@ -107,7 +107,7 @@
       "base_url": "https://dashscope.aliyuncs.com",
       "capabilities": ["image_edit"],
       "default_models": {"image_edit": "wan2.7-image-pro"},
-      "credential_target": "SceneLens/provider/aliyun_wanxiang",
+      "credential_target": "GATalk/provider/aliyun_wanxiang",
       "optional": true,
       "mainland_priority": 10,
       "options": {
@@ -121,7 +121,7 @@
       "base_url": "https://generativelanguage.googleapis.com/v1",
       "capabilities": ["image_edit"],
       "default_models": {"image_edit": "gemini-3.1-flash-image"},
-      "credential_target": "SceneLens/provider/google_gemini",
+      "credential_target": "GATalk/provider/google_gemini",
       "optional": true,
       "mainland_priority": 90,
       "options": {
@@ -150,7 +150,7 @@
       "base_url": "https://api.openai.com/v1",
       "capabilities": ["image_edit"],
       "default_models": {"image_edit": "gpt-image-2"},
-      "credential_target": "SceneLens/provider/openai",
+      "credential_target": "GATalk/provider/openai",
       "optional": true,
       "mainland_priority": 80,
       "options": {"endpoint": "/images/edits"}
@@ -162,7 +162,7 @@
       "base_url": "https://api.x.ai/v1",
       "capabilities": ["image_edit"],
       "default_models": {"image_edit": "grok-imagine-image-quality"},
-      "credential_target": "SceneLens/provider/xai_grok",
+      "credential_target": "GATalk/provider/xai_grok",
       "optional": true,
       "mainland_priority": 100,
       "options": {"endpoint": "/images/edits"}

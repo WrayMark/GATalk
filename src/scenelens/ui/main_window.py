@@ -209,9 +209,7 @@ class ImagePane(QWidget):
         layout.setSpacing(4)
 
         self.title_label = QLabel(title)
-        self.title_label.setStyleSheet(
-            "padding: 6px 8px; font-weight: 600; background: #25282D;"
-        )
+        self.title_label.setProperty("role", "paneTitle")
         layout.addWidget(self.title_label)
 
         self.canvas = ImageCanvas(placeholder)
@@ -223,7 +221,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, recent_projects: RecentProjects | None = None) -> None:
         super().__init__()
-        self.setWindowTitle("SceneLens — 游戏场景美术控制工作台")
+        self.setWindowTitle("GATalk — 游戏场景美术控制工作台")
         self.resize(1550, 900)
         self.setMinimumSize(1050, 650)
 
@@ -391,6 +389,7 @@ class MainWindow(QMainWindow):
 
     def _build_toolbar(self) -> None:
         toolbar = QToolBar("主工具", self)
+        toolbar.setObjectName("visualReviewToolbar")
         toolbar.setMovable(False)
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self.addToolBar(toolbar)
@@ -685,7 +684,8 @@ class MainWindow(QMainWindow):
         label = QLabel(text)
         label.setWordWrap(True)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setStyleSheet("color: #9AA0A6; padding: 24px;")
+        label.setProperty("role", "muted")
+        label.setContentsMargins(24, 24, 24, 24)
         layout.addWidget(label)
         return panel
 
@@ -700,7 +700,7 @@ class MainWindow(QMainWindow):
     def _new_project_dialog(self) -> None:
         name, accepted = QInputDialog.getText(
             self,
-            "新建 SceneLens 项目",
+            "新建 GATalk 项目",
             "项目名称：",
         )
         if not accepted:
@@ -722,9 +722,9 @@ class MainWindow(QMainWindow):
     def _open_project_dialog(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "打开 SceneLens 项目",
+            "打开 GATalk 项目",
             "",
-            "SceneLens 项目 (project.json);;JSON 文件 (*.json)",
+            "GATalk 项目 (project.json);;JSON 文件 (*.json)",
         )
         if path:
             self.open_project(Path(path))
@@ -777,7 +777,7 @@ class MainWindow(QMainWindow):
         self.save_project_action.setEnabled(False)
         self.reference_button.setEnabled(True)
         self.current_button.setEnabled(True)
-        self.setWindowTitle(f"SceneLens — {__version__} M4")
+        self.setWindowTitle(f"GATalk — {__version__}")
         return True
 
     def _offer_read_only_open(
@@ -812,7 +812,7 @@ class MainWindow(QMainWindow):
         self.reference_button.setEnabled(not store.read_only)
         self.current_button.setEnabled(not store.read_only)
         suffix = " [只读]" if store.read_only else ""
-        self.setWindowTitle(f"SceneLens — {store.manifest.name}{suffix}")
+        self.setWindowTitle(f"GATalk — {store.manifest.name}{suffix}")
         state = store.get_workspace_state()
         shots = store.list_shots()
         shot_ids = {shot.id for shot in shots}
@@ -1635,7 +1635,7 @@ class MainWindow(QMainWindow):
             "m3_match": "目标匹配画像失败",
             "m3_grade": "安全调色预览失败",
             "m3_concept": "AI 优化预演失败",
-        }.get(kind, "SceneLens 操作失败")
+        }.get(kind, "GATalk 操作失败")
         QMessageBox.warning(
             self,
             title,
@@ -2914,7 +2914,7 @@ class MainWindow(QMainWindow):
             self,
             "导出离线 AI 审阅包",
             str(default),
-            "SceneLens 审阅包 (*.zip)",
+            "GATalk 审阅包 (*.zip)",
         )
         if not path:
             return

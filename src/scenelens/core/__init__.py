@@ -1,4 +1,4 @@
-"""Small cross-module contracts used by the SceneLens application shell."""
+"""Small cross-module contracts used by the GATalk application shell."""
 
 from scenelens.core.analyzers import (
     Analyzer,

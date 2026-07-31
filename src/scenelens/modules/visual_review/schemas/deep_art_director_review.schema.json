@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "SceneLens Deep Art Director Review",
+  "title": "GATalk Deep Art Director Review",
   "type": "object",
   "additionalProperties": false,
   "required": [

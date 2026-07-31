@@ -37,7 +37,7 @@ class MockProvider:
                 ProviderCapability.STRUCTURED_OUTPUT.value: "mock-json-v1",
                 ProviderCapability.IMAGE_EDIT.value: "mock-image-v1",
             },
-            credential_target="SceneLens/provider/mock",
+            credential_target="GATalk/provider/mock",
             optional=False,
             mainland_priority=0,
         )
@@ -121,7 +121,7 @@ class MockProvider:
 
 def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
     title = str(schema.get("title", ""))
-    if title == "SceneLens Asset Breakdown":
+    if title == "GATalk Asset Breakdown":
         return {
             "schema_version": "1.0",
             "reviewer_id": "asset_breakdown_review",
@@ -192,7 +192,7 @@ def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
                 "离线 Mock 没有执行视觉推理，所有语义和矩形均为流程占位。"
             ],
         }
-    if title == "SceneLens Asset Prompt Workshop":
+    if title == "GATalk Asset Prompt Workshop":
         return {
             "schema_version": "1.0",
             "reviewer_id": "asset_prompt_workshop",
@@ -245,7 +245,7 @@ def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
             ],
             "change_summary": "生成离线流程示例；没有执行真实图片分析。",
         }
-    if title == "SceneLens Artwork Master Study":
+    if title == "GATalk Artwork Master Study":
         dimensions = (
             "composition",
             "visual_hierarchy",
@@ -344,7 +344,7 @@ def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
             ],
             "confidence_notes": ["Mock 输出不能作为美术结论。"],
         }
-    if title == "SceneLens Art Director Review":
+    if title == "GATalk Art Director Review":
         return {
             "schema_version": "1.0",
             "reviewer_id": "art_director_review",
@@ -353,7 +353,7 @@ def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
             "findings": [],
             "quality_gate_results": [],
         }
-    if title == "SceneLens Deep Art Director Review":
+    if title == "GATalk Deep Art Director Review":
         dimensions = (
             "composition",
             "visual_guidance",
@@ -401,7 +401,7 @@ def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
             "quality_gate_results": [],
             "confidence_notes": ["Mock 输出不能作为美术结论。"],
         }
-    if title == "SceneLens Lighting Review":
+    if title == "GATalk Lighting Review":
         schemes = []
         for strategy in (
             "faithful_to_reference",
@@ -437,7 +437,7 @@ def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
             "target_schemes": schemes,
             "performance_checklist": [],
         }
-    if title == "SceneLens Second Opinion":
+    if title == "GATalk Second Opinion":
         return {
             "schema_version": "1.0",
             "reviewer_id": "second_opinion",

@@ -46,7 +46,7 @@ class ExampleVisionProvider:
         base_url="",
         capabilities=(ProviderCapability.VISION_REVIEW,),
         default_models={"vision_review": "example-v1"},
-        credential_target="SceneLens/provider/example",
+        credential_target="GATalk/provider/example",
         optional=True,
     )
 

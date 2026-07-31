@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "SceneLens Second Opinion",
+  "title": "GATalk Second Opinion",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "reviewer_id", "critiques", "omissions"],

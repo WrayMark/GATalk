@@ -54,7 +54,7 @@ class WindowsCredentialStore:
             ("UserName", wintypes.LPWSTR),
         ]
 
-    def __init__(self, prefix: str = "SceneLens") -> None:
+    def __init__(self, prefix: str = "GATalk") -> None:
         if sys.platform != "win32":
             raise OSError("Windows Credential Manager is only available on Windows.")
         self.prefix = prefix.strip("/")
@@ -84,7 +84,9 @@ class WindowsCredentialStore:
         value = target.strip("/")
         if not value:
             raise ValueError("Credential target must not be empty.")
-        if value.startswith(f"{self.prefix}/"):
+        if value.startswith(
+            (f"{self.prefix}/", "GATalk/", "SceneLens/")
+        ):
             return value
         return f"{self.prefix}/{value}"
 
@@ -103,12 +105,27 @@ class WindowsCredentialStore:
             ctypes.POINTER(ctypes.c_ubyte),
         )
         credential.Persist = self.CRED_PERSIST_LOCAL_MACHINE
-        credential.UserName = "SceneLens"
+        credential.UserName = "GATalk"
         if not self._advapi.CredWriteW(ctypes.byref(credential), 0):
             raise ctypes.WinError(ctypes.get_last_error())
 
     def get(self, target: str) -> str | None:
         name = self.target_name(target)
+        value = self._read_name(name)
+        if value is not None:
+            return value
+        if name.startswith("GATalk/"):
+            legacy_name = "SceneLens/" + name.removeprefix("GATalk/")
+            value = self._read_name(legacy_name)
+            if value is not None:
+                try:
+                    self.set(target, value)
+                except OSError:
+                    pass
+                return value
+        return None
+
+    def _read_name(self, name: str) -> str | None:
         pointer = ctypes.POINTER(self.CREDENTIALW)()
         if not self._advapi.CredReadW(
             name,
@@ -134,12 +151,15 @@ class WindowsCredentialStore:
 
     def delete(self, target: str) -> None:
         name = self.target_name(target)
-        if not self._advapi.CredDeleteW(
-            name,
-            self.CRED_TYPE_GENERIC,
-            0,
-        ):
-            error = ctypes.get_last_error()
-            if error != self.ERROR_NOT_FOUND:
-                raise ctypes.WinError(error)
-
+        names = [name]
+        if name.startswith("GATalk/"):
+            names.append("SceneLens/" + name.removeprefix("GATalk/"))
+        for candidate in names:
+            if not self._advapi.CredDeleteW(
+                candidate,
+                self.CRED_TYPE_GENERIC,
+                0,
+            ):
+                error = ctypes.get_last_error()
+                if error != self.ERROR_NOT_FOUND:
+                    raise ctypes.WinError(error)

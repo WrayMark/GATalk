@@ -101,7 +101,7 @@ class ArtworkDisclosureDialog(QDialog):
         self.setMinimumWidth(540)
         layout = QVBoxLayout(self)
         notice = QLabel(
-            "SceneLens 不会自动上传。继续后，一张图片副本、研究目标、"
+            "GATalk 不会自动上传。继续后，一张图片副本、研究目标、"
             "已知背景、图片元数据和本地测量将发送给所选供应商。"
         )
         notice.setWordWrap(True)
@@ -126,40 +126,40 @@ class ArtworkDisclosureDialog(QDialog):
             " EXIF、ICC、本地路径并限制分辨率。"
         )
         privacy.setWordWrap(True)
-        privacy.setStyleSheet("color: #E6B450;")
+        privacy.setProperty("tone", "warning")
         layout.addWidget(privacy)
         if preview.provider_id == "google_gemini":
             repair = QLabel(
-                "Gemini 若首次返回 JSON 损坏、截断或结构不完整，SceneLens"
+                "Gemini 若首次返回 JSON 损坏、截断或结构不完整，GATalk"
                 " 最多自动纠错一次；可能再次发送同一研究副本并增加费用。"
             )
             repair.setWordWrap(True)
-            repair.setStyleSheet("color: #E6B450;")
+            repair.setProperty("tone", "warning")
             layout.addWidget(repair)
         retry_notice = QLabel(
             "临时断线、超时或服务繁忙时最多自动尝试 3 次。极少数情况下，"
             "重复提交可能产生额外调用费用。"
         )
         retry_notice.setWordWrap(True)
-        retry_notice.setStyleSheet("color: #E6B450;")
+        retry_notice.setProperty("tone", "warning")
         layout.addWidget(retry_notice)
         if preview.fallback_model_ids:
             fallback_chain = " → ".join(preview.fallback_model_ids)
             fallback_notice = QLabel(
-                "若当前模型在重试后仍繁忙，或模型已下线，SceneLens 会在"
+                "若当前模型在重试后仍繁忙，或模型已下线，GATalk 会在"
                 f"同一供应商内依次尝试备用模型：{fallback_chain}。"
                 "不会跨供应商；实际使用的模型会写入结果，每次尝试都可能"
                 "产生调用费用。"
             )
             fallback_notice.setWordWrap(True)
-            fallback_notice.setStyleSheet("color: #E6B450;")
+            fallback_notice.setProperty("tone", "warning")
             layout.addWidget(fallback_notice)
         language_notice = QLabel(
             "作品研究固定输出简体中文。若模型首次返回英文或繁体中文，"
             "最多追加 1 次不含图片的中文规范化请求，可能产生额外费用。"
         )
         language_notice.setWordWrap(True)
-        language_notice.setStyleSheet("color: #E6B450;")
+        language_notice.setProperty("tone", "warning")
         layout.addWidget(language_notice)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
@@ -176,7 +176,7 @@ class ArtworkStudyWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("SceneLens — 作品研究")
+        self.setWindowTitle("GATalk — 作品研究")
         self.resize(1540, 920)
         self.setMinimumSize(1050, 680)
 
@@ -267,6 +267,7 @@ class ArtworkStudyWindow(QMainWindow):
 
     def _build_toolbar(self) -> None:
         toolbar = QToolBar("作品研究工具", self)
+        toolbar.setObjectName("artworkStudyToolbar")
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
         toolbar.addAction(self.home_action)
@@ -423,6 +424,7 @@ class ArtworkStudyWindow(QMainWindow):
         layout.addWidget(provider_group)
         button_row = QHBoxLayout()
         self.run_ai_button = QPushButton("查看发送清单并开始深度研究")
+        self.run_ai_button.setProperty("primary", True)
         self.cancel_ai_button = QPushButton("取消")
         self.cancel_ai_button.setEnabled(False)
         button_row.addWidget(self.run_ai_button)
@@ -453,6 +455,7 @@ class ArtworkStudyWindow(QMainWindow):
 
     def _build_study_dock(self) -> None:
         dock = QDockWidget("研究设置", self)
+        dock.setObjectName("artworkStudySettingsDock")
         dock.setAllowedAreas(
             Qt.DockWidgetArea.LeftDockWidgetArea
             | Qt.DockWidgetArea.RightDockWidgetArea
@@ -587,7 +590,7 @@ class ArtworkStudyWindow(QMainWindow):
         finally:
             self._restoring = False
         self._dirty = False
-        self.setWindowTitle(f"SceneLens — 作品研究 — {store.state.title}")
+        self.setWindowTitle(f"GATalk — 作品研究 — {store.state.title}")
         image_path = store.image_path()
         if image_path is None:
             self._clear_image()
@@ -1086,7 +1089,7 @@ class ArtworkStudyWindow(QMainWindow):
             return
         self._state = self._store.state
         self._dirty = False
-        self.setWindowTitle(f"SceneLens — 作品研究 — {self._state.title}")
+        self.setWindowTitle(f"GATalk — 作品研究 — {self._state.title}")
         self.statusBar().showMessage("作品研究已保存")
 
     def _mark_dirty(self, *_args) -> None:

@@ -261,7 +261,7 @@ class ArtworkMasterStudyReview:
     ) -> VisionReviewRequest:
         return VisionReviewRequest(
             system_instruction=(
-                "你是 SceneLens 的简体中文规范化校对器。输入是一份已经完成的"
+                "你是 GATalk 的简体中文规范化校对器。输入是一份已经完成的"
                 "作品研究 JSON。只把其中面向用户的自然语言值转换为中国大陆"
                 "通行的简体中文；不得增加、删除、概括或改写美术结论。必须原样"
                 "保留全部 JSON 键、数组顺序、数值、坐标、可信度、颜色、"

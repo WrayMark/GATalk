@@ -107,7 +107,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='SceneLens',
+    name='GATalk',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -126,5 +126,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='SceneLens',
+    name='GATalk',
 )

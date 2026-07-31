@@ -75,6 +75,7 @@ class AssetPromptWorkshopPanel(QWidget):
         form.addRow("提示语会话", session_row)
 
         self.initial_button = QPushButton("查看发送清单并生成提示语初稿")
+        self.initial_button.setProperty("primary", True)
         self.cancel_button = QPushButton("取消")
         self.cancel_button.setEnabled(False)
         button_row = QWidget()
@@ -160,6 +161,7 @@ class AssetPromptWorkshopPanel(QWidget):
         self.resend_image_check.setChecked(False)
         refine_layout.addWidget(self.resend_image_check)
         self.iterate_button = QPushButton("查看发送清单并让 AI 继续修订")
+        self.iterate_button.setProperty("primary", True)
         refine_layout.addWidget(self.iterate_button)
         layout.addWidget(refine)
         self._session: AssetPromptSession | None = None

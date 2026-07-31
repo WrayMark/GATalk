@@ -55,7 +55,7 @@ class DataDisclosureDialog(QDialog):
         self.setMinimumWidth(520)
         layout = QVBoxLayout(self)
         warning = QLabel(
-            "SceneLens 不会自动上传。继续后，下列数据将发送给所选供应商；"
+            "GATalk 不会自动上传。继续后，下列数据将发送给所选供应商；"
             "商业保密内容是否允许上传由你的团队政策决定。"
         )
         warning.setWordWrap(True)
@@ -76,23 +76,23 @@ class DataDisclosureDialog(QDialog):
         layout.addWidget(images)
         if second_opinion:
             cost = QLabel("第二意见已开启：会产生一次额外模型调用和费用。")
-            cost.setStyleSheet("color: #E6B450; font-weight: 600;")
+            cost.setProperty("tone", "warning")
             layout.addWidget(cost)
         if preview.provider_id == "google_gemini":
             repair_notice = QLabel(
                 "Gemini 若首次返回的 JSON 语法损坏、被截断或结构不完整，"
-                "SceneLens 最多会自动执行一次结构纠错；可能再次发送同一"
+                "GATalk 最多会自动执行一次结构纠错；可能再次发送同一"
                 "审阅副本并增加少量费用。"
             )
             repair_notice.setWordWrap(True)
-            repair_notice.setStyleSheet("color: #E6B450;")
+            repair_notice.setProperty("tone", "warning")
             layout.addWidget(repair_notice)
         retry_notice = QLabel(
             "临时断线、超时或服务繁忙时最多自动尝试 3 次。极少数情况下，"
             "重复提交可能产生额外调用费用。"
         )
         retry_notice.setWordWrap(True)
-        retry_notice.setStyleSheet("color: #E6B450;")
+        retry_notice.setProperty("tone", "warning")
         layout.addWidget(retry_notice)
         if preview.fallback_model_ids:
             fallback_chain = " → ".join(preview.fallback_model_ids)
@@ -103,7 +103,7 @@ class DataDisclosureDialog(QDialog):
                 "调用费用。"
             )
             fallback_notice.setWordWrap(True)
-            fallback_notice.setStyleSheet("color: #E6B450;")
+            fallback_notice.setProperty("tone", "warning")
             layout.addWidget(fallback_notice)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel
@@ -199,7 +199,7 @@ class AIReviewPanel(QWidget):
         self.second_provider_combo.setEnabled(False)
         form.addRow("第二供应商", self.second_provider_combo)
         self.cost_warning = QLabel("开启后会产生额外费用。")
-        self.cost_warning.setStyleSheet("color: #E6B450;")
+        self.cost_warning.setProperty("tone", "warning")
         self.cost_warning.hide()
         form.addRow("", self.cost_warning)
         layout.addWidget(provider_group)
@@ -222,6 +222,7 @@ class AIReviewPanel(QWidget):
 
         buttons = QHBoxLayout()
         self.run_button = QPushButton("查看发送清单并审阅")
+        self.run_button.setProperty("primary", True)
         self.cancel_button = QPushButton("取消")
         self.cancel_button.setEnabled(False)
         self.export_button = QPushButton("导出离线审阅包")

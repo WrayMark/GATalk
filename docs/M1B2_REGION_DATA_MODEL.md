@@ -82,7 +82,7 @@ schema v3 打开时先使用 SQLite backup API 备份 `project.db`，并复制
 ## 5. 模块边界
 
 - `ui.image_canvas` 只提供与业务无关的归一化矩形叠层交互。
-- `modules.visual_review.ui.RegionController` 负责 SceneLens 的区域工作流。
+- `modules.visual_review.ui.RegionController` 负责 GATalk 的区域工作流。
 - `modules.visual_review.RegionStore` 拥有模块表 SQL。
 - `ProjectStore` 只暴露受模块 ID 限制的连接事务边界。
 - M1B.2B 的像素统计继续放在纯 NumPy `analysis`，通过分析器注册表运行。

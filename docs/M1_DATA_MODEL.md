@@ -1,4 +1,4 @@
-# SceneLens M1 数据模型与迁移方案
+# GATalk M1 数据模型与迁移方案
 
 状态：schema v1 已实现，等待 M1A 人工试用  
 评审日期：2026-07-19
@@ -80,7 +80,7 @@ M1 的存储必须支持以下闭环：
 
 职责：
 
-- 识别 SceneLens 项目和项目 ID；
+- 识别 GATalk 项目和项目 ID；
 - 保存清单格式版本、数据库入口和目录入口；
 - 保存名称、创建时间、最后成功保存时间等基础元数据；
 - 在打开数据库前完成最低限度兼容性检查。
@@ -290,7 +290,7 @@ EXIF 方向修正、ICC 到 sRGB 和分析只发生在读取后的内存工作�
 最近项目不是项目内容，保存在：
 
 ```text
-%LOCALAPPDATA%/SceneLens/recent-projects.json
+%LOCALAPPDATA%/GATalk/recent-projects.json
 ```
 
 每条只记录项目 ID、名称、清单绝对路径和最后打开时间，最多保留 12 条。

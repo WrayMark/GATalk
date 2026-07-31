@@ -84,7 +84,7 @@ multipart，Grok Imagine 使用 JSON。供应商返回 HTTPS 结果 URL 时，�
 - 未使用任何真实 API Key，未验证供应商账户、余额、地区路由、当前模型开通
   状态、计费或实际响应 Schema。
 - 百炼和 SiliconFlow 当前使用 JSON 对象模式，不声称服务端保证完整
-  SceneLens Schema；返回结果仍由本地完整 Schema 验证。
+  GATalk Schema；返回结果仍由本地完整 Schema 验证。
 - Gemini 只接收兼容子集，返回结果仍由本地完整 Schema 验证。
 - Windows Credential Manager 已完成接口和非破坏性测试，但尚未使用真实用户
   Key 做写入/读取/删除人工烟测。

@@ -7,6 +7,7 @@ from PySide6.QtGui import (
     QMouseEvent,
     QPainter,
     QPaintEvent,
+    QPalette,
     QPen,
 )
 from PySide6.QtWidgets import (
@@ -37,12 +38,17 @@ class HistogramWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         rect = QRectF(self.rect()).adjusted(8.0, 8.0, -8.0, -18.0)
-        painter.fillRect(rect, QColor("#15171A"))
-        painter.setPen(QPen(QColor("#3C4043"), 1.0))
+        palette = self.palette()
+        painter.fillRect(rect, palette.color(QPalette.ColorRole.Base))
+        painter.setPen(
+            QPen(palette.color(QPalette.ColorRole.Mid), 1.0)
+        )
         painter.drawRect(rect)
 
         if not self._values:
-            painter.setPen(QColor("#80868B"))
+            painter.setPen(
+                palette.color(QPalette.ColorRole.PlaceholderText)
+            )
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "等待分析")
             return
 
@@ -51,7 +57,7 @@ class HistogramWidget(QWidget):
             return
         bar_width = rect.width() / len(self._values)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#8AB4F8"))
+        painter.setBrush(palette.color(QPalette.ColorRole.Highlight))
         for index, value in enumerate(self._values):
             height = rect.height() * value / peak
             painter.drawRect(
@@ -62,7 +68,7 @@ class HistogramWidget(QWidget):
                     height,
                 )
             )
-        painter.setPen(QColor("#9AA0A6"))
+        painter.setPen(palette.color(QPalette.ColorRole.PlaceholderText))
         painter.drawText(
             QRectF(rect.left(), rect.bottom() + 2.0, rect.width(), 14.0),
             Qt.AlignmentFlag.AlignLeft,
@@ -100,8 +106,11 @@ class PaletteWidget(QWidget):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        palette = self.palette()
         if not self._palette:
-            painter.setPen(QColor("#80868B"))
+            painter.setPen(
+                palette.color(QPalette.ColorRole.PlaceholderText)
+            )
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "等待分析")
             return
 
@@ -112,20 +121,22 @@ class PaletteWidget(QWidget):
             if index == self._selected_index:
                 painter.fillRect(
                     QRectF(1.0, top - 2.0, self.width() - 2.0, 28.0),
-                    QColor("#3C5F8A"),
+                    palette.color(QPalette.ColorRole.Highlight),
                 )
             elif index == self._hover_index:
                 painter.fillRect(
                     QRectF(1.0, top - 2.0, self.width() - 2.0, 28.0),
-                    QColor("#30343A"),
+                    palette.color(QPalette.ColorRole.AlternateBase),
                 )
             colour_rect = QRectF(4.0, top, 54.0, 24.0)
             painter.fillRect(colour_rect, QColor(*item.rgb))
-            painter.setPen(QPen(QColor("#5F6368"), 1.0))
+            painter.setPen(
+                QPen(palette.color(QPalette.ColorRole.Mid), 1.0)
+            )
             painter.drawRect(colour_rect)
 
             label = f"{item.hex_colour}   {item.proportion * 100:5.1f}%"
-            painter.setPen(QColor("#E8EAED"))
+            painter.setPen(palette.color(QPalette.ColorRole.Text))
             painter.drawText(
                 QRectF(68.0, top, self.width() - 72.0, 24.0),
                 Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
@@ -201,7 +212,7 @@ class AnalysisSummaryWidget(QWidget):
         layout.addWidget(self.palette)
 
         self.sample_label = QLabel("")
-        self.sample_label.setStyleSheet("color: #9AA0A6;")
+        self.sample_label.setProperty("role", "muted")
         layout.addWidget(self.sample_label)
         layout.addStretch(1)
 

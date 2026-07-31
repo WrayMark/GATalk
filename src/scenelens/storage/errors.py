@@ -6,7 +6,7 @@ class StorageError(RuntimeError):
 
 
 class ProjectFormatError(StorageError):
-    """The selected directory is not a valid SceneLens project."""
+    """The selected directory is not a valid GATalk project."""
 
 
 class ProjectVersionError(StorageError):

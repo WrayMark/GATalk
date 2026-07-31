@@ -1,4 +1,4 @@
-"""Persistent project storage for SceneLens."""
+"""Persistent project storage for GATalk."""
 
 from scenelens.storage.models import (
     ArtBrief,

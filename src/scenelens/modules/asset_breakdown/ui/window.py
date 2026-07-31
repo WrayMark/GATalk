@@ -179,7 +179,7 @@ class SendDisclosureDialog(QDialog):
         self.setMinimumWidth(560)
         layout = QVBoxLayout(self)
         notice = QLabel(
-            "SceneLens 不会自动上传。继续后，下面列出的图片副本和结构化"
+            "GATalk 不会自动上传。继续后，下面列出的图片副本和结构化"
             "字段会发送给所选服务；项目路径、原图 EXIF 和 ICC 不会发送。"
         )
         notice.setWordWrap(True)
@@ -204,7 +204,7 @@ class SendDisclosureDialog(QDialog):
             "模块关系和不可见结构均为推断；生成补全不是原画事实。"
         )
         warning.setWordWrap(True)
-        warning.setStyleSheet("color:#E6B450;")
+        warning.setProperty("tone", "warning")
         layout.addWidget(warning)
         if preview.fallback_model_ids:
             fallback_chain = " → ".join(preview.fallback_model_ids)
@@ -214,12 +214,12 @@ class SendDisclosureDialog(QDialog):
                 "产生调用费用。"
             )
             fallback.setWordWrap(True)
-            fallback.setStyleSheet("color:#E6B450;")
+            fallback.setProperty("tone", "warning")
             layout.addWidget(fallback)
         if extra_notice:
             extra = QLabel(extra_notice)
             extra.setWordWrap(True)
-            extra.setStyleSheet("color:#E6B450;")
+            extra.setProperty("tone", "warning")
             layout.addWidget(extra)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
@@ -264,7 +264,7 @@ class AssetBreakdownWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("SceneLens — 资产拆分工作台")
+        self.setWindowTitle("GATalk — 资产拆分工作台")
         self.resize(1580, 940)
         self.setMinimumSize(1100, 720)
 
@@ -362,6 +362,7 @@ class AssetBreakdownWindow(QMainWindow):
 
     def _build_toolbar(self) -> None:
         toolbar = QToolBar("资产拆分", self)
+        toolbar.setObjectName("assetBreakdownToolbar")
         toolbar.setMovable(False)
         toolbar.addActions(
             [
@@ -392,6 +393,7 @@ class AssetBreakdownWindow(QMainWindow):
 
     def _build_project_dock(self) -> None:
         dock = QDockWidget("项目与场景", self)
+        dock.setObjectName("assetBreakdownProjectDock")
         dock.setMinimumWidth(280)
         panel = QWidget()
         layout = QVBoxLayout(panel)
@@ -431,7 +433,7 @@ class AssetBreakdownWindow(QMainWindow):
             "紫色＝AI 生成补全"
         )
         legend.setWordWrap(True)
-        legend.setStyleSheet("color:#BDC1C6;")
+        legend.setProperty("role", "muted")
         layout.addWidget(legend)
         layout.addStretch(1)
         dock.setWidget(panel)
@@ -506,6 +508,7 @@ class AssetBreakdownWindow(QMainWindow):
         button_layout = QHBoxLayout(buttons)
         button_layout.setContentsMargins(0, 0, 0, 0)
         self.analyze_button = QPushButton("查看发送清单并开始拆分")
+        self.analyze_button.setProperty("primary", True)
         self.cancel_analysis_button = QPushButton("取消")
         self.cancel_analysis_button.setEnabled(False)
         self.analyze_button.clicked.connect(self._start_ai_breakdown)
@@ -663,12 +666,13 @@ class AssetBreakdownWindow(QMainWindow):
             "生产资产。每项结果会保留模型、参数、来源区域和输入哈希。"
         )
         warning.setWordWrap(True)
-        warning.setStyleSheet("color:#E6B450;")
+        warning.setProperty("tone", "warning")
         form.addRow(warning)
         generation_buttons = QWidget()
         button_layout = QHBoxLayout(generation_buttons)
         button_layout.setContentsMargins(0, 0, 0, 0)
         self.generate_button = QPushButton("确认发送并生成勾选项")
+        self.generate_button.setProperty("primary", True)
         self.cancel_generation_button = QPushButton("取消")
         self.cancel_generation_button.setEnabled(False)
         button_layout.addWidget(self.generate_button, 1)
@@ -754,6 +758,7 @@ class AssetBreakdownWindow(QMainWindow):
         self.auto_start_button = QPushButton(
             "查看发送清单并全自动生成资产板"
         )
+        self.auto_start_button.setProperty("primary", True)
         self.auto_cancel_button = QPushButton("取消")
         self.auto_cancel_button.setEnabled(False)
         row = QWidget()
@@ -1043,7 +1048,7 @@ class AssetBreakdownWindow(QMainWindow):
     def _open_project(self) -> None:
         folder = QFileDialog.getExistingDirectory(
             self,
-            "打开 SceneLens 资产拆分项目",
+            "打开 GATalk 资产拆分项目",
         )
         if not folder:
             return
@@ -1357,7 +1362,7 @@ class AssetBreakdownWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "AI 清单已完成并修复结构",
-                "资产内容已经保留。SceneLens 只修复了无法成立的结构引用：\n"
+                "资产内容已经保留。GATalk 只修复了无法成立的结构引用：\n"
                 f"{repair_text}\n\n"
                 "请在资产树中检查父子层级；修复记录已保存到本次 AI 运行。",
             )
@@ -2867,7 +2872,7 @@ class AssetBreakdownWindow(QMainWindow):
             ),
             constraints=self.prompt_panel.constraints()[:24],
             asset_groups=base.asset_groups,
-            change_summary="用户在 SceneLens 内手动编辑并保存。",
+            change_summary="用户在 GATalk 内手动编辑并保存。",
             provider_id="user",
             model_id="",
             created_at=now,

@@ -21,6 +21,7 @@ class RecentProject:
 
 class RecentProjects:
     def __init__(self, path: Path | None = None, limit: int = 12) -> None:
+        legacy_path: Path | None = None
         if path is None:
             local_app_data = os.environ.get("LOCALAPPDATA")
             base = (
@@ -28,15 +29,24 @@ class RecentProjects:
                 if local_app_data
                 else Path.home() / "AppData" / "Local"
             )
-            path = base / "SceneLens" / "recent-projects.json"
+            path = base / "GATalk" / "recent-projects.json"
+            legacy_path = base / "SceneLens" / "recent-projects.json"
         self.path = Path(path)
+        self.legacy_path = legacy_path
         self.limit = max(1, int(limit))
 
     def load(self) -> tuple[RecentProject, ...]:
-        if not self.path.is_file():
+        source = self.path
+        if (
+            not source.is_file()
+            and self.legacy_path is not None
+            and self.legacy_path.is_file()
+        ):
+            source = self.legacy_path
+        if not source.is_file():
             return ()
         try:
-            raw_items = load_json(self.path).get("projects", [])
+            raw_items = load_json(source).get("projects", [])
             if not isinstance(raw_items, list):
                 return ()
             projects: list[RecentProject] = []

@@ -158,22 +158,22 @@ def _network_provider_error(
     )
     if download:
         message = (
-            "下载 AI 返回图片时连接被中途断开。SceneLens 会自动重试；"
+            "下载 AI 返回图片时连接被中途断开。GATalk 会自动重试；"
             "如果仍失败，请检查代理、VPN 或网络稳定性。"
             if disconnected
-            else "无法下载 AI 返回图片。SceneLens 会自动重试；"
+            else "无法下载 AI 返回图片。GATalk 会自动重试；"
             "如果仍失败，请检查网络。"
         )
         code = "output_connection_closed" if disconnected else "output_download_error"
     elif disconnected:
         message = (
-            f"{subject}在返回结果前中断了连接。SceneLens 会自动重试；"
+            f"{subject}在返回结果前中断了连接。GATalk 会自动重试；"
             "如果仍失败，请检查代理、VPN 或网络稳定性。"
         )
         code = "connection_closed"
     else:
         message = (
-            f"无法连接{subject}。SceneLens 会自动重试；"
+            f"无法连接{subject}。GATalk 会自动重试；"
             "如果仍失败，请检查网络。"
         )
         code = "network_error"

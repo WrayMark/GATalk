@@ -201,6 +201,7 @@ class OptimizationLabPanel(QWidget):
 
         controls = QHBoxLayout()
         self.grade_preview_button = QPushButton("生成安全预览")
+        self.grade_preview_button.setProperty("primary", True)
         self.grade_original_button = QCheckBox("A/B 显示原图")
         self.grade_original_button.setEnabled(False)
         self.undo_button = QPushButton("撤销配方")
@@ -335,6 +336,7 @@ class OptimizationLabPanel(QWidget):
 
         buttons = QHBoxLayout()
         self.concept_run_button = QPushButton("查看发送清单并生成预演")
+        self.concept_run_button.setProperty("primary", True)
         self.concept_cancel_button = QPushButton("取消")
         self.concept_cancel_button.setEnabled(False)
         self.concept_task_button = QPushButton("从预演生成任务")

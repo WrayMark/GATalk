@@ -337,7 +337,7 @@ class MultipartImageEditProvider:
             prompt.encode("utf-8")
             + b"".join(image.data for image in request.images)
         ).hexdigest()[:24]
-        boundary = f"----SceneLens{digest}"
+        boundary = f"----GATalk{digest}"
         fields: list[bytes] = []
         for name, value in (
             (

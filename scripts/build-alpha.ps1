@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $venvPython = Join-Path $projectRoot ".venv\Scripts\python.exe"
-$specFile = Join-Path $projectRoot "SceneLens.spec"
+$specFile = Join-Path $projectRoot "GATalk.spec"
 
 if (-not (Test-Path -LiteralPath $venvPython)) {
     throw "Development environment not found. Run start_dev.cmd first."
@@ -21,4 +21,4 @@ if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller build failed."
 }
 
-Write-Host "Build complete: $(Join-Path $projectRoot 'dist\SceneLens\SceneLens.exe')"
+Write-Host "Build complete: $(Join-Path $projectRoot 'dist\GATalk\GATalk.exe')"

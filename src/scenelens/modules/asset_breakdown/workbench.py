@@ -14,7 +14,7 @@ def register_asset_breakdown_workbench(
             module_id=MODULE_ID,
             workspace_id=WORKSPACE_ID,
             display_name="资产拆分工作台",
-            version="0.9.0",
+            version="0.10.0",
         )
     )
     registry.register_reviewer(AssetBreakdownReview())

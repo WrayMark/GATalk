@@ -10,76 +10,20 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PySide6.QtWidgets import QApplication
 
+from scenelens.storage.app_settings import AppSettings, AppSettingsStore
 from scenelens.ui.main_window import MainWindow
+from scenelens.ui.settings_controller import GlobalSettingsController
+from scenelens.ui.theme import apply_appearance, create_brand_icon
 from scenelens.ui.workspace_hub import WorkspaceHubWindow
 
 
-APP_STYLESHEET = """
-QWidget {
-    background: #202124;
-    color: #E8EAED;
-    font-size: 10pt;
-}
-QMainWindow, QToolBar, QStatusBar {
-    background: #202124;
-}
-QToolBar {
-    border-bottom: 1px solid #3C4043;
-    spacing: 5px;
-    padding: 4px;
-}
-QPushButton, QComboBox {
-    background: #303134;
-    border: 1px solid #5F6368;
-    border-radius: 4px;
-    padding: 5px 8px;
-}
-QPushButton:hover, QComboBox:hover {
-    border-color: #8AB4F8;
-}
-QPushButton:disabled {
-    color: #80868B;
-    border-color: #3C4043;
-}
-QComboBox QAbstractItemView {
-    background: #303134;
-    selection-background-color: #3C5F8A;
-}
-QTabWidget::pane {
-    border: 1px solid #3C4043;
-}
-QTabBar::tab {
-    background: #292A2D;
-    padding: 7px 10px;
-    border: 1px solid #3C4043;
-}
-QTabBar::tab:selected {
-    background: #3C4043;
-}
-QSplitter::handle {
-    background: #3C4043;
-}
-QSlider::groove:horizontal {
-    height: 4px;
-    background: #5F6368;
-}
-QSlider::handle:horizontal {
-    width: 14px;
-    margin: -5px 0;
-    border-radius: 7px;
-    background: #8AB4F8;
-}
-QProgressBar {
-    border: 1px solid #5F6368;
-    border-radius: 3px;
-    text-align: center;
-}
-"""
-
-
-def _configure_application(app: QApplication) -> QApplication:
-    app.setApplicationName("SceneLens")
-    app.setOrganizationName("SceneLens")
+def _configure_application(
+    app: QApplication,
+    settings: AppSettings | None = None,
+) -> QApplication:
+    app.setApplicationName("GATalk")
+    app.setApplicationDisplayName("GATalk")
+    app.setOrganizationName("GATalk")
     app.setStyle("Fusion")
     # The Windows offscreen Qt plugin used by tests may not enumerate system
     # fonts. Register the installed CJK font as a fallback without bundling it.
@@ -87,20 +31,27 @@ def _configure_application(app: QApplication) -> QApplication:
     if windows_font.is_file():
         QFontDatabase.addApplicationFont(str(windows_font))
     app.setFont(QFont("Microsoft YaHei UI", 10))
-    app.setStyleSheet(APP_STYLESHEET)
+    app.setWindowIcon(create_brand_icon())
+    apply_appearance(
+        app,
+        settings or AppSettingsStore().load(),
+    )
     return app
 
 
-def create_application(argv: list[str] | None = None) -> QApplication:
+def create_application(
+    argv: list[str] | None = None,
+    settings: AppSettings | None = None,
+) -> QApplication:
     existing = QApplication.instance()
     if isinstance(existing, QApplication):
-        return _configure_application(existing)
+        return _configure_application(existing, settings)
 
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     app = QApplication(argv if argv is not None else sys.argv)
-    return _configure_application(app)
+    return _configure_application(app, settings)
 
 
 def _run_internal_smoke_check() -> None:
@@ -478,7 +429,9 @@ def _run_internal_smoke_check() -> None:
 
 
 def main() -> int:
-    app = create_application()
+    settings_store = AppSettingsStore()
+    app = create_application(settings=settings_store.load())
+    settings_controller = GlobalSettingsController(app, settings_store)
     smoke_test = "--smoke-test" in sys.argv
     if smoke_test:
         try:
@@ -487,6 +440,10 @@ def main() -> int:
             return 2
 
     hub = WorkspaceHubWindow()
+    settings_controller.register_window(hub, "workspace_hub")
+    hub.settings_requested.connect(
+        lambda: settings_controller.open_dialog(hub)
+    )
     active_windows: list[QApplication | MainWindow | object] = []
 
     def show_hub() -> None:
@@ -516,6 +473,7 @@ def main() -> int:
             window = AssetBreakdownWindow()
         else:
             return
+        settings_controller.register_window(window, workspace_id)
         window.workspace_home_requested.connect(show_hub)
         window.destroyed.connect(
             lambda *_args, value=window: (

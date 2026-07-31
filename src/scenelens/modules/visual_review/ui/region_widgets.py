@@ -118,7 +118,7 @@ class RegionPairPanel(QGroupBox):
             "进入区域模式后，分别在参考图和当前截图拖出矩形，再建立配对。"
         )
         self.hint_label.setWordWrap(True)
-        self.hint_label.setStyleSheet("color: #9AA0A6;")
+        self.hint_label.setProperty("role", "muted")
         layout.addWidget(self.hint_label)
 
         tools = QHBoxLayout()
@@ -175,7 +175,7 @@ class RegionPairPanel(QGroupBox):
 
         self.selection_label = QLabel("尚未选择区域。")
         self.selection_label.setWordWrap(True)
-        self.selection_label.setStyleSheet("color: #9AA0A6;")
+        self.selection_label.setProperty("role", "muted")
         layout.addWidget(self.selection_label)
 
         self.details_box = QGroupBox("当前区域详细比较")
@@ -184,7 +184,7 @@ class RegionPairPanel(QGroupBox):
         details_layout = QVBoxLayout(self.details_box)
         self.analysis_status_label = QLabel("选择完整区域对后开始分析。")
         self.analysis_status_label.setWordWrap(True)
-        self.analysis_status_label.setStyleSheet("color: #9AA0A6;")
+        self.analysis_status_label.setProperty("role", "muted")
         details_layout.addWidget(self.analysis_status_label)
         self.metrics_table = QTableWidget(0, 5)
         self.metrics_table.setHorizontalHeaderLabels(
@@ -230,7 +230,7 @@ class RegionPairPanel(QGroupBox):
             "仅呈现差异，不生成好坏结论。"
         )
         self.analysis_note.setWordWrap(True)
-        self.analysis_note.setStyleSheet("color: #9AA0A6;")
+        self.analysis_note.setProperty("role", "muted")
         details_layout.addWidget(self.analysis_note)
         self._detail_widgets = (
             self.analysis_status_label,

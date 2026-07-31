@@ -24,7 +24,7 @@ def validate_json_schema(
     value: Any,
     schema: Mapping[str, Any],
 ) -> tuple[SchemaIssue, ...]:
-    """Validate the strict JSON Schema subset used by SceneLens.
+    """Validate the strict JSON Schema subset used by GATalk.
 
     The supported subset deliberately covers the checked-in review schemas and
     does not pretend to be a general JSON Schema implementation.

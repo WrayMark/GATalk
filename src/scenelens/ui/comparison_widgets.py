@@ -75,7 +75,7 @@ class ComparisonPanel(QWidget):
         )
         palette_layout.addWidget(self.palette_table)
         self.palette_sample_label = QLabel("等待参考图与当前截图")
-        self.palette_sample_label.setStyleSheet("color: #9AA0A6;")
+        self.palette_sample_label.setProperty("role", "muted")
         palette_layout.addWidget(self.palette_sample_label)
         self.content_layout.addWidget(palette_box)
 
@@ -124,7 +124,7 @@ class ComparisonPanel(QWidget):
         thumbnails.addWidget(self.current_thumbnail)
         luminance_layout.addLayout(thumbnails)
         note = QLabel("仅显示可测量差异，不自动生成好坏判断。")
-        note.setStyleSheet("color: #9AA0A6;")
+        note.setProperty("role", "muted")
         note.setWordWrap(True)
         luminance_layout.addWidget(note)
         self.content_layout.addWidget(luminance_box)
@@ -246,7 +246,7 @@ class ComparisonPanel(QWidget):
         label = QLabel(text)
         label.setMinimumSize(130, 90)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setStyleSheet("background: #15171A; color: #80868B;")
+        label.setObjectName("analysisThumbnail")
         return label
 
     @staticmethod

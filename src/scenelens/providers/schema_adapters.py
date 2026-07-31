@@ -54,7 +54,7 @@ def gemini_compatible_schema(
 
     The local validator continues to use the complete source schema. This
     adapter only narrows the copy sent to Gemini, and maps ``const`` to a
-    single-value ``enum`` so fixed SceneLens identifiers remain constrained.
+    single-value ``enum`` so fixed GATalk identifiers remain constrained.
     """
 
     return _adapt_mapping(dict(schema))

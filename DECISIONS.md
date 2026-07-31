@@ -1,4 +1,4 @@
-# SceneLens 决策记录
+# GATalk 决策记录
 
 状态标记：`Accepted` 已接受，`Proposed` 待确认，`Deferred` 已推迟。
 
@@ -96,13 +96,13 @@
   Matplotlib 可选能力。
 - 原因：当前算法烟测证明 Oklab 路径无需这两个大型依赖；加入它们会显著
   增加依赖与打包体积。
-- 后果：构建分析阶段会出现可选能力缺失警告，不影响 SceneLens 当前功能。
+- 后果：构建分析阶段会出现可选能力缺失警告，不影响 GATalk 当前功能。
 
 ## D-015 PyInstaller 收集策略
 
 - 状态：Accepted
 - 日期：2026-07-18
-- 决策：使用显式 `SceneLens.spec` 和静态导入分析，不使用
+- 决策：使用显式 `GATalk.spec` 和静态导入分析，不使用
   `--collect-all colour`。
 - 原因：`collect-all` 会错误收集 Colour 自带测试和 pytest，扩大包体积并
   引入无关模块。
@@ -167,7 +167,7 @@
 
 - 状态：Accepted
 - 日期：2026-07-19
-- 决策：最近项目保存在 `%LOCALAPPDATA%/SceneLens/recent-projects.json`，
+- 决策：最近项目保存在 `%LOCALAPPDATA%/GATalk/recent-projects.json`，
   不写入项目目录；SQLite 使用 Python 3.11 标准库，不增加第三方依赖。
 - 后果：最近列表保存失败不影响项目，失效路径保留并在界面标记。
 
@@ -185,7 +185,7 @@
 - 状态：Accepted
 - 日期：2026-07-19
 - 决策：长期采用“模块化单体，预留插件能力”。公共核心只提供分析器契约、
-  注册表和真正跨模块复用的能力；当前 SceneLens 业务归属
+  注册表和真正跨模块复用的能力；当前 GATalk 业务归属
   `scenelens.visual_review` 模块。
 - 分析器身份至少包含 `module_id`、`analyzer_id`、`display_name`、`version`、
   `supported_inputs`、`parameter_schema`、`output_schema`、`run()` 和
@@ -280,9 +280,9 @@
 - 状态：Accepted
 - 日期：2026-07-19
 - 决策：通用 `ImageCanvas` 只提供归一化矩形叠层、选择、移动和缩放信号；
-  SceneLens 的区域语义、配对、Version 复制和持久化由
+  GATalk 的区域语义、配对、Version 复制和持久化由
   `modules.visual_review` 的控制器与仓储负责。
-- 原因：区域是 SceneLens 业务，不应继续写入应用外壳或通用画布；矩形交互本身
+- 原因：区域是 GATalk 业务，不应继续写入应用外壳或通用画布；矩形交互本身
   又是可跨模块复用的显示能力。
 - 后果：`MainWindow` 只挂载模块面板和传递当前项目上下文，不执行区域 SQL 或
   局部图像统计。
@@ -320,7 +320,7 @@
 - 决策：拒绝 0–10 泛化总分、用建议条数表示改动强度、从 Markdown 关键词生成
   改图指令、从截图输出伪精确 Lux/EV/性能收益/Actor 数量，以及把截图处理命名
   为真实灰模。
-- 后果：SceneLens 使用严格 Schema、用户确认任务、证据校验、质量门禁和
+- 后果：GATalk 使用严格 Schema、用户确认任务、证据校验、质量门禁和
   `AIConceptPreview` 隔离实现同类能力。
 
 ## D-037 schema v5 共享工作台实体
@@ -427,7 +427,7 @@
 - 日期：2026-07-19
 - 决策：本地审阅 Schema 是领域数据真相；供应商只接收由适配器生成的兼容
   Schema。Gemini 适配器移除其不支持的关键字并把 `const` 转成单值
-  `enum`，响应返回后仍使用完整本地 Schema 验证，不降低 SceneLens 数据要求。
+  `enum`，响应返回后仍使用完整本地 Schema 验证，不降低 GATalk 数据要求。
 - 决策：公共 HTTP 层读取有界错误正文，提取并脱敏 status、code、type 和
   message。界面显示 HTTP 分类、内部错误代码和供应商原因，不显示 API Key、
   Authorization、图片字节或完整请求正文。
@@ -484,7 +484,7 @@
 
 - 状态：Accepted
 - 日期：2026-07-28
-- 决策：完整本地 JSON Schema 继续作为 SceneLens 领域数据真相。Gemini
+- 决策：完整本地 JSON Schema 继续作为 GATalk 领域数据真相。Gemini
   Schema 超过保守复杂度阈值时，服务端只接收顶层字段和类型约束；完整 Schema
   同时作为纯文本输出契约发送，响应返回后仍执行完整本地校验。
 - 决策：若 Gemini 对带 Schema 的请求返回 `HTTP 400`，同一次用户主动操作可
@@ -495,7 +495,7 @@
 - 依据：M4 真实请求已到达 `gemini-3.5-flash`，但八维深度 Schema 被服务以
   `INVALID_ARGUMENT` 拒绝；Google 官方文档明确说明过大或过深的 Schema
   可能被拒绝。
-- 后果：Provider 的服务端约束可按兼容性收紧或降级，但 SceneLens 保存结果的
+- 后果：Provider 的服务端约束可按兼容性收紧或降级，但 GATalk 保存结果的
   结构要求不变。真实联网验证继续由用户使用自己的 Key 主动执行。
 
 ## D-049 Gemini 嵌套结构约束与一次性纠错
@@ -683,7 +683,7 @@
   `gemini-3.5-flash` 和 `gemini-3.5-flash-lite` 列为稳定模型，并把
   `gemini-2.5-flash` 列入弃用路径。三者支持图片输入和结构化输出。
 - 后果：单个 Gemini 模型繁忙或退役不再直接终止任务；如果整个已声明模型链
-  均不可用，SceneLens 明确失败，不无限重试或静默切换到其他供应商。
+  均不可用，GATalk 明确失败，不无限重试或静默切换到其他供应商。
 
 ## D-060 资产清单的可判定引用错误采用本地结构修复
 
@@ -749,3 +749,21 @@
   更换主原画时旧提示语会话一并清除，防止跨图片误用。
 - 边界：该流程只生成文字，不调用图片生成 Provider；复制和手动编辑不消耗
   API。离线 Mock 只验证流程，不代表本地语义推理。
+
+## D-065 正式品牌 GATalk 与原生 Qt 主题系统
+
+- 状态：Accepted
+- 日期：2026-07-31
+- 决策：产品对外名称、窗口标题、构建目录和新本机设置命名空间统一为
+  `GATalk`。Python 包名 `scenelens`、模块 ID、数据库表、项目扩展名和
+  格式标识继续保留，避免为品牌变更制造破坏性迁移。
+- 决策：全局设置保存到 `%LOCALAPPDATA%/GATalk/settings.json`，包含主题、
+  强调色、字号、控件密度和窗口布局。设置不写入项目，不包含 API Key。
+- 决策：主题使用 Qt `QPalette`、集中设计令牌和 QSS 实现；“跟随系统”读取
+  Qt `QStyleHints.colorScheme` 并监听系统变化。三个工作台共用同一主题层。
+- 兼容：新凭据优先写入 `GATalk/provider/...`；读取失败时查询旧
+  `SceneLens/provider/...` 并尽力迁移。最近项目列表同样具有旧路径回退。
+- 依赖：不采用 PyQt-Fluent-Widgets。其公开仓库说明免费版本为 GPLv3，
+  商业发布另需许可；当前无需为了视觉样式引入该依赖和授权边界。
+- 后果：界面具有一致的深浅主题和视觉层级，同时安装体积、离线能力、项目
+  数据结构与原有算法保持不变。

@@ -44,10 +44,10 @@ class ArtworkStudyStore:
         folder = Path(root)
         data = load_json(folder / ENTRY_FILENAME)
         if data.get("format") != FORMAT_ID:
-            raise ValueError("所选目录不是 SceneLens 作品研究。")
+            raise ValueError("所选目录不是 GATalk 作品研究。")
         version = int(data.get("format_version", 0))
         if version > FORMAT_VERSION:
-            raise ValueError("作品研究由更高版本 SceneLens 创建，当前版本不能打开。")
+            raise ValueError("作品研究由更高版本 GATalk 创建，当前版本不能打开。")
         return cls(folder, ArtworkStudyState.from_dict(data["state"]))
 
     def save(self, state: ArtworkStudyState | None = None) -> None:

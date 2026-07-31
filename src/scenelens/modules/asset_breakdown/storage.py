@@ -81,11 +81,11 @@ class AssetBreakdownStore:
         folder = Path(root)
         data = load_json(folder / ENTRY_FILENAME)
         if data.get("format") != FORMAT_ID:
-            raise ValueError("所选目录不是 SceneLens 资产拆分项目。")
+            raise ValueError("所选目录不是 GATalk 资产拆分项目。")
         version = int(data.get("format_version", 0))
         if version > FORMAT_VERSION:
             raise ValueError(
-                "资产拆分项目由更高版本 SceneLens 创建，当前版本不能写入。"
+                "资产拆分项目由更高版本 GATalk 创建，当前版本不能写入。"
             )
         state = AssetBreakdownState.from_dict(data["state"])
         write_lock = ProjectWriteLock.acquire(

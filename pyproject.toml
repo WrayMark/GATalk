@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "scenelens"
-version = "0.9.0"
-description = "Local visual review workbench for game environment art."
+name = "gatalk"
+version = "0.10.0"
+description = "Local-first game art analysis and production workbench."
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
@@ -24,6 +24,7 @@ dev = [
 ]
 
 [project.scripts]
+gatalk = "scenelens.__main__:main"
 scenelens = "scenelens.__main__:main"
 
 [tool.setuptools.packages.find]

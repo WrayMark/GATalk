@@ -198,11 +198,11 @@ def _unlock_file(handle: BinaryIO) -> None:
 
 def _locked_message(owner: dict) -> str:
     if not owner:
-        return "该项目已被另一个 SceneLens 进程占用写权限。"
+        return "该项目已被另一个 GATalk 进程占用写权限。"
     host = owner.get("hostname", "未知设备")
     pid = owner.get("pid", "未知")
     acquired = owner.get("acquired_at", "未知时间")
     return (
-        "该项目已被另一个 SceneLens 进程占用写权限。"
+        "该项目已被另一个 GATalk 进程占用写权限。"
         f"\n设备：{host}  进程：{pid}  打开时间：{acquired}"
     )

@@ -11,7 +11,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "SceneLens_使用手册.docx"
+OUTPUT = ROOT / "GATalk_使用手册.docx"
 
 BLUE = RGBColor(46, 116, 181)
 DARK_BLUE = RGBColor(31, 77, 120)
@@ -173,7 +173,7 @@ def build() -> None:
     title.paragraph_format.space_before = Pt(0)
     title.paragraph_format.space_after = Pt(4)
     set_font(
-        title.add_run("SceneLens 简明使用手册"),
+        title.add_run("GATalk 简明使用手册"),
         size=22,
         bold=True,
         color=DARK_BLUE,
@@ -196,13 +196,13 @@ def build() -> None:
     add_heading(document, "1. 启动")
     add_list_item(
         document,
-        "试用版：打开本次候选目录中的 SceneLens/SceneLens.exe，不要继续使用旧候选。",
+        "试用版：打开本次候选目录中的 GATalk/GATalk.exe，不要继续使用旧候选。",
         bullet_id,
     )
     add_list_item(document, "开发版：双击 start_dev.cmd。", bullet_id)
     add_list_item(
         document,
-        "原始图片始终只读；SceneLens 不会自动联网或上传图片。",
+        "原始图片始终只读；GATalk 不会自动联网或上传图片。",
         bullet_id,
     )
 
@@ -289,7 +289,7 @@ def build() -> None:
     for text in (
         "AI 偶尔会返回不存在的父资产 ID、重复 ID 或循环父级。新版会保留资产，只取消或修正无法成立的引用，不要求重新消耗一次 API 调用。",
         "修复发生时会显示中文摘要，并写入该次 AI 运行记录。",
-        "SceneLens 不会借此改写资产名称、分类、画面证据或制作建议。看到修复提示后，请在资产树中人工检查父子层级。",
+        "GATalk 不会借此改写资产名称、分类、画面证据或制作建议。看到修复提示后，请在资产树中人工检查父子层级。",
     ):
         add_list_item(document, text, bullet_id)
 
@@ -380,7 +380,7 @@ def build() -> None:
         "自动重试可能重复提交同一请求并产生额外费用，发送确认窗口会提前提示。",
         "http_400：请求参数或模型不兼容。新版会自动处理 Gemini 深度审阅的复杂 Schema；仍失败时先确认正在运行 0.5.0a4，再恢复默认模型重试。",
         "若错误包含 generation_config.response_format.text.mime_type，说明仍在运行旧版；关闭旧程序后改用本次 Gemini 接口修正版。",
-        "Gemini 首次返回的 JSON 语法损坏、被截断或结构不完整时，SceneLens 最多自动纠错一次。确认发送窗口会提示该过程可能再次发送同一审阅副本并增加少量费用。",
+        "Gemini 首次返回的 JSON 语法损坏、被截断或结构不完整时，GATalk 最多自动纠错一次。确认发送窗口会提示该过程可能再次发送同一审阅副本并增加少量费用。",
         "finish_reason=MAX_TOKENS：AI 回答过长导致 JSON 尾部被截断，不表示 API Key 错误。新版会压缩内容，并只在明确截断时用更高预算纠错一次。",
         "错误中的 line 和 column 表示 AI 返回文本的 JSON 损坏位置，不表示 API Key 错误。0.5.0a4 会把原始返回交给同一模型压缩并修复；第二次仍损坏时停止，不会无限重试。",
         "若 AI 引用了本次报告中不存在的问题 ID，0.5.0a3 会取消无效链接并继续显示完整报告，不追加 API 调用。界面的“结构修复”只表示链接已取消，正文和真实问题没有被改写。",
@@ -455,10 +455,10 @@ def build() -> None:
     ):
         add_list_item(document, text, bullet_id)
 
-    document.core_properties.title = "SceneLens 简明使用手册"
-    document.core_properties.subject = "SceneLens 当前功能与操作"
-    document.core_properties.author = "SceneLens"
-    document.core_properties.keywords = "SceneLens, 使用手册, 游戏场景美术"
+    document.core_properties.title = "GATalk 简明使用手册"
+    document.core_properties.subject = "GATalk 当前功能与操作"
+    document.core_properties.author = "GATalk"
+    document.core_properties.keywords = "GATalk, 使用手册, 游戏场景美术"
     document.save(OUTPUT)
 
 

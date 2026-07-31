@@ -23,7 +23,7 @@
   PyTorch、Transformers 和模型权重，不纳入本次安装包。
 - [Qwen3-VL](https://qwen.ai/blog?id=99f0335c4ad9ff6153e517418d48535ab6d8afef)
   公开能力包括多目标定位；它说明云端 VLM 可以同时输出语义与归一化区域。
-  SceneLens 因此保持 Provider 可替换，不把领域数据绑定到某个模型 ID。
+  GATalk 因此保持 Provider 可替换，不把领域数据绑定到某个模型 ID。
 
 结论：当前正式路线由视觉 Provider 生成生产语义、层级和归一化矩形；本地
 OpenCV GrabCut 只在该矩形内估计“直接可见像素遮罩”。遮罩标记为算法近似，
@@ -64,7 +64,7 @@ OpenCV GrabCut 只在该矩形内估计“直接可见像素遮罩”。遮罩�
   边界判断。
 - 商业产品
   [GenioPlus Scene Asset Extraction](https://genioplus.com/en/blog/scene-generation-split-scene-into-game-assets)
-  展示了“场景清单—选择单项—重新生成”的产品流程。SceneLens 只吸收这一类
+  展示了“场景清单—选择单项—重新生成”的产品流程。GATalk 只吸收这一类
   交互思想，没有复制代码、提示词或专有实现。
 
 由此建立七种场景配置：通用环境、历史聚落、城市街道、科幻工业、自然景观、

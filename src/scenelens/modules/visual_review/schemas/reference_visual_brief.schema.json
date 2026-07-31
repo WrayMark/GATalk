@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://scenelens.local/schemas/reference-visual-brief-v1.json",
-  "title": "SceneLens Reference Visual Brief",
+  "title": "GATalk Reference Visual Brief",
   "type": "object",
   "required": [
     "format",

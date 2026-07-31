@@ -197,17 +197,17 @@ class ProjectStore:
         selected = Path(path).expanduser().resolve()
         manifest_path = selected / "project.json" if selected.is_dir() else selected
         if manifest_path.name.lower() != "project.json" or not manifest_path.is_file():
-            raise ProjectFormatError("请选择 SceneLens 项目中的 project.json。")
+            raise ProjectFormatError("请选择 GATalk 项目中的 project.json。")
         root = manifest_path.parent
         try:
             manifest = ProjectManifest.from_dict(load_json(manifest_path))
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             raise ProjectFormatError(f"无法读取项目清单：{exc}") from exc
         if manifest.format != MANIFEST_FORMAT:
-            raise ProjectFormatError("该文件不是 SceneLens 项目清单。")
+            raise ProjectFormatError("该文件不是 GATalk 项目清单。")
         if manifest.format_version > MANIFEST_FORMAT_VERSION:
             raise ProjectVersionError(
-                "该项目清单来自更高版本的 SceneLens，当前版本不会写入它。"
+                "该项目清单来自更高版本的 GATalk，当前版本不会写入它。"
             )
         if manifest.format_version < 1:
             raise ProjectFormatError("不支持该项目清单版本。")

@@ -886,7 +886,7 @@ def migrate_database(
         current = database_version(connection)
         if current > DATABASE_SCHEMA_VERSION:
             raise ProjectVersionError(
-                "该项目由更高版本的 SceneLens 创建，当前版本不会写入它。"
+                "该项目由更高版本的 GATalk 创建，当前版本不会写入它。"
             )
         if current == DATABASE_SCHEMA_VERSION:
             return current

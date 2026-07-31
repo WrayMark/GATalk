@@ -53,7 +53,7 @@ def cube_lut_text(
         replace(recipe, normalized_rect=None),
     ).reshape(-1, 3)
     lines = [
-        'TITLE "SceneLens Safe Grade"',
+        'TITLE "GATalk Safe Grade"',
         f"LUT_3D_SIZE {size}",
         "DOMAIN_MIN 0.0 0.0 0.0",
         "DOMAIN_MAX 1.0 1.0 1.0",
