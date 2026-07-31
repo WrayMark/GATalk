@@ -277,6 +277,116 @@ class AutomaticAssetRun:
 
 
 @dataclass(frozen=True)
+class PromptMessage:
+    message_id: str
+    role: str
+    content: str
+    created_at: str
+
+    def __post_init__(self) -> None:
+        if self.role not in {"user", "assistant"}:
+            raise ValueError("提示语会话消息角色无效。")
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> PromptMessage:
+        return cls(
+            message_id=str(value["message_id"]),
+            role=str(value["role"]),
+            content=str(value.get("content", "")),
+            created_at=str(value["created_at"]),
+        )
+
+
+@dataclass(frozen=True)
+class PromptRevision:
+    revision_id: str
+    origin: str
+    title: str
+    target_tool: str
+    analysis_summary: str
+    prompt_zh: str
+    prompt_en: str
+    negative_prompt: str
+    constraints: tuple[str, ...] = ()
+    asset_groups: tuple[Mapping[str, Any], ...] = ()
+    change_summary: str = ""
+    provider_id: str = ""
+    model_id: str = ""
+    created_at: str = ""
+
+    def __post_init__(self) -> None:
+        if self.origin not in {"ai", "user_edit"}:
+            raise ValueError("提示语修订来源无效。")
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> PromptRevision:
+        return cls(
+            revision_id=str(value["revision_id"]),
+            origin=str(value.get("origin", "ai")),
+            title=str(value.get("title", "未命名提示语")),
+            target_tool=str(value.get("target_tool", "generic")),
+            analysis_summary=str(value.get("analysis_summary", "")),
+            prompt_zh=str(value.get("prompt_zh", "")),
+            prompt_en=str(value.get("prompt_en", "")),
+            negative_prompt=str(value.get("negative_prompt", "")),
+            constraints=tuple(
+                str(item) for item in value.get("constraints", ())
+            ),
+            asset_groups=tuple(
+                dict(item) for item in value.get("asset_groups", ())
+            ),
+            change_summary=str(value.get("change_summary", "")),
+            provider_id=str(value.get("provider_id", "")),
+            model_id=str(value.get("model_id", "")),
+            created_at=str(value.get("created_at", "")),
+        )
+
+
+@dataclass(frozen=True)
+class AssetPromptSession:
+    session_id: str
+    title: str
+    source_image_sha256: str
+    target_tool: str
+    revisions: tuple[PromptRevision, ...] = ()
+    messages: tuple[PromptMessage, ...] = ()
+    created_at: str = ""
+    updated_at: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> AssetPromptSession:
+        return cls(
+            session_id=str(value["session_id"]),
+            title=str(value.get("title", "未命名提示语")),
+            source_image_sha256=str(value["source_image_sha256"]),
+            target_tool=str(value.get("target_tool", "generic")),
+            revisions=tuple(
+                PromptRevision.from_dict(item)
+                for item in value.get("revisions", ())
+            ),
+            messages=tuple(
+                PromptMessage.from_dict(item)
+                for item in value.get("messages", ())
+            ),
+            created_at=str(value.get("created_at", "")),
+            updated_at=str(value.get("updated_at", "")),
+        )
+
+    @property
+    def current_revision(self) -> PromptRevision | None:
+        return self.revisions[-1] if self.revisions else None
+
+
+@dataclass(frozen=True)
 class AssetBreakdownState:
     project_id: str
     title: str
@@ -289,6 +399,7 @@ class AssetBreakdownState:
     assets: tuple[AssetItem, ...] = ()
     generations: tuple[GenerationRecord, ...] = ()
     automatic_runs: tuple[AutomaticAssetRun, ...] = ()
+    prompt_sessions: tuple[AssetPromptSession, ...] = ()
     ai_runs: tuple[Mapping[str, Any], ...] = ()
     exports: tuple[Mapping[str, Any], ...] = ()
     selected_asset_id: str = ""
@@ -296,6 +407,7 @@ class AssetBreakdownState:
     center_x: float = 0.5
     center_y: float = 0.5
     regions_visible: bool = True
+    selected_prompt_session_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
@@ -330,6 +442,10 @@ class AssetBreakdownState:
                 AutomaticAssetRun.from_dict(item)
                 for item in value.get("automatic_runs", ())
             ),
+            prompt_sessions=tuple(
+                AssetPromptSession.from_dict(item)
+                for item in value.get("prompt_sessions", ())
+            ),
             ai_runs=tuple(dict(item) for item in value.get("ai_runs", ())),
             exports=tuple(dict(item) for item in value.get("exports", ())),
             selected_asset_id=str(value.get("selected_asset_id", "")),
@@ -337,6 +453,9 @@ class AssetBreakdownState:
             center_x=float(value.get("center_x", 0.5)),
             center_y=float(value.get("center_y", 0.5)),
             regions_visible=bool(value.get("regions_visible", True)),
+            selected_prompt_session_id=str(
+                value.get("selected_prompt_session_id", "")
+            ),
         )
 
     @property

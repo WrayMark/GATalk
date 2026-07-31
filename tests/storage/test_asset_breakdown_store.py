@@ -8,8 +8,11 @@ from PIL import Image
 import pytest
 
 from scenelens.modules.asset_breakdown.models import (
+    AssetPromptSession,
     AutomaticAssetRun,
     GenerationRecord,
+    PromptMessage,
+    PromptRevision,
 )
 from scenelens.modules.asset_breakdown.service import create_manual_asset
 from scenelens.modules.asset_breakdown.storage import AssetBreakdownStore
@@ -160,7 +163,7 @@ def test_automatic_runs_are_independent_and_restore(
     reopened.close()
 
 
-def test_v1_asset_project_is_backed_up_before_v2_migration(
+def test_v2_asset_project_is_backed_up_before_v3_migration(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "migrate.scenelens-assets"
@@ -168,9 +171,10 @@ def test_v1_asset_project_is_backed_up_before_v2_migration(
     store.close()
     entry = root / "asset_project.json"
     payload = json.loads(entry.read_text(encoding="utf-8"))
-    payload["format_version"] = 1
-    payload["module_schema_version"] = 1
-    payload["state"].pop("automatic_runs", None)
+    payload["format_version"] = 2
+    payload["module_schema_version"] = 2
+    payload["state"].pop("prompt_sessions", None)
+    payload["state"].pop("selected_prompt_session_id", None)
     entry.write_text(
         json.dumps(payload, ensure_ascii=False),
         encoding="utf-8",
@@ -180,7 +184,70 @@ def test_v1_asset_project_is_backed_up_before_v2_migration(
     migrated.close()
 
     updated = json.loads(entry.read_text(encoding="utf-8"))
-    assert updated["format_version"] == 2
-    assert updated["module_schema_version"] == 2
-    backups = list((root / "backups").glob("asset_project.v1.*.json"))
+    assert updated["format_version"] == 3
+    assert updated["module_schema_version"] == 3
+    backups = list((root / "backups").glob("asset_project.v2.*.json"))
     assert len(backups) == 1
+
+
+def test_prompt_sessions_restore_without_touching_source_image(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "提示语 原画.png"
+    original = _image(source, (30, 80, 120))
+    root = tmp_path / "提示语 项目.scenelens-assets"
+    store = AssetBreakdownStore.create(root, "提示语项目")
+    main = store.import_image(source, "main")
+    now = utc_now()
+    revision = PromptRevision(
+        revision_id="revision-1",
+        origin="ai",
+        title="建筑资产板",
+        target_tool="nano_banana",
+        analysis_summary="可见主体建筑和重复灯箱。",
+        prompt_zh="生成一张建筑模块资产拆分板。",
+        prompt_en="Create a modular architecture asset sheet.",
+        negative_prompt="不要裁切。",
+        constraints=("保持主体轮廓",),
+        asset_groups=(
+            {
+                "name": "主体建筑",
+                "category": "building",
+                "visible_evidence": "画面左侧建筑",
+                "uncertainty": "背面不可见",
+                "prompt_fragment_zh": "主体建筑模块",
+                "prompt_fragment_en": "main architecture module",
+            },
+        ),
+        provider_id="mock",
+        model_id="mock-vision-v1",
+        created_at=now,
+    )
+    store.add_or_replace_prompt_session(
+        AssetPromptSession(
+            session_id="session-1",
+            title=revision.title,
+            source_image_sha256=main.sha256,
+            target_tool=revision.target_tool,
+            revisions=(revision,),
+            messages=(
+                PromptMessage(
+                    message_id="message-1",
+                    role="assistant",
+                    content="已生成初稿。",
+                    created_at=now,
+                ),
+            ),
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    store.close()
+
+    reopened = AssetBreakdownStore.open(root)
+    session = reopened.state.prompt_sessions[0]
+    assert session.current_revision is not None
+    assert session.current_revision.prompt_zh == "生成一张建筑模块资产拆分板。"
+    assert reopened.state.selected_prompt_session_id == "session-1"
+    assert source.read_bytes() == original
+    reopened.close()

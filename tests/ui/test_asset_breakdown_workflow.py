@@ -6,15 +6,24 @@ from io import BytesIO
 import numpy as np
 from PIL import Image, ImageDraw
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QApplication, QLabel
 
 from scenelens.modules.asset_breakdown.service import create_manual_asset
 from scenelens.modules.asset_breakdown.storage import AssetBreakdownStore
+from scenelens.modules.asset_breakdown.prompt_workshop import (
+    AssetPromptContext,
+)
 from scenelens.modules.asset_breakdown.ui.window import (
     AssetBreakdownWindow,
     _combo_model_id,
 )
-from scenelens.providers.contracts import ImageEditResponse
+from scenelens.providers.contracts import (
+    CancellationToken,
+    ImageEditResponse,
+    ProviderImage,
+)
+from scenelens.providers.execution import ReviewExecutionResult
+from scenelens.providers.mock import MockProvider
 from scenelens.ui.workspace_hub import WorkspaceHubWindow
 
 
@@ -229,7 +238,117 @@ def test_manual_and_automatic_ai_controls_stay_unified(qtbot) -> None:
     assert window.vision_provider_combo.currentData() == "google_gemini"
     window.auto_vision_model_edit.setText("gemini-custom-vision")
     assert window.vision_model_edit.text() == "gemini-custom-vision"
+    assert window.prompt_panel.model_edit.text() == "gemini-custom-vision"
     window.auto_image_key_edit.setText("shared-secret")
     assert window.vision_key_edit.text() == "shared-secret"
     assert window.auto_vision_key_edit.text() == "shared-secret"
+    assert window.prompt_panel.key_edit.text() == "shared-secret"
     window.close()
+
+
+def test_prompt_workshop_creates_edits_copies_and_restores(
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "提示语场景.png"
+    _complex_scene(image_path, "industrial")
+    root = tmp_path / "提示语项目.scenelens-assets"
+    store = AssetBreakdownStore.create(root, "提示语项目")
+    main = store.import_image(image_path, "main")
+    window = AssetBreakdownWindow()
+    qtbot.addWidget(window)
+    window._attach_store(store)
+    qtbot.waitUntil(lambda: window._loaded is not None, timeout=5000)
+    assert window.workflow_tabs.tabText(2) == "资产拆分提示语"
+
+    request = window._prompt_reviewer.create_request(
+        AssetPromptContext(
+            project_id=window._state.project_id,
+            title=window._state.title,
+            scene_type=window._state.scene_type,
+            production_goal=window._state.production_goal,
+            notes=window._state.notes,
+            target_tool="generic",
+            image_metadata={"width": 640, "height": 360},
+        ),
+        (ProviderImage("main_concept", "image/png", b"image"),),
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    response = MockProvider().review(
+        request,
+        "",
+        CancellationToken(),
+    )
+    execution = ReviewExecutionResult(
+        response=response,
+        requested_model_id=response.model_id,
+        attempted_model_ids=(response.model_id,),
+    )
+    window._prompt_request_finished(
+        {
+            "mode": "initial",
+            "project_id": window._state.project_id,
+            "source_hash": main.sha256,
+            "session_id": "",
+            "base_revision_id": "",
+            "feedback": "",
+            "images_sent": 1,
+            "output": window._prompt_reviewer.validate_output(
+                response.output
+            ),
+            "execution": execution,
+        }
+    )
+    assert len(window._state.prompt_sessions) == 1
+    assert "游戏环境资产拆分" in (
+        window.prompt_panel.prompt_zh_edit.toPlainText()
+    )
+
+    session = window._state.prompt_sessions[0]
+    window._prompt_request_finished(
+        {
+            "mode": "refine",
+            "project_id": window._state.project_id,
+            "source_hash": main.sha256,
+            "session_id": session.session_id,
+            "base_revision_id": session.current_revision.revision_id,
+            "feedback": "减少次要道具，强化建筑模块。",
+            "images_sent": 0,
+            "output": window._prompt_reviewer.validate_output(
+                response.output
+            ),
+            "execution": execution,
+        }
+    )
+    assert len(window._state.prompt_sessions[0].revisions) == 2
+    assert [item.role for item in window._state.prompt_sessions[0].messages[-2:]] == [
+        "user",
+        "assistant",
+    ]
+    assert (
+        window._state.prompt_sessions[0].messages[-2].content
+        == "减少次要道具，强化建筑模块。"
+    )
+
+    window.prompt_panel.prompt_zh_edit.appendPlainText(
+        "\n用户补充：保留霓虹招牌。"
+    )
+    window._save_manual_prompt_revision()
+    assert len(window._state.prompt_sessions[0].revisions) == 3
+    assert window._state.prompt_sessions[0].revisions[-1].origin == (
+        "user_edit"
+    )
+    window._copy_prompt_text(
+        window.prompt_panel.prompt_zh_edit.toPlainText(),
+        "已复制",
+    )
+    assert "保留霓虹招牌" in QApplication.clipboard().text()
+    window.close()
+
+    reopened = AssetBreakdownStore.open(root)
+    assert len(reopened.state.prompt_sessions[0].revisions) == 3
+    assert "保留霓虹招牌" in (
+        reopened.state.prompt_sessions[0].revisions[-1].prompt_zh
+    )
+    reopened.close()

@@ -192,6 +192,59 @@ def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
                 "离线 Mock 没有执行视觉推理，所有语义和矩形均为流程占位。"
             ],
         }
+    if title == "SceneLens Asset Prompt Workshop":
+        return {
+            "schema_version": "1.0",
+            "reviewer_id": "asset_prompt_workshop",
+            "prompt_title": "离线 Mock 资产拆分提示语",
+            "target_tool": "generic",
+            "analysis_summary": (
+                "离线 Mock 不读取图片语义；以下内容只验证提示语编辑、"
+                "对话修订、复制和保存流程。"
+            ),
+            "prompt_zh": (
+                "根据输入场景建立一张游戏环境资产拆分展示板。"
+                "将主体建筑模块、重复道具、地表材质和远景元素分开摆放，"
+                "中性背景，轮廓完整，不裁切，保留统一设计语言。"
+            ),
+            "prompt_en": (
+                "Create a game-environment asset breakdown sheet from the "
+                "input scene. Separate the main modular architecture, repeated "
+                "props, surface materials, and background elements on a neutral "
+                "background, with complete silhouettes and no cropping."
+            ),
+            "negative_prompt": "不要裁切，不要重复资产，不要添加无依据细节。",
+            "constraints": [
+                "原画直接可见内容与推测补全分开",
+                "资产之间留出清晰间距",
+                "保持原画设计身份",
+            ],
+            "asset_groups": [
+                {
+                    "name": "示例主体建筑",
+                    "category": "building",
+                    "visible_evidence": "Mock 未读取图片。",
+                    "uncertainty": "需要真实视觉模型或用户确认。",
+                    "prompt_fragment_zh": "主体建筑及可复用墙段、开口与收边模块。",
+                    "prompt_fragment_en": (
+                        "Main structure with reusable wall, opening, and trim "
+                        "modules."
+                    ),
+                },
+                {
+                    "name": "示例重复道具",
+                    "category": "prop",
+                    "visible_evidence": "Mock 未读取图片。",
+                    "uncertainty": "数量和造型需要用户确认。",
+                    "prompt_fragment_zh": "按类型成组展示重复道具和少量变体。",
+                    "prompt_fragment_en": (
+                        "Group repeated props by type with a few controlled "
+                        "variants."
+                    ),
+                },
+            ],
+            "change_summary": "生成离线流程示例；没有执行真实图片分析。",
+        }
     if title == "SceneLens Artwork Master Study":
         dimensions = (
             "composition",

@@ -19,6 +19,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -71,10 +72,17 @@ from scenelens.modules.asset_breakdown.automatic import (
 )
 from scenelens.modules.asset_breakdown.models import (
     ASSET_CATEGORIES,
+    AssetPromptSession,
     AutomaticAssetRun,
     AssetBreakdownState,
     AssetItem,
     GenerationRecord,
+    PromptMessage,
+    PromptRevision,
+)
+from scenelens.modules.asset_breakdown.prompt_workshop import (
+    AssetPromptContext,
+    AssetPromptWorkshopReview,
 )
 from scenelens.modules.asset_breakdown.presets import load_scene_profiles
 from scenelens.modules.asset_breakdown.reviews import (
@@ -90,6 +98,9 @@ from scenelens.modules.asset_breakdown.service import (
     split_asset,
 )
 from scenelens.modules.asset_breakdown.storage import AssetBreakdownStore
+from scenelens.modules.asset_breakdown.ui.prompt_workshop_panel import (
+    AssetPromptWorkshopPanel,
+)
 from scenelens.providers.contracts import (
     CancellationToken,
     DataDisclosurePreview,
@@ -266,6 +277,7 @@ class AssetBreakdownWindow(QMainWindow):
         self._ai_cancellation: CancellationToken | None = None
         self._image_cancellation: CancellationToken | None = None
         self._automatic_cancellation: CancellationToken | None = None
+        self._prompt_cancellation: CancellationToken | None = None
         self._restoring = False
         self._syncing_ai_controls = False
         self._undo_stack = QUndoStack(self)
@@ -277,6 +289,7 @@ class AssetBreakdownWindow(QMainWindow):
         self._provider_registry = create_default_provider_registry()
         self._execution = ProviderExecutionService()
         self._reviewer = AssetBreakdownReview()
+        self._prompt_reviewer = AssetPromptWorkshopReview()
         self._profiles = load_scene_profiles()
         try:
             self._credential_store = WindowsCredentialStore()
@@ -440,6 +453,11 @@ class AssetBreakdownWindow(QMainWindow):
         self.workflow_tabs.addTab(
             self._build_automatic_tab(),
             "全自动资产板",
+        )
+        self.prompt_panel = AssetPromptWorkshopPanel()
+        self.workflow_tabs.addTab(
+            self.prompt_panel,
+            "资产拆分提示语",
         )
         splitter.addWidget(self.workflow_tabs)
         splitter.setStretchFactor(0, 1)
@@ -839,6 +857,27 @@ class AssetBreakdownWindow(QMainWindow):
             ProviderCapability.IMAGE_EDIT,
             model_combo=self.auto_image_model_combo,
         )
+        for provider in self._provider_registry.for_capability(
+            ProviderCapability.VISION_REVIEW
+        ):
+            self.prompt_panel.provider_combo.addItem(
+                provider.manifest.display_name,
+                provider.manifest.provider_id,
+            )
+        self.prompt_panel.provider_combo.currentIndexChanged.connect(
+            lambda _index: self._provider_changed(
+                self.prompt_panel.provider_combo,
+                self.prompt_panel.model_edit,
+                self.prompt_panel.key_edit,
+                ProviderCapability.VISION_REVIEW,
+            )
+        )
+        self._provider_changed(
+            self.prompt_panel.provider_combo,
+            self.prompt_panel.model_edit,
+            self.prompt_panel.key_edit,
+            ProviderCapability.VISION_REVIEW,
+        )
         self.vision_provider_combo.currentIndexChanged.connect(
             lambda _index: self._sync_ai_controls("manual_vision")
         )
@@ -856,6 +895,15 @@ class AssetBreakdownWindow(QMainWindow):
         )
         self.auto_vision_key_edit.textChanged.connect(
             lambda _text: self._sync_ai_controls("automatic_vision")
+        )
+        self.prompt_panel.provider_combo.currentIndexChanged.connect(
+            lambda _index: self._sync_ai_controls("prompt_vision")
+        )
+        self.prompt_panel.model_edit.textChanged.connect(
+            lambda _text: self._sync_ai_controls("prompt_vision")
+        )
+        self.prompt_panel.key_edit.textChanged.connect(
+            lambda _text: self._sync_ai_controls("prompt_vision")
         )
         self.image_provider_combo.currentIndexChanged.connect(
             lambda _index: self._sync_ai_controls("manual_image")
@@ -926,6 +974,48 @@ class AssetBreakdownWindow(QMainWindow):
                 else None
             )
         )
+        self.prompt_panel.save_key_button.clicked.connect(
+            lambda: self._save_provider_key(
+                self.prompt_panel.provider_combo,
+                self.prompt_panel.key_edit,
+            )
+        )
+        self.prompt_panel.initial_button.clicked.connect(
+            self._start_prompt_initial
+        )
+        self.prompt_panel.iterate_button.clicked.connect(
+            self._start_prompt_iteration
+        )
+        self.prompt_panel.cancel_button.clicked.connect(
+            self._cancel_prompt_request
+        )
+        self.prompt_panel.new_session_button.clicked.connect(
+            self._new_prompt_session
+        )
+        self.prompt_panel.session_combo.currentIndexChanged.connect(
+            self._prompt_session_changed
+        )
+        self.prompt_panel.save_manual_button.clicked.connect(
+            self._save_manual_prompt_revision
+        )
+        self.prompt_panel.copy_zh_button.clicked.connect(
+            lambda: self._copy_prompt_text(
+                self.prompt_panel.prompt_zh_edit.toPlainText(),
+                "中文提示语已复制。",
+            )
+        )
+        self.prompt_panel.copy_en_button.clicked.connect(
+            lambda: self._copy_prompt_text(
+                self.prompt_panel.prompt_en_edit.toPlainText(),
+                "英文提示语已复制。",
+            )
+        )
+        self.prompt_panel.copy_all_button.clicked.connect(
+            lambda: self._copy_prompt_text(
+                self.prompt_panel.complete_prompt_text(),
+                "完整提示语已复制。",
+            )
+        )
 
     def _new_project(self) -> None:
         base = QFileDialog.getExistingDirectory(
@@ -987,6 +1077,7 @@ class AssetBreakdownWindow(QMainWindow):
             self._refresh_asset_tree()
             self._refresh_generation_list()
             self._refresh_automatic_runs()
+            self._refresh_prompt_sessions()
         finally:
             self._restoring = False
         self._load_main_image()
@@ -1063,6 +1154,7 @@ class AssetBreakdownWindow(QMainWindow):
         self._refresh_asset_tree()
         self._refresh_generation_list()
         self._refresh_automatic_runs()
+        self._refresh_prompt_sessions()
         self._undo_stack.clear()
         self._load_main_image()
 
@@ -2252,6 +2344,574 @@ class AssetBreakdownWindow(QMainWindow):
             f"已导出 {copied} 个文件。",
         )
 
+    def _refresh_prompt_sessions(
+        self,
+        select_session_id: str = "",
+    ) -> None:
+        combo = self.prompt_panel.session_combo
+        combo.blockSignals(True)
+        try:
+            combo.clear()
+            combo.addItem("新提示语会话", "")
+            if self._state is None:
+                selected_id = ""
+            else:
+                selected_id = (
+                    select_session_id
+                    or self._state.selected_prompt_session_id
+                )
+                for session in self._state.prompt_sessions:
+                    combo.addItem(
+                        (
+                            f"{session.title}｜"
+                            f"{len(session.revisions)} 版"
+                        ),
+                        session.session_id,
+                    )
+            index = combo.findData(selected_id)
+            combo.setCurrentIndex(index if index >= 0 else 0)
+        finally:
+            combo.blockSignals(False)
+        self._show_prompt_session(str(combo.currentData() or ""))
+
+    def _current_prompt_session(self) -> AssetPromptSession | None:
+        if self._state is None:
+            return None
+        session_id = str(
+            self.prompt_panel.session_combo.currentData() or ""
+        )
+        return next(
+            (
+                item
+                for item in self._state.prompt_sessions
+                if item.session_id == session_id
+            ),
+            None,
+        )
+
+    def _show_prompt_session(self, session_id: str) -> None:
+        if self._state is None or not session_id:
+            self.prompt_panel.load_session(None)
+            return
+        session = next(
+            (
+                item
+                for item in self._state.prompt_sessions
+                if item.session_id == session_id
+            ),
+            None,
+        )
+        self.prompt_panel.load_session(session)
+
+    def _prompt_session_changed(self, _index: int) -> None:
+        session_id = str(
+            self.prompt_panel.session_combo.currentData() or ""
+        )
+        if self._store is not None:
+            self._store.select_prompt_session(session_id)
+            self._state = self._store.state
+        self._show_prompt_session(session_id)
+
+    def _new_prompt_session(self) -> None:
+        if self._store is not None:
+            self._store.select_prompt_session("")
+            self._state = self._store.state
+        self._refresh_prompt_sessions()
+        self.prompt_panel.status_label.setText(
+            "已准备新会话；选择目标工具后生成初稿。"
+        )
+
+    def _prompt_target_tool(self) -> str:
+        combo = self.prompt_panel.target_tool_combo
+        index = combo.currentIndex()
+        if index >= 0 and combo.currentText() == combo.itemText(index):
+            value = combo.itemData(index)
+            if value:
+                return str(value)
+        return combo.currentText().strip() or "generic"
+
+    def _prompt_context_and_images(
+        self,
+        *,
+        include_images: bool,
+    ) -> tuple[AssetPromptContext, tuple[ProviderImage, ...]]:
+        if (
+            self._state is None
+            or self._loaded is None
+            or self._state.main_image is None
+        ):
+            raise ValueError("请先导入一张主原画。")
+        images: list[ProviderImage] = []
+        if include_images:
+            images.append(
+                prepare_provider_image(
+                    self._loaded,
+                    "main_concept",
+                    ProviderImageExportOptions(maximum_side=2048),
+                )
+            )
+        supplemental = []
+        if self._store is not None:
+            references = [
+                image
+                for image in self._state.source_images
+                if image.role == "reference"
+            ][:3]
+            for index, reference in enumerate(references, start=1):
+                role = f"supplemental_reference_{index}"
+                supplemental.append(
+                    {
+                        "role": role,
+                        "sha256": reference.sha256,
+                        "filename_hidden": True,
+                    }
+                )
+                if include_images:
+                    loaded = load_image(self._store.image_path(reference))
+                    images.append(
+                        prepare_provider_image(
+                            loaded,
+                            role,
+                            ProviderImageExportOptions(maximum_side=1536),
+                        )
+                    )
+        context = AssetPromptContext(
+            project_id=self._state.project_id,
+            title=self._state.title,
+            scene_type=self._state.scene_type,
+            production_goal=self._state.production_goal,
+            notes=self._state.notes,
+            target_tool=self._prompt_target_tool(),
+            image_metadata={
+                "width": self._loaded.working_size[0],
+                "height": self._loaded.working_size[1],
+                "exif_orientation_applied": (
+                    self._loaded.exif_orientation_applied
+                ),
+                "icc_converted_to_srgb": (
+                    self._loaded.icc_converted_to_srgb
+                ),
+                "assumed_srgb": self._loaded.assumed_srgb,
+            },
+            supplemental_references=tuple(supplemental),
+        )
+        return context, tuple(images)
+
+    def _start_prompt_initial(self) -> None:
+        self._start_prompt_request(refine=False)
+
+    def _start_prompt_iteration(self) -> None:
+        self._start_prompt_request(refine=True)
+
+    def _start_prompt_request(self, *, refine: bool) -> None:
+        if (
+            self._state is None
+            or self._loaded is None
+            or self._state.main_image is None
+        ):
+            QMessageBox.information(
+                self,
+                "缺少主原画",
+                "请先新建或打开资产项目并导入主原画。",
+            )
+            return
+        self._save_fields()
+        session = self._current_prompt_session() if refine else None
+        base_revision = (
+            self.prompt_panel.selected_revision()
+            if session is not None
+            else None
+        )
+        if (
+            refine
+            and base_revision is not None
+            and self._prompt_editor_has_changes(base_revision)
+        ):
+            saved_revision = self._persist_manual_prompt_revision(
+                show_status=False
+            )
+            if saved_revision is None:
+                return
+            session = self._current_prompt_session()
+            base_revision = saved_revision
+        feedback = self.prompt_panel.feedback_edit.toPlainText().strip()
+        if refine and (session is None or base_revision is None):
+            QMessageBox.information(
+                self,
+                "没有可修订的提示语",
+                "请先生成提示语初稿，或选择一个已有会话。",
+            )
+            return
+        if refine and not feedback:
+            QMessageBox.information(
+                self,
+                "缺少修改意见",
+                "请先写下希望 AI 如何调整提示语。",
+            )
+            return
+
+        provider_id = str(self.prompt_panel.provider_combo.currentData())
+        provider = self._provider_registry.get(provider_id)
+        credential = self.prompt_panel.key_edit.text().strip()
+        if provider_id != "mock" and not credential:
+            QMessageBox.information(
+                self,
+                "缺少 API Key",
+                "请输入 API Key，或选择“离线 Mock”只验证流程。",
+            )
+            return
+        include_images = (
+            not refine or self.prompt_panel.resend_image_check.isChecked()
+        )
+        try:
+            context, images = self._prompt_context_and_images(
+                include_images=include_images
+            )
+            request = self._prompt_reviewer.create_request(
+                context,
+                images,
+                current_revision=base_revision,
+                feedback=feedback,
+                messages=session.messages if session is not None else (),
+                model_id=(
+                    self.prompt_panel.model_edit.text().strip() or None
+                ),
+                user_initiated=True,
+                disclosure_confirmed=True,
+            )
+        except ValueError as exc:
+            QMessageBox.information(self, "无法生成提示语", str(exc))
+            return
+        preview = disclosure_preview(provider.manifest, request)
+        if refine and not include_images:
+            image_notice = (
+                "本次只发送当前提示语、最近协商记录和修改意见，不重新发送图片。"
+            )
+        else:
+            image_notice = (
+                "本次会发送主原画副本和最多三张补充参考；原始元数据已移除。"
+            )
+        dialog = SendDisclosureDialog(
+            preview,
+            purpose=("提示语修订" if refine else "提示语初稿"),
+            extra_notice=(
+                f"{image_notice}\n"
+                "AI 只返回文字，不调用图片生成模型；每次协商仍会产生一次"
+                "所选视觉模型调用。"
+            ),
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        cancellation = CancellationToken()
+        self._prompt_cancellation = cancellation
+        self.prompt_panel.set_busy(True)
+        self.prompt_panel.status_label.setText(
+            "AI 正在修订提示语…"
+            if refine
+            else "AI 正在分析原画并生成提示语初稿…"
+        )
+        project_id = self._state.project_id
+        source_hash = self._state.main_image.sha256
+        session_id = session.session_id if session is not None else ""
+        base_revision_id = (
+            base_revision.revision_id
+            if base_revision is not None
+            else ""
+        )
+
+        def operation():
+            execution = self._execution.run_review_with_model_fallback(
+                provider,
+                request,
+                credential,
+                cancellation,
+                provider.manifest.fallback_models_for(
+                    ProviderCapability.VISION_REVIEW,
+                    request.model_id,
+                ),
+            )
+            output = self._prompt_reviewer.validate_output(
+                execution.response.output
+            )
+            return {
+                "mode": "refine" if refine else "initial",
+                "project_id": project_id,
+                "source_hash": source_hash,
+                "session_id": session_id,
+                "base_revision_id": base_revision_id,
+                "feedback": feedback,
+                "images_sent": len(images),
+                "target_tool": context.target_tool,
+                "output": output,
+                "execution": execution,
+            }
+
+        self._start_worker(
+            "prompt",
+            operation,
+            self._prompt_request_finished,
+        )
+
+    def _prompt_request_finished(self, result: object) -> None:
+        self._prompt_cancellation = None
+        self.prompt_panel.set_busy(False)
+        if (
+            not isinstance(result, dict)
+            or self._store is None
+            or self._state is None
+            or self._state.main_image is None
+        ):
+            return
+        if (
+            result["project_id"] != self._state.project_id
+            or result["source_hash"] != self._state.main_image.sha256
+        ):
+            self.prompt_panel.status_label.setText(
+                "项目或主原画已经切换，旧的后台提示语结果已忽略。"
+            )
+            return
+        output = result["output"]
+        execution = result["execution"]
+        now = utc_now()
+        revision = PromptRevision(
+            revision_id=str(uuid.uuid4()),
+            origin="ai",
+            title=str(output["prompt_title"]),
+            target_tool=str(
+                result.get(
+                    "target_tool",
+                    output.get("target_tool", "generic"),
+                )
+            ),
+            analysis_summary=str(output["analysis_summary"]),
+            prompt_zh=str(output["prompt_zh"]),
+            prompt_en=str(output["prompt_en"]),
+            negative_prompt=str(output["negative_prompt"]),
+            constraints=tuple(
+                str(item) for item in output["constraints"]
+            ),
+            asset_groups=tuple(
+                dict(item) for item in output["asset_groups"]
+            ),
+            change_summary=str(output["change_summary"]),
+            provider_id=execution.response.provider_id,
+            model_id=execution.response.model_id,
+            created_at=now,
+        )
+        if result["mode"] == "initial":
+            session = AssetPromptSession(
+                session_id=str(uuid.uuid4()),
+                title=revision.title,
+                source_image_sha256=self._state.main_image.sha256,
+                target_tool=revision.target_tool,
+                revisions=(revision,),
+                messages=(
+                    PromptMessage(
+                        message_id=str(uuid.uuid4()),
+                        role="assistant",
+                        content=(
+                            revision.change_summary
+                            or "已根据原画生成提示语初稿。"
+                        ),
+                        created_at=now,
+                    ),
+                ),
+                created_at=now,
+                updated_at=now,
+            )
+        else:
+            session = next(
+                (
+                    item
+                    for item in self._state.prompt_sessions
+                    if item.session_id == result["session_id"]
+                ),
+                None,
+            )
+            if session is None:
+                self.prompt_panel.status_label.setText(
+                    "原提示语会话已经不存在，本次结果未写入。"
+                )
+                return
+            session = replace(
+                session,
+                title=revision.title,
+                target_tool=revision.target_tool,
+                revisions=(*session.revisions, revision),
+                messages=(
+                    *session.messages,
+                    PromptMessage(
+                        message_id=str(uuid.uuid4()),
+                        role="user",
+                        content=str(result["feedback"]),
+                        created_at=now,
+                    ),
+                    PromptMessage(
+                        message_id=str(uuid.uuid4()),
+                        role="assistant",
+                        content=(
+                            revision.change_summary
+                            or "已按你的意见修订提示语。"
+                        ),
+                        created_at=now,
+                    ),
+                ),
+                updated_at=now,
+            )
+        self._store.add_or_replace_prompt_session(session)
+        self._store.append_ai_run(
+            {
+                "run_id": str(uuid.uuid4()),
+                "module_id": "scenelens.asset_breakdown",
+                "reviewer_id": "asset_prompt_workshop",
+                "reviewer_version": (
+                    self._prompt_reviewer.descriptor.version
+                ),
+                "provider_id": execution.response.provider_id,
+                "model_id": execution.response.model_id,
+                "input_hashes": {
+                    "main": self._state.main_image.sha256,
+                },
+                "parameters": {
+                    "mode": result["mode"],
+                    "target_tool": revision.target_tool,
+                    "images_sent": result["images_sent"],
+                    "base_revision_id": result["base_revision_id"],
+                },
+                "result_summary": {
+                    "session_id": session.session_id,
+                    "revision_id": revision.revision_id,
+                    "asset_group_count": len(revision.asset_groups),
+                    "change_summary": revision.change_summary,
+                },
+                "created_at": now,
+            }
+        )
+        self._state = self._store.state
+        self._refresh_prompt_sessions(
+            select_session_id=session.session_id
+        )
+        self.prompt_panel.feedback_edit.clear()
+        self.prompt_panel.status_label.setText(
+            (
+                "AI 修订已保存；可继续协商、手动编辑或复制。"
+                if result["mode"] == "refine"
+                else "提示语初稿已保存；可继续协商、手动编辑或复制。"
+            )
+        )
+
+    def _save_manual_prompt_revision(self) -> None:
+        self._persist_manual_prompt_revision(show_status=True)
+
+    def _prompt_editor_has_changes(
+        self,
+        base: PromptRevision,
+    ) -> bool:
+        return any(
+            (
+                self.prompt_panel.prompt_zh_edit.toPlainText().strip()
+                != base.prompt_zh,
+                self.prompt_panel.prompt_en_edit.toPlainText().strip()
+                != base.prompt_en,
+                self.prompt_panel.negative_edit.toPlainText().strip()
+                != base.negative_prompt,
+                self.prompt_panel.constraints() != base.constraints,
+                self._prompt_target_tool() != base.target_tool,
+            )
+        )
+
+    def _persist_manual_prompt_revision(
+        self,
+        *,
+        show_status: bool,
+    ) -> PromptRevision | None:
+        if self._store is None or self._state is None:
+            return None
+        session = self._current_prompt_session()
+        base = self.prompt_panel.selected_revision()
+        if session is None or base is None:
+            QMessageBox.information(
+                self,
+                "没有提示语",
+                "请先生成或选择一个提示语会话。",
+            )
+            return None
+        if not self._prompt_editor_has_changes(base):
+            if show_status:
+                self.prompt_panel.status_label.setText(
+                    "当前文字与所选历史版本相同，无需重复保存。"
+                )
+            return base
+        prompt_zh = self.prompt_panel.prompt_zh_edit.toPlainText().strip()
+        prompt_en = self.prompt_panel.prompt_en_edit.toPlainText().strip()
+        if not prompt_zh and not prompt_en:
+            QMessageBox.information(
+                self,
+                "提示语为空",
+                "中文和英文提示语不能同时为空。",
+            )
+            return None
+        now = utc_now()
+        revision = PromptRevision(
+            revision_id=str(uuid.uuid4()),
+            origin="user_edit",
+            title=base.title,
+            target_tool=self._prompt_target_tool(),
+            analysis_summary=base.analysis_summary,
+            prompt_zh=prompt_zh,
+            prompt_en=prompt_en,
+            negative_prompt=(
+                self.prompt_panel.negative_edit.toPlainText().strip()
+            ),
+            constraints=self.prompt_panel.constraints()[:24],
+            asset_groups=base.asset_groups,
+            change_summary="用户在 SceneLens 内手动编辑并保存。",
+            provider_id="user",
+            model_id="",
+            created_at=now,
+        )
+        updated = replace(
+            session,
+            title=revision.title,
+            target_tool=revision.target_tool,
+            revisions=(*session.revisions, revision),
+            messages=(
+                *session.messages,
+                PromptMessage(
+                    message_id=str(uuid.uuid4()),
+                    role="user",
+                    content="在软件内手动编辑并保存了提示语。",
+                    created_at=now,
+                ),
+            ),
+            updated_at=now,
+        )
+        self._store.add_or_replace_prompt_session(updated)
+        self._state = self._store.state
+        self._refresh_prompt_sessions(
+            select_session_id=updated.session_id
+        )
+        if show_status:
+            self.prompt_panel.status_label.setText(
+                "手动修改已作为新版本保存，旧版本仍可在历史版本中查看。"
+            )
+        return revision
+
+    def _copy_prompt_text(self, value: str, message: str) -> None:
+        text = value.strip()
+        if not text:
+            QMessageBox.information(self, "没有可复制内容", "当前文字为空。")
+            return
+        QApplication.clipboard().setText(text)
+        self.statusBar().showMessage(message, 3000)
+
+    def _cancel_prompt_request(self) -> None:
+        if self._prompt_cancellation is not None:
+            self._prompt_cancellation.cancel()
+            self.prompt_panel.status_label.setText("正在取消提示语 AI 请求…")
+
     def _export_package(self) -> None:
         if self._store is None or self._state is None:
             return
@@ -2725,24 +3385,37 @@ class AssetBreakdownWindow(QMainWindow):
             return
         self._syncing_ai_controls = True
         try:
-            if source in {"manual_vision", "automatic_vision"}:
-                if source == "manual_vision":
-                    source_provider = self.vision_provider_combo
-                    source_model = self.vision_model_edit
-                    source_key = self.vision_key_edit
-                    target_provider = self.auto_vision_provider_combo
-                    target_model = self.auto_vision_model_edit
-                    target_key = self.auto_vision_key_edit
-                else:
-                    source_provider = self.auto_vision_provider_combo
-                    source_model = self.auto_vision_model_edit
-                    source_key = self.auto_vision_key_edit
-                    target_provider = self.vision_provider_combo
-                    target_model = self.vision_model_edit
-                    target_key = self.vision_key_edit
-                _set_combo_data(target_provider, source_provider.currentData())
-                target_model.setText(source_model.text())
-                target_key.setText(source_key.text())
+            vision_controls = {
+                "manual_vision": (
+                    self.vision_provider_combo,
+                    self.vision_model_edit,
+                    self.vision_key_edit,
+                ),
+                "automatic_vision": (
+                    self.auto_vision_provider_combo,
+                    self.auto_vision_model_edit,
+                    self.auto_vision_key_edit,
+                ),
+                "prompt_vision": (
+                    self.prompt_panel.provider_combo,
+                    self.prompt_panel.model_edit,
+                    self.prompt_panel.key_edit,
+                ),
+            }
+            if source in vision_controls:
+                source_provider, source_model, source_key = vision_controls[
+                    source
+                ]
+                for name, controls in vision_controls.items():
+                    if name == source:
+                        continue
+                    target_provider, target_model, target_key = controls
+                    _set_combo_data(
+                        target_provider,
+                        source_provider.currentData(),
+                    )
+                    target_model.setText(source_model.text())
+                    target_key.setText(source_key.text())
                 self._sync_matching_credential_fields(
                     source_provider,
                     source_key,
@@ -2799,6 +3472,10 @@ class AssetBreakdownWindow(QMainWindow):
             (self.auto_vision_provider_combo, self.auto_vision_key_edit),
             (self.image_provider_combo, self.image_key_edit),
             (self.auto_image_provider_combo, self.auto_image_key_edit),
+            (
+                self.prompt_panel.provider_combo,
+                self.prompt_panel.key_edit,
+            ),
         )
         for provider_combo, key_edit in controls:
             target_provider_id = provider_combo.currentData()
@@ -2904,6 +3581,13 @@ class AssetBreakdownWindow(QMainWindow):
             self.auto_cancel_button.setEnabled(False)
             self.auto_status.setText("全自动资产板失败；请查看错误原因。")
             title = "全自动资产板失败"
+        elif kind == "prompt":
+            self._prompt_cancellation = None
+            self.prompt_panel.set_busy(False)
+            self.prompt_panel.status_label.setText(
+                "提示语 AI 请求失败；已有会话和手动内容没有丢失。"
+            )
+            title = "资产拆分提示语失败"
         else:
             title = "处理失败"
         QMessageBox.warning(self, title, message)
@@ -2928,6 +3612,8 @@ class AssetBreakdownWindow(QMainWindow):
             self._image_cancellation.cancel()
         if self._automatic_cancellation is not None:
             self._automatic_cancellation.cancel()
+        if self._prompt_cancellation is not None:
+            self._prompt_cancellation.cancel()
         self._execution.close()
         if self._store is not None:
             self._store.close()

@@ -8,6 +8,7 @@ import uuid
 
 from scenelens.imaging.loader import load_image
 from scenelens.modules.asset_breakdown.models import (
+    AssetPromptSession,
     AutomaticAssetRun,
     AssetBreakdownState,
     AssetItem,
@@ -20,7 +21,7 @@ from scenelens.storage.project_store import utc_now
 
 
 FORMAT_ID = "scenelens.asset_breakdown"
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 ENTRY_FILENAME = "asset_project.json"
 
 
@@ -129,7 +130,7 @@ class AssetBreakdownStore:
             {
                 "format": FORMAT_ID,
                 "format_version": FORMAT_VERSION,
-                "module_schema_version": 2,
+                "module_schema_version": 3,
                 "state": self.state.to_dict(),
             },
         )
@@ -182,8 +183,10 @@ class AssetBreakdownStore:
                 assets=(),
                 generations=(),
                 automatic_runs=(),
+                prompt_sessions=(),
                 ai_runs=(),
                 selected_asset_id="",
+                selected_prompt_session_id="",
             )
         images.append(record)
         self.state = replace(self.state, source_images=tuple(images))
@@ -251,6 +254,36 @@ class AssetBreakdownStore:
         self.state = replace(
             self.state,
             automatic_runs=(*self.state.automatic_runs, run),
+        )
+        self.save()
+
+    def add_or_replace_prompt_session(
+        self,
+        session: AssetPromptSession,
+    ) -> None:
+        sessions = list(self.state.prompt_sessions)
+        for index, existing in enumerate(sessions):
+            if existing.session_id == session.session_id:
+                sessions[index] = session
+                break
+        else:
+            sessions.append(session)
+        self.state = replace(
+            self.state,
+            prompt_sessions=tuple(sessions),
+            selected_prompt_session_id=session.session_id,
+        )
+        self.save()
+
+    def select_prompt_session(self, session_id: str) -> None:
+        if session_id and not any(
+            item.session_id == session_id
+            for item in self.state.prompt_sessions
+        ):
+            raise ValueError("提示语会话不存在。")
+        self.state = replace(
+            self.state,
+            selected_prompt_session_id=session_id,
         )
         self.save()
 

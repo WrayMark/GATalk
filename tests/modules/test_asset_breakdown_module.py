@@ -14,7 +14,15 @@ from scenelens.modules.asset_breakdown.artifacts import (
     make_asset_board,
     write_asset_manifest,
 )
-from scenelens.modules.asset_breakdown.models import AssetItem
+from scenelens.modules.asset_breakdown.models import (
+    AssetItem,
+    PromptMessage,
+    PromptRevision,
+)
+from scenelens.modules.asset_breakdown.prompt_workshop import (
+    AssetPromptContext,
+    AssetPromptWorkshopReview,
+)
 from scenelens.modules.asset_breakdown.reviews import (
     AssetBreakdownContext,
     AssetBreakdownReview,
@@ -109,6 +117,65 @@ def test_asset_ai_schema_mock_and_generation_instruction() -> None:
     assert "不可见" in " ".join(instruction["hard_constraints"])
 
 
+def test_asset_prompt_workshop_supports_initial_and_text_only_refinement() -> None:
+    reviewer = AssetPromptWorkshopReview()
+    context = AssetPromptContext(
+        project_id="prompt-project",
+        title="赛博街道",
+        scene_type="urban_cyberpunk",
+        production_goal="整理可复用街景资产",
+        notes="保留霓虹招牌和雨夜气氛",
+        target_tool="nano_banana",
+        image_metadata={"width": 1920, "height": 1080},
+    )
+    initial = reviewer.create_request(
+        context,
+        (ProviderImage("main_concept", "image/png", b"image"),),
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    output = reviewer.validate_output(
+        MockProvider().review(
+            initial,
+            "",
+            CancellationToken(),
+        ).output
+    )
+    assert output["reviewer_id"] == "asset_prompt_workshop"
+    assert output["prompt_zh"]
+    assert output["prompt_en"]
+    assert output["asset_groups"]
+
+    base = PromptRevision(
+        revision_id="base",
+        origin="ai",
+        title=output["prompt_title"],
+        target_tool=output["target_tool"],
+        analysis_summary=output["analysis_summary"],
+        prompt_zh=output["prompt_zh"],
+        prompt_en=output["prompt_en"],
+        negative_prompt=output["negative_prompt"],
+        constraints=tuple(output["constraints"]),
+        asset_groups=tuple(output["asset_groups"]),
+        created_at="now",
+    )
+    refined = reviewer.create_request(
+        context,
+        (),
+        current_revision=base,
+        feedback="减少次要道具，强化建筑模块。",
+        messages=(
+            PromptMessage("m1", "assistant", "已生成初稿。", "now"),
+        ),
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    assert refined.images == ()
+    assert refined.payload["mode"] == "refine"
+    assert refined.payload["user_feedback"] == "减少次要道具，强化建筑模块。"
+    assert refined.payload["current_revision"]["revision_id"] == "base"
+
+
 def test_asset_output_repairs_missing_parent_and_invalid_relationship() -> None:
     reviewer = AssetBreakdownReview()
     output = _mock_asset_output(reviewer)
@@ -173,6 +240,7 @@ def test_asset_workbench_registration() -> None:
         registry.reviewers()[0].reviewer_id
         == "asset_breakdown_review"
     )
+    assert registry.reviewers()[1].reviewer_id == "asset_prompt_workshop"
 
 
 def _mock_asset_output(reviewer: AssetBreakdownReview) -> dict:
