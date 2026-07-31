@@ -16,6 +16,7 @@ SRC = PROJECT_ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
 from scenelens.analysis.asset_masks import normalized_rect_to_pixels
@@ -51,11 +52,18 @@ def main() -> int:
         PROJECT_ROOT
         / ".qa"
         / "automatic-asset-board-smoke"
-        / "automatic-asset-board-0.8.0.png"
+        / "automatic-asset-board-0.8.1.png"
     )
     screenshot.parent.mkdir(parents=True, exist_ok=True)
 
     application = QApplication.instance() or QApplication([])
+    for font_path in (
+        Path("C:/Windows/Fonts/msyh.ttc"),
+        Path("C:/Windows/Fonts/simhei.ttf"),
+    ):
+        if font_path.is_file():
+            QFontDatabase.addApplicationFont(str(font_path))
+    application.setFont(QFont("Microsoft YaHei UI", 9))
     with TemporaryDirectory(prefix="scenelens-auto-board-") as temporary:
         store = AssetBreakdownStore.create(
             Path(temporary) / "smoke.scenelens-assets",

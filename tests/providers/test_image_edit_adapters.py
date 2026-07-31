@@ -107,7 +107,7 @@ def test_gemini_current_nano_banana_models_and_resolution_contract() -> None:
     wire = provider.build_request(request, "secret")
     assert "/models/gemini-3-pro-image:generateContent" in wire.url
     assert wire.body["generationConfig"]["responseFormat"] == {
-        "image": {"imageSize": "2K"}
+        "image": {"imageSize": "IMAGE_SIZE_TWO_K"}
     }
 
     lite = ImageEditRequest(
@@ -120,6 +120,31 @@ def test_gemini_current_nano_banana_models_and_resolution_contract() -> None:
     with pytest.raises(ProviderError) as error:
         provider.build_request(lite, "secret")
     assert error.value.code == "unsupported_image_resolution"
+
+
+def test_gemini_rest_maps_sdk_image_values_to_protobuf_enums() -> None:
+    provider = GeminiImageEditProvider(
+        _manifest("google_gemini_image"),
+        RecordingJsonTransport([]),
+    )
+    request = ImageEditRequest(
+        instruction={
+            "output_resolution": "1K",
+            "output_aspect_ratio": "16:9",
+        },
+        images=(ProviderImage("current", "image/png", PNG),),
+        model_id="gemini-3.1-flash-image",
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    wire = provider.build_request(request, "secret")
+    image_format = wire.body["generationConfig"]["responseFormat"]["image"]
+    assert image_format == {
+        "imageSize": "IMAGE_SIZE_ONE_K",
+        "aspectRatio": "ASPECT_RATIO_SIXTEEN_BY_NINE",
+    }
+    assert "1K" not in image_format.values()
+    assert "16:9" not in image_format.values()
 
 
 def test_gemini_missing_image_reports_finish_reason() -> None:

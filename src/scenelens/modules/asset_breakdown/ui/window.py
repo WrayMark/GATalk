@@ -267,6 +267,7 @@ class AssetBreakdownWindow(QMainWindow):
         self._image_cancellation: CancellationToken | None = None
         self._automatic_cancellation: CancellationToken | None = None
         self._restoring = False
+        self._syncing_ai_controls = False
         self._undo_stack = QUndoStack(self)
 
         self._thread_pool = QThreadPool(self)
@@ -449,7 +450,7 @@ class AssetBreakdownWindow(QMainWindow):
     def _build_inventory_tab(self) -> QWidget:
         root = QWidget()
         layout = QVBoxLayout(root)
-        provider_group = QGroupBox("AI 场景理解与资产拆分")
+        provider_group = QGroupBox("统一 AI 设置：场景理解与资产拆分")
         provider_form = QFormLayout(provider_group)
         self.vision_provider_combo = QComboBox()
         for provider in self._provider_registry.for_capability(
@@ -477,6 +478,12 @@ class AssetBreakdownWindow(QMainWindow):
         provider_form.addRow("供应商", self.vision_provider_combo)
         provider_form.addRow("模型 ID", self.vision_model_edit)
         provider_form.addRow("API Key", key_row)
+        provider_note = QLabel(
+            "这里的视觉模型负责识别并生成结构化资产清单；Nano Banana 等"
+            "图片模型在“生成与导出”页使用。两种拆分方式共用并同步这些设置。"
+        )
+        provider_note.setWordWrap(True)
+        provider_form.addRow(provider_note)
         buttons = QWidget()
         button_layout = QHBoxLayout(buttons)
         button_layout.setContentsMargins(0, 0, 0, 0)
@@ -587,7 +594,7 @@ class AssetBreakdownWindow(QMainWindow):
     def _build_generation_tab(self) -> QWidget:
         root = QWidget()
         layout = QVBoxLayout(root)
-        group = QGroupBox("只生成勾选的资产")
+        group = QGroupBox("统一 AI 设置：只生成勾选的资产")
         form = QFormLayout(group)
         self.image_provider_combo = QComboBox()
         for provider in self._provider_registry.for_capability(
@@ -671,6 +678,13 @@ class AssetBreakdownWindow(QMainWindow):
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
+        shared_note = QLabel(
+            "清单分析模型、图片生成模型、API Key 与输出分辨率会和"
+            "“可校正拆分”同步；Nano Banana、万相、GPT Image、"
+            "Grok Imagine 等图片供应商在两种方式中保持一致。"
+        )
+        shared_note.setWordWrap(True)
+        layout.addWidget(shared_note)
 
         group = QGroupBox("全自动生成设置")
         form = QFormLayout(group)
@@ -825,6 +839,50 @@ class AssetBreakdownWindow(QMainWindow):
             ProviderCapability.IMAGE_EDIT,
             model_combo=self.auto_image_model_combo,
         )
+        self.vision_provider_combo.currentIndexChanged.connect(
+            lambda _index: self._sync_ai_controls("manual_vision")
+        )
+        self.auto_vision_provider_combo.currentIndexChanged.connect(
+            lambda _index: self._sync_ai_controls("automatic_vision")
+        )
+        self.vision_model_edit.textChanged.connect(
+            lambda _text: self._sync_ai_controls("manual_vision")
+        )
+        self.auto_vision_model_edit.textChanged.connect(
+            lambda _text: self._sync_ai_controls("automatic_vision")
+        )
+        self.vision_key_edit.textChanged.connect(
+            lambda _text: self._sync_ai_controls("manual_vision")
+        )
+        self.auto_vision_key_edit.textChanged.connect(
+            lambda _text: self._sync_ai_controls("automatic_vision")
+        )
+        self.image_provider_combo.currentIndexChanged.connect(
+            lambda _index: self._sync_ai_controls("manual_image")
+        )
+        self.auto_image_provider_combo.currentIndexChanged.connect(
+            lambda _index: self._sync_ai_controls("automatic_image")
+        )
+        self.image_model_combo.currentTextChanged.connect(
+            lambda _text: self._sync_ai_controls("manual_image")
+        )
+        self.auto_image_model_combo.currentTextChanged.connect(
+            lambda _text: self._sync_ai_controls("automatic_image")
+        )
+        self.image_key_edit.textChanged.connect(
+            lambda _text: self._sync_ai_controls("manual_image")
+        )
+        self.auto_image_key_edit.textChanged.connect(
+            lambda _text: self._sync_ai_controls("automatic_image")
+        )
+        self.image_resolution_combo.currentIndexChanged.connect(
+            lambda _index: self._sync_ai_controls("manual_image")
+        )
+        self.auto_resolution_combo.currentIndexChanged.connect(
+            lambda _index: self._sync_ai_controls("automatic_image")
+        )
+        self._sync_ai_controls("manual_vision")
+        self._sync_ai_controls("manual_image")
         self.title_edit.editingFinished.connect(self._save_fields)
         self.scene_type_combo.currentTextChanged.connect(
             lambda _value: self._save_fields()
@@ -2662,6 +2720,96 @@ class AssetBreakdownWindow(QMainWindow):
         )
         key_edit.setText(secret or "")
 
+    def _sync_ai_controls(self, source: str) -> None:
+        if self._syncing_ai_controls:
+            return
+        self._syncing_ai_controls = True
+        try:
+            if source in {"manual_vision", "automatic_vision"}:
+                if source == "manual_vision":
+                    source_provider = self.vision_provider_combo
+                    source_model = self.vision_model_edit
+                    source_key = self.vision_key_edit
+                    target_provider = self.auto_vision_provider_combo
+                    target_model = self.auto_vision_model_edit
+                    target_key = self.auto_vision_key_edit
+                else:
+                    source_provider = self.auto_vision_provider_combo
+                    source_model = self.auto_vision_model_edit
+                    source_key = self.auto_vision_key_edit
+                    target_provider = self.vision_provider_combo
+                    target_model = self.vision_model_edit
+                    target_key = self.vision_key_edit
+                _set_combo_data(target_provider, source_provider.currentData())
+                target_model.setText(source_model.text())
+                target_key.setText(source_key.text())
+                self._sync_matching_credential_fields(
+                    source_provider,
+                    source_key,
+                )
+                return
+
+            if source == "manual_image":
+                source_provider = self.image_provider_combo
+                source_model = self.image_model_combo
+                source_key = self.image_key_edit
+                source_resolution = self.image_resolution_combo
+                target_provider = self.auto_image_provider_combo
+                target_model = self.auto_image_model_combo
+                target_key = self.auto_image_key_edit
+                target_resolution = self.auto_resolution_combo
+            elif source == "automatic_image":
+                source_provider = self.auto_image_provider_combo
+                source_model = self.auto_image_model_combo
+                source_key = self.auto_image_key_edit
+                source_resolution = self.auto_resolution_combo
+                target_provider = self.image_provider_combo
+                target_model = self.image_model_combo
+                target_key = self.image_key_edit
+                target_resolution = self.image_resolution_combo
+            else:
+                return
+            _set_combo_data(target_provider, source_provider.currentData())
+            _set_model_combo(target_model, _combo_model_id(source_model))
+            target_key.setText(source_key.text())
+            _set_combo_data(
+                target_resolution,
+                source_resolution.currentData(),
+            )
+            self._sync_matching_credential_fields(
+                source_provider,
+                source_key,
+            )
+        finally:
+            self._syncing_ai_controls = False
+
+    def _sync_matching_credential_fields(
+        self,
+        source_provider: QComboBox,
+        source_key: QLineEdit,
+    ) -> None:
+        provider_id = source_provider.currentData()
+        if provider_id is None:
+            return
+        credential_target = self._provider_registry.get(
+            str(provider_id)
+        ).manifest.credential_target
+        controls = (
+            (self.vision_provider_combo, self.vision_key_edit),
+            (self.auto_vision_provider_combo, self.auto_vision_key_edit),
+            (self.image_provider_combo, self.image_key_edit),
+            (self.auto_image_provider_combo, self.auto_image_key_edit),
+        )
+        for provider_combo, key_edit in controls:
+            target_provider_id = provider_combo.currentData()
+            if target_provider_id is None:
+                continue
+            target_manifest = self._provider_registry.get(
+                str(target_provider_id)
+            ).manifest
+            if target_manifest.credential_target == credential_target:
+                key_edit.setText(source_key.text())
+
     def _save_provider_key(
         self,
         combo: QComboBox,
@@ -2800,6 +2948,23 @@ def _combo_model_id(combo: QComboBox) -> str | None:
         if value:
             return str(value).strip() or None
     return combo.currentText().strip() or None
+
+
+def _set_combo_data(combo: QComboBox, value: object) -> None:
+    index = combo.findData(value)
+    if index >= 0 and index != combo.currentIndex():
+        combo.setCurrentIndex(index)
+
+
+def _set_model_combo(combo: QComboBox, model_id: str | None) -> None:
+    if not model_id:
+        combo.setEditText("")
+        return
+    index = combo.findData(model_id)
+    if index >= 0:
+        combo.setCurrentIndex(index)
+    else:
+        combo.setEditText(model_id)
 
 
 def _mask_png(mask: np.ndarray) -> bytes:

@@ -717,3 +717,20 @@
 - 决策：模型选项来自 Provider Manifest，不写入资产领域逻辑。Lite 只允许 1K；其他当前模型允许 1K、2K、4K。
 - 边界：同一 Gemini API Key 可以用于这些模型，但不代表任意项目都自动拥有模型访问、计费和额度。软件不会绕过服务端权限。
 - 依据：Google Gemini API 官方图像生成文档、模型目录和发布记录，核对日期为 2026-07-31。
+
+## D-063 Gemini 图片 REST 枚举与资产拆分统一 AI 设置
+
+- 状态：Accepted
+- 日期：2026-07-31
+- 决策：界面继续显示用户熟悉的 `1K/2K/4K` 和 `16:9` 等值，但
+  `GeminiImageEditProvider` 向原始 v1 `generateContent` REST 发送前必须
+  映射为 `IMAGE_SIZE_ONE_K/TWO_K/FOUR_K` 和对应 `ASPECT_RATIO_*` 枚举。
+- 依据：真实服务返回 `INVALID_ARGUMENT` 并明确指出
+  `ImageResponseFormat.ImageSize` 不接受字符串 `1K`；Google 当前 REST
+  参考列出的枚举名与 SDK 示例的友好字符串并不相同。
+- 决策：可校正拆分与全自动资产板使用相同 Provider Registry，并在界面中
+  双向同步清单分析与图片生成的供应商、模型、凭据和分辨率选择。
+- 边界：图片生成模型不会注册为结构化清单分析器。统一的是配置和可用选项，
+  不是把 Nano Banana 的图片输出能力误当作严格 JSON 资产识别能力。
+- 后果：所有 Gemini 图片尺寸和宽高比必须有精确请求契约测试；真实 Key、
+  账号权限、配额和地区可用性仍由人工联网验收。

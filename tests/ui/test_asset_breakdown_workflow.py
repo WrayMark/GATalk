@@ -184,3 +184,52 @@ def test_gemini_image_choice_sends_model_id_not_display_label(qtbot) -> None:
     )
     assert _combo_model_id(window.image_model_combo) == "gemini-3-pro-image"
     window.close()
+
+
+def test_manual_and_automatic_ai_controls_stay_unified(qtbot) -> None:
+    window = AssetBreakdownWindow()
+    qtbot.addWidget(window)
+
+    provider_index = window.image_provider_combo.findData(
+        "google_gemini_image"
+    )
+    window.image_provider_combo.setCurrentIndex(provider_index)
+    assert (
+        window.auto_image_provider_combo.currentData()
+        == "google_gemini_image"
+    )
+
+    pro_index = window.image_model_combo.findData("gemini-3-pro-image")
+    window.image_model_combo.setCurrentIndex(pro_index)
+    assert (
+        _combo_model_id(window.auto_image_model_combo)
+        == "gemini-3-pro-image"
+    )
+
+    lite_index = window.auto_image_model_combo.findData(
+        "gemini-3.1-flash-lite-image"
+    )
+    window.auto_image_model_combo.setCurrentIndex(lite_index)
+    assert (
+        _combo_model_id(window.image_model_combo)
+        == "gemini-3.1-flash-lite-image"
+    )
+
+    resolution_index = window.auto_resolution_combo.findData("2K")
+    window.auto_resolution_combo.setCurrentIndex(resolution_index)
+    assert window.image_resolution_combo.currentData() == "2K"
+
+    window.auto_image_key_edit.setText("shared-secret")
+    assert window.image_key_edit.text() == "shared-secret"
+
+    vision_index = window.auto_vision_provider_combo.findData(
+        "google_gemini"
+    )
+    window.auto_vision_provider_combo.setCurrentIndex(vision_index)
+    assert window.vision_provider_combo.currentData() == "google_gemini"
+    window.auto_vision_model_edit.setText("gemini-custom-vision")
+    assert window.vision_model_edit.text() == "gemini-custom-vision"
+    window.auto_image_key_edit.setText("shared-secret")
+    assert window.vision_key_edit.text() == "shared-secret"
+    assert window.auto_vision_key_edit.text() == "shared-secret"
+    window.close()

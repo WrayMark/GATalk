@@ -25,6 +25,28 @@ from scenelens.providers.transport import (
     UrllibJsonTransport,
 )
 
+_GEMINI_IMAGE_SIZE_ENUMS = {
+    "1K": "IMAGE_SIZE_ONE_K",
+    "2K": "IMAGE_SIZE_TWO_K",
+    "4K": "IMAGE_SIZE_FOUR_K",
+}
+_GEMINI_ASPECT_RATIO_ENUMS = {
+    "1:1": "ASPECT_RATIO_ONE_BY_ONE",
+    "2:3": "ASPECT_RATIO_TWO_BY_THREE",
+    "3:2": "ASPECT_RATIO_THREE_BY_TWO",
+    "3:4": "ASPECT_RATIO_THREE_BY_FOUR",
+    "4:3": "ASPECT_RATIO_FOUR_BY_THREE",
+    "4:5": "ASPECT_RATIO_FOUR_BY_FIVE",
+    "5:4": "ASPECT_RATIO_FIVE_BY_FOUR",
+    "9:16": "ASPECT_RATIO_NINE_BY_SIXTEEN",
+    "16:9": "ASPECT_RATIO_SIXTEEN_BY_NINE",
+    "21:9": "ASPECT_RATIO_TWENTY_ONE_BY_NINE",
+    "1:8": "ASPECT_RATIO_ONE_BY_EIGHT",
+    "8:1": "ASPECT_RATIO_EIGHT_BY_ONE",
+    "1:4": "ASPECT_RATIO_ONE_BY_FOUR",
+    "4:1": "ASPECT_RATIO_FOUR_BY_ONE",
+}
+
 
 class GeminiImageEditProvider:
     def __init__(
@@ -85,11 +107,18 @@ class GeminiImageEditProvider:
                 "Nano Banana 2 Lite 仅支持 1K 输出，请调整分辨率。",
                 code="unsupported_image_resolution",
             )
+        if aspect_ratio and aspect_ratio not in _GEMINI_ASPECT_RATIO_ENUMS:
+            raise ProviderError(
+                "Gemini 图片宽高比不受支持，请改用界面提供的比例。",
+                code="invalid_image_aspect_ratio",
+            )
         image_format = {}
         if resolution:
-            image_format["imageSize"] = resolution
+            image_format["imageSize"] = _GEMINI_IMAGE_SIZE_ENUMS[resolution]
         if aspect_ratio:
-            image_format["aspectRatio"] = aspect_ratio
+            image_format["aspectRatio"] = _GEMINI_ASPECT_RATIO_ENUMS[
+                aspect_ratio
+            ]
         generation_config: dict[str, Any] = {
             "responseModalities": ["IMAGE"],
         }

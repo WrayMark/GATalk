@@ -9,7 +9,7 @@ def register_artwork_study_workbench(registry: WorkbenchRegistry) -> None:
             module_id=MODULE_ID,
             workspace_id=WORKSPACE_ID,
             display_name="作品研究",
-            version="0.8.0",
+            version="0.8.1",
         )
     )
     registry.register_reviewer(ArtworkMasterStudyReview())
