@@ -26,7 +26,7 @@ from scenelens.storage.project_store import utc_now
 
 
 FORMAT_ID = "scenelens.asset_breakdown"
-FORMAT_VERSION = 4
+FORMAT_VERSION = 5
 ENTRY_FILENAME = "asset_project.json"
 
 
@@ -143,7 +143,7 @@ class AssetBreakdownStore:
             {
                 "format": FORMAT_ID,
                 "format_version": FORMAT_VERSION,
-                "module_schema_version": 4,
+                "module_schema_version": 5,
                 "state": self.state.to_dict(),
             },
         )

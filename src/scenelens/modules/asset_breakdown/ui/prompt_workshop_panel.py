@@ -30,13 +30,19 @@ class AssetPromptWorkshopPanel(QWidget):
         layout = QVBoxLayout(self)
 
         intro = QLabel(
-            "独立提示语流程：AI 分析原画生成可复制提示语；之后可通过对话"
-            "反复协商，也可直接手动编辑。这里只生成文字，不调用图片生成模型。"
+            "根据当前场景理解和拆分方案编写外部生图指令。指令可继续修订、"
+            "手动编辑和复制；本页不调用图片生成服务。"
         )
+        intro.setProperty("role", "muted")
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
-        settings = QGroupBox("统一 AI 设置与会话")
+        self.basis_label = QLabel("运行依据：未打开项目。")
+        self.basis_label.setObjectName("workflowBasis")
+        self.basis_label.setWordWrap(True)
+        layout.addWidget(self.basis_label)
+
+        settings = QGroupBox("模型与会话")
         form = QFormLayout(settings)
         self.provider_combo = QComboBox()
         self.model_edit = QLineEdit()
@@ -71,10 +77,10 @@ class AssetPromptWorkshopPanel(QWidget):
         form.addRow("AI 供应商", self.provider_combo)
         form.addRow("模型 ID", self.model_edit)
         form.addRow("API Key", key_row)
-        form.addRow("准备交给", self.target_tool_combo)
-        form.addRow("提示语会话", session_row)
+        form.addRow("目标工具", self.target_tool_combo)
+        form.addRow("版本会话", session_row)
 
-        self.initial_button = QPushButton("查看发送清单并生成提示语初稿")
+        self.initial_button = QPushButton("检查发送内容并生成初稿")
         self.initial_button.setProperty("primary", True)
         self.cancel_button = QPushButton("取消")
         self.cancel_button.setEnabled(False)
@@ -86,21 +92,21 @@ class AssetPromptWorkshopPanel(QWidget):
         form.addRow(button_row)
         layout.addWidget(settings)
 
-        self.status_label = QLabel("尚未生成提示语。")
+        self.status_label = QLabel("状态：未生成")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
-        conversation = QGroupBox("协商记录")
+        conversation = QGroupBox("修订记录")
         conversation_layout = QVBoxLayout(conversation)
         self.history_list = QListWidget()
         self.history_list.setMinimumHeight(100)
         conversation_layout.addWidget(self.history_list)
         splitter.addWidget(conversation)
 
-        editor = QGroupBox("当前提示语（可直接手动编辑）")
+        editor = QGroupBox("当前版本")
         editor_layout = QVBoxLayout(editor)
-        self.revision_label = QLabel("当前没有修订。")
+        self.revision_label = QLabel("未选择版本")
         editor_layout.addWidget(self.revision_label)
         self.revision_combo = QComboBox()
         self.revision_combo.currentIndexChanged.connect(
@@ -144,11 +150,11 @@ class AssetPromptWorkshopPanel(QWidget):
         splitter.setStretchFactor(1, 1)
         layout.addWidget(splitter, 1)
 
-        refine = QGroupBox("继续和 AI 协商")
+        refine = QGroupBox("提交修订意见")
         refine_layout = QVBoxLayout(refine)
         hint = QLabel(
-            "例如：减少次要道具；强化建筑模块化；不要补全背面；"
-            "改成适合 Midjourney 的简洁提示语。"
+            "示例：减少次要道具；把建筑拆到生产套件；不补全不可见背面；"
+            "按 Midjourney 的语法压缩指令。"
         )
         hint.setWordWrap(True)
         refine_layout.addWidget(hint)
@@ -160,7 +166,7 @@ class AssetPromptWorkshopPanel(QWidget):
         )
         self.resend_image_check.setChecked(False)
         refine_layout.addWidget(self.resend_image_check)
-        self.iterate_button = QPushButton("查看发送清单并让 AI 继续修订")
+        self.iterate_button = QPushButton("检查发送内容并生成新版本")
         self.iterate_button.setProperty("primary", True)
         refine_layout.addWidget(self.iterate_button)
         layout.addWidget(refine)
@@ -198,8 +204,8 @@ class AssetPromptWorkshopPanel(QWidget):
             self.feedback_edit,
         ):
             editor.clear()
-        self.revision_label.setText("当前没有修订。")
-        self.status_label.setText("尚未生成提示语。")
+        self.revision_label.setText("未选择版本")
+        self.status_label.setText("状态：未生成")
         self.set_prompt_actions_enabled(False)
 
     def load_session(self, session: AssetPromptSession | None) -> None:
@@ -225,12 +231,12 @@ class AssetPromptWorkshopPanel(QWidget):
         )
         self.history_list.clear()
         for message in session.messages:
-            prefix = "你" if message.role == "user" else "AI"
+            prefix = "修订要求" if message.role == "user" else "处理记录"
             self.history_list.addItem(f"{prefix}：{message.content}")
         if self.history_list.count():
             self.history_list.scrollToBottom()
         self.status_label.setText(
-            f"会话已保存，共 {len(session.revisions)} 个修订版本。"
+            f"状态：已保存 {len(session.revisions)} 个版本"
         )
         self.set_prompt_actions_enabled(True)
 
@@ -263,10 +269,16 @@ class AssetPromptWorkshopPanel(QWidget):
                 )
             )
         )
-        origin = "AI 修订" if revision.origin == "ai" else "用户手动修改"
+        origin = "模型生成" if revision.origin == "ai" else "手动修订"
         self.revision_label.setText(
             f"{revision.title}｜第 {display_number} 版｜{origin}"
         )
+
+    def set_basis(self, text: str, *, stale: bool = False) -> None:
+        self.basis_label.setText(text)
+        self.basis_label.setProperty("tone", "warning" if stale else "success")
+        self.basis_label.style().unpolish(self.basis_label)
+        self.basis_label.style().polish(self.basis_label)
 
     def _revision_changed(self, index: int) -> None:
         if (

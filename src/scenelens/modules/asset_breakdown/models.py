@@ -430,6 +430,10 @@ class AutomaticAssetRun:
     image_model_id: str
     output_kind: str
     asset_limit: int
+    plan_id: str = ""
+    plan_fingerprint: str = ""
+    plan_name: str = ""
+    source_understanding_id: str = ""
     assets: tuple[AssetItem, ...] = ()
     generations: tuple[GenerationRecord, ...] = ()
     board_relative_path: str = ""
@@ -454,6 +458,12 @@ class AutomaticAssetRun:
             image_model_id=str(value["image_model_id"]),
             output_kind=str(value.get("output_kind", "isolated_concept")),
             asset_limit=max(1, int(value.get("asset_limit", 16))),
+            plan_id=str(value.get("plan_id", "")),
+            plan_fingerprint=str(value.get("plan_fingerprint", "")),
+            plan_name=str(value.get("plan_name", "")),
+            source_understanding_id=str(
+                value.get("source_understanding_id", "")
+            ),
             assets=tuple(
                 AssetItem.from_dict(item)
                 for item in value.get("assets", ())
@@ -521,6 +531,10 @@ class PromptRevision:
     change_summary: str = ""
     provider_id: str = ""
     model_id: str = ""
+    plan_id: str = ""
+    plan_fingerprint: str = ""
+    plan_name: str = ""
+    source_understanding_id: str = ""
     created_at: str = ""
 
     def __post_init__(self) -> None:
@@ -550,6 +564,12 @@ class PromptRevision:
             change_summary=str(value.get("change_summary", "")),
             provider_id=str(value.get("provider_id", "")),
             model_id=str(value.get("model_id", "")),
+            plan_id=str(value.get("plan_id", "")),
+            plan_fingerprint=str(value.get("plan_fingerprint", "")),
+            plan_name=str(value.get("plan_name", "")),
+            source_understanding_id=str(
+                value.get("source_understanding_id", "")
+            ),
             created_at=str(value.get("created_at", "")),
         )
 

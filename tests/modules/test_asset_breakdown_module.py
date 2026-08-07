@@ -27,6 +27,7 @@ from scenelens.modules.asset_breakdown.advisory import (
 )
 from scenelens.modules.asset_breakdown.planning import (
     create_plan_from_preset,
+    plan_fingerprint,
     plan_from_ai,
     understanding_from_ai,
 )
@@ -183,8 +184,20 @@ def test_breakdown_context_carries_selected_plan_without_local_path() -> None:
     assert "source_project_path" not in str(payload)
 
 
+def test_plan_fingerprint_changes_only_for_production_relevant_edits() -> None:
+    plan = create_plan_from_preset("production_kit")
+    renamed_timestamp = replace(plan, updated_at="later", status="confirmed")
+    changed_depth = replace(
+        plan,
+        category_depths={**plan.category_depths, "building": 4},
+    )
+    assert plan_fingerprint(plan) == plan_fingerprint(renamed_timestamp)
+    assert plan_fingerprint(plan) != plan_fingerprint(changed_depth)
+
+
 def test_asset_prompt_workshop_supports_initial_and_text_only_refinement() -> None:
     reviewer = AssetPromptWorkshopReview()
+    plan = create_plan_from_preset("detail_components")
     context = AssetPromptContext(
         project_id="prompt-project",
         title="赛博街道",
@@ -193,6 +206,9 @@ def test_asset_prompt_workshop_supports_initial_and_text_only_refinement() -> No
         notes="保留霓虹招牌和雨夜气氛",
         target_tool="nano_banana",
         image_metadata={"width": 1920, "height": 1080},
+        scene_understanding={"summary": "多层街道与重复立面"},
+        breakdown_plan=plan.to_dict(),
+        study_handoff={"study_goal": "理解建筑层级"},
     )
     initial = reviewer.create_request(
         context,
@@ -211,6 +227,11 @@ def test_asset_prompt_workshop_supports_initial_and_text_only_refinement() -> No
     assert output["prompt_zh"]
     assert output["prompt_en"]
     assert output["asset_groups"]
+    assert initial.payload["breakdown_plan"]["category_depths"]["building"] == 4
+    assert initial.payload["scene_understanding"]["summary"] == (
+        "多层街道与重复立面"
+    )
+    assert initial.payload["study_handoff"]["study_goal"] == "理解建筑层级"
 
     base = PromptRevision(
         revision_id="base",

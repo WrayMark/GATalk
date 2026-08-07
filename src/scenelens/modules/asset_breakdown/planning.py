@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 from importlib.resources import files
 import json
 import uuid
@@ -11,6 +12,23 @@ from scenelens.modules.asset_breakdown.models import (
     SceneUnderstanding,
 )
 from scenelens.storage.project_store import utc_now
+
+
+def plan_fingerprint(plan: BreakdownPlan | Mapping[str, Any] | None) -> str:
+    """Return a stable identity for the exact production plan revision."""
+
+    if plan is None:
+        return ""
+    value = plan.to_dict() if isinstance(plan, BreakdownPlan) else dict(plan)
+    for key in ("created_at", "updated_at", "status"):
+        value.pop(key, None)
+    canonical = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def load_breakdown_plan_presets() -> dict[str, Any]:

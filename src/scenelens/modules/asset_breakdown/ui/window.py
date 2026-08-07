@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDockWidget,
     QFileDialog,
+    QFrame,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -91,6 +92,7 @@ from scenelens.modules.asset_breakdown.planning import (
     confirm_plan,
     create_plan_from_preset,
     load_breakdown_plan_presets,
+    plan_fingerprint,
     plan_from_ai,
     understanding_from_ai,
 )
@@ -114,6 +116,9 @@ from scenelens.modules.asset_breakdown.service import (
 from scenelens.modules.asset_breakdown.storage import AssetBreakdownStore
 from scenelens.modules.asset_breakdown.ui.prompt_workshop_panel import (
     AssetPromptWorkshopPanel,
+)
+from scenelens.modules.asset_breakdown.ui.workspace_style import (
+    asset_workspace_stylesheet,
 )
 from scenelens.providers.contracts import (
     CancellationToken,
@@ -215,7 +220,7 @@ class SendDisclosureDialog(QDialog):
             )
         layout.addWidget(images)
         warning = QLabel(
-            "商业保密内容是否允许上传由你的团队政策决定。AI 识别、分类、"
+            "商业保密内容是否允许上传由所属团队政策决定。AI 识别、分类、"
             "模块关系和不可见结构均为推断；生成补全不是原画事实。"
         )
         warning.setWordWrap(True)
@@ -317,6 +322,7 @@ class AssetBreakdownWindow(QMainWindow):
         self._build_toolbar()
         self._build_project_dock()
         self._build_central_ui()
+        self.setStyleSheet(asset_workspace_stylesheet())
         self._connect_signals()
         self.statusBar().showMessage(
             "新建或打开资产拆分项目，然后导入一张场景原画。"
@@ -458,39 +464,71 @@ class AssetBreakdownWindow(QMainWindow):
 
     def _build_central_ui(self) -> None:
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(5)
         self.canvas = ImageCanvas(
-            "将场景原画拖到这里，或点击“导入主原画”"
+            "拖入场景原画，或选择“导入原画”"
         )
         splitter.addWidget(self.canvas)
         self.workflow_tabs = QTabWidget()
-        self.workflow_tabs.setMinimumWidth(520)
+        self.workflow_tabs.setObjectName("assetWorkflowTabs")
+        self.workflow_tabs.setDocumentMode(True)
+        self.workflow_tabs.setMinimumWidth(560)
         manual = QTabWidget()
+        manual.setObjectName("manualWorkflowTabs")
         self.manual_tabs = manual
+        manual.setDocumentMode(True)
         inventory = self._build_inventory_tab()
-        manual.addTab(self._build_plan_tab(), "场景理解与拆分方案")
+        manual.addTab(self._build_plan_tab(), "拆分依据")
         manual.addTab(inventory, "资产清单")
         manual.addTab(self._build_detail_tab(), "资产详情")
         manual.addTab(self._build_generation_tab(), "生成与导出")
-        self.workflow_tabs.addTab(manual, "可校正拆分")
+        self.workflow_tabs.addTab(manual, "清单与校正")
         self.workflow_tabs.addTab(
             self._build_automatic_tab(),
-            "全自动资产板",
+            "自动资产板",
         )
         self.prompt_panel = AssetPromptWorkshopPanel()
         self.workflow_tabs.addTab(
             self.prompt_panel,
-            "资产拆分提示语",
+            "生成提示语",
         )
-        splitter.addWidget(self.workflow_tabs)
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(8)
+        right_layout.addWidget(self._build_workflow_context_bar())
+        right_layout.addWidget(self.workflow_tabs, 1)
+        splitter.addWidget(right_panel)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 0)
         splitter.setSizes([980, 520])
         self.setCentralWidget(splitter)
 
+    def _build_workflow_context_bar(self) -> QWidget:
+        bar = QFrame()
+        bar.setObjectName("workflowContextBar")
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(12, 8, 12, 8)
+        title = QLabel("当前拆分依据")
+        title.setProperty("role", "muted")
+        layout.addWidget(title)
+        self.context_plan_combo = QComboBox()
+        self.context_plan_combo.setMinimumWidth(210)
+        self.context_plan_combo.setMaximumWidth(300)
+        layout.addWidget(self.context_plan_combo, 1)
+        self.context_plan_status = QLabel("未打开项目")
+        self.context_plan_status.setWordWrap(False)
+        self.context_plan_status.setFixedWidth(180)
+        layout.addWidget(self.context_plan_status)
+        self.edit_plan_button = QPushButton("编辑方案")
+        layout.addWidget(self.edit_plan_button)
+        return bar
+
     def _build_inventory_tab(self) -> QWidget:
         root = QWidget()
         layout = QVBoxLayout(root)
-        provider_group = QGroupBox("统一 AI 设置：场景理解与资产拆分")
+        provider_group = QGroupBox("清单分析")
         provider_form = QFormLayout(provider_group)
         self.vision_provider_combo = QComboBox()
         for provider in self._provider_registry.for_capability(
@@ -519,15 +557,15 @@ class AssetBreakdownWindow(QMainWindow):
         provider_form.addRow("模型 ID", self.vision_model_edit)
         provider_form.addRow("API Key", key_row)
         provider_note = QLabel(
-            "这里的视觉模型负责识别并生成结构化资产清单；Nano Banana 等"
-            "图片模型在“生成与导出”页使用。两种拆分方式共用并同步这些设置。"
+            "视觉模型依据当前拆分方案生成结构化清单。图片模型在“生成与导出”"
+            "中使用；相同供应商凭据在各工作方式间同步。"
         )
         provider_note.setWordWrap(True)
         provider_form.addRow(provider_note)
         buttons = QWidget()
         button_layout = QHBoxLayout(buttons)
         button_layout.setContentsMargins(0, 0, 0, 0)
-        self.analyze_button = QPushButton("查看发送清单并开始拆分")
+        self.analyze_button = QPushButton("检查发送内容并生成清单")
         self.analyze_button.setProperty("primary", True)
         self.cancel_analysis_button = QPushButton("取消")
         self.cancel_analysis_button.setEnabled(False)
@@ -569,7 +607,7 @@ class AssetBreakdownWindow(QMainWindow):
         self.asset_tree.setColumnWidth(3, 50)
         self.asset_tree.setColumnWidth(4, 105)
         layout.addWidget(self.asset_tree, 1)
-        self.inventory_summary = QLabel("尚未生成资产清单。")
+        self.inventory_summary = QLabel("状态：未生成清单")
         self.inventory_summary.setWordWrap(True)
         layout.addWidget(self.inventory_summary)
         return root
@@ -578,14 +616,15 @@ class AssetBreakdownWindow(QMainWindow):
         body = QWidget()
         layout = QVBoxLayout(body)
         intro = QLabel(
-            "先让 AI 理解场景和生产系统，再由你选择拆分方案。"
-            "同一张原画可保存多套互不覆盖的方案，例如“完整建筑”与"
-            "“门窗／檐口组件”。AI 建议可修改，不会直接替你确认。"
+            "先确认场景结构和生产目标，再确定拆分深度。同一原画可保存多套"
+            "独立方案，例如“完整装配体”和“建筑生产套件”。分析建议不会"
+            "自动覆盖已确认方案。"
         )
+        intro.setProperty("role", "muted")
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
-        handoff_group = QGroupBox("来自 02 作品研究的交接（可选）")
+        handoff_group = QGroupBox("作品研究交接（可选）")
         handoff_layout = QVBoxLayout(handoff_group)
         self.handoff_summary = QLabel(
             "当前项目独立开始；也可在“作品研究”中点击“交给资产拆分”。"
@@ -600,12 +639,12 @@ class AssetBreakdownWindow(QMainWindow):
         handoff_layout.addWidget(self.handoff_adjustments)
         layout.addWidget(handoff_group)
 
-        understanding_group = QGroupBox("第 1 步：理解原画并提出方案")
+        understanding_group = QGroupBox("1  场景结构")
         understanding_layout = QVBoxLayout(understanding_group)
         self.understanding_text = QPlainTextEdit()
         self.understanding_text.setReadOnly(True)
         self.understanding_text.setPlaceholderText(
-            "尚未生成场景理解。你也可以跳过 AI，直接从下方预设建立方案。"
+            "尚无场景结构记录。可执行分析，也可直接采用预设方案。"
         )
         self.understanding_text.setMinimumHeight(150)
         understanding_layout.addWidget(self.understanding_text)
@@ -618,7 +657,7 @@ class AssetBreakdownWindow(QMainWindow):
         row = QWidget()
         row_layout = QHBoxLayout(row)
         row_layout.setContentsMargins(0, 0, 0, 0)
-        self.understand_button = QPushButton("查看发送清单并让 AI 提出拆分建议")
+        self.understand_button = QPushButton("检查发送内容并分析场景结构")
         self.understand_button.setProperty("primary", True)
         self.cancel_understanding_button = QPushButton("取消")
         self.cancel_understanding_button.setEnabled(False)
@@ -627,7 +666,7 @@ class AssetBreakdownWindow(QMainWindow):
         understanding_layout.addWidget(row)
         layout.addWidget(understanding_group)
 
-        plan_group = QGroupBox("第 2 步：选择并校正拆分方案")
+        plan_group = QGroupBox("2  拆分方案")
         plan_layout = QVBoxLayout(plan_group)
         top_form = QFormLayout()
         self.plan_combo = QComboBox()
@@ -656,7 +695,7 @@ class AssetBreakdownWindow(QMainWindow):
         top_form.addRow("每页最多项目", self.plan_page_limit)
         plan_layout.addLayout(top_form)
 
-        depth_group = QGroupBox("各类别拆分深度（0 不纳入，4 最细）")
+        depth_group = QGroupBox("类别深度（0 不纳入，4 细节组件）")
         depth_form = QFormLayout(depth_group)
         self.plan_depth_combos: dict[str, QComboBox] = {}
         for category in ASSET_CATEGORIES:
@@ -684,13 +723,13 @@ class AssetBreakdownWindow(QMainWindow):
         action_layout = QHBoxLayout(actions)
         action_layout.setContentsMargins(0, 0, 0, 0)
         self.new_plan_button = QPushButton("按预设新建")
-        self.save_plan_button = QPushButton("保存并确认方案")
+        self.save_plan_button = QPushButton("保存方案")
         self.delete_plan_button = QPushButton("删除方案")
         action_layout.addWidget(self.new_plan_button)
         action_layout.addWidget(self.save_plan_button, 1)
         action_layout.addWidget(self.delete_plan_button)
         plan_layout.addWidget(actions)
-        self.plan_status = QLabel("尚未选择方案。")
+        self.plan_status = QLabel("状态：未选择方案")
         self.plan_status.setWordWrap(True)
         plan_layout.addWidget(self.plan_status)
         layout.addWidget(plan_group)
@@ -766,7 +805,7 @@ class AssetBreakdownWindow(QMainWindow):
     def _build_generation_tab(self) -> QWidget:
         root = QWidget()
         layout = QVBoxLayout(root)
-        group = QGroupBox("统一 AI 设置：只生成勾选的资产")
+        group = QGroupBox("图片生成：仅处理勾选资产")
         form = QFormLayout(group)
         self.image_provider_combo = QComboBox()
         for provider in self._provider_registry.for_capability(
@@ -845,22 +884,20 @@ class AssetBreakdownWindow(QMainWindow):
         root = QWidget()
         layout = QVBoxLayout(root)
         intro = QLabel(
-            "独立的一键流程：原画分析 → 自动资产清单 → 逐项生成 → "
-            "按当前拆分方案合成一页或多页资产展示板。结果不会写入"
-            "“可校正拆分”的资产清单，"
-            "两种方式可在同一项目中并存。"
+            "按当前拆分方案批量生成资产清单、单项概念图和分页展示板。"
+            "运行结果独立保存，不写入“清单与校正”中的资产清单。"
         )
+        intro.setProperty("role", "muted")
         intro.setWordWrap(True)
         layout.addWidget(intro)
         shared_note = QLabel(
-            "清单分析模型、图片生成模型、API Key 与输出分辨率会和"
-            "“可校正拆分”同步；Nano Banana、万相、GPT Image、"
-            "Grok Imagine 等图片供应商在两种方式中保持一致。"
+            "模型、凭据与输出分辨率在“清单与校正”和“自动资产板”之间同步。"
+            "开始前将显示调用次数上限和发送内容。"
         )
         shared_note.setWordWrap(True)
         layout.addWidget(shared_note)
 
-        group = QGroupBox("全自动生成设置")
+        group = QGroupBox("批量生成设置")
         form = QFormLayout(group)
         self.auto_vision_provider_combo = QComboBox()
         for provider in self._provider_registry.for_capability(
@@ -908,7 +945,7 @@ class AssetBreakdownWindow(QMainWindow):
         form.addRow("资产数量上限", self.auto_asset_limit)
         form.addRow("输出分辨率", self.auto_resolution_combo)
         self.auto_start_button = QPushButton(
-            "查看发送清单并全自动生成资产板"
+            "检查发送内容并生成资产板"
         )
         self.auto_start_button.setProperty("primary", True)
         self.auto_cancel_button = QPushButton("取消")
@@ -921,13 +958,13 @@ class AssetBreakdownWindow(QMainWindow):
         form.addRow(row)
         layout.addWidget(group)
 
-        self.auto_status = QLabel("尚未运行。")
+        self.auto_status = QLabel("状态：未运行")
         self.auto_status.setWordWrap(True)
         layout.addWidget(self.auto_status)
         self.auto_run_list = QListWidget()
         self.auto_run_list.setMaximumHeight(120)
         layout.addWidget(self.auto_run_list)
-        self.auto_board_preview = QLabel("生成完成后在这里显示资产板。")
+        self.auto_board_preview = QLabel("资产板预览")
         self.auto_board_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.auto_board_preview.setMinimumHeight(260)
         self.auto_board_preview.setScaledContents(False)
@@ -935,7 +972,7 @@ class AssetBreakdownWindow(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.auto_board_preview)
         layout.addWidget(scroll, 1)
-        self.auto_export_button = QPushButton("导出当前全自动结果")
+        self.auto_export_button = QPushButton("导出当前运行")
         self.auto_export_button.setEnabled(False)
         layout.addWidget(self.auto_export_button)
         return root
@@ -1104,8 +1141,14 @@ class AssetBreakdownWindow(QMainWindow):
             self._cancel_analysis
         )
         self.plan_combo.currentIndexChanged.connect(
-            self._plan_selection_changed
+            lambda _index: self._plan_selection_changed(self.plan_combo)
         )
+        self.context_plan_combo.currentIndexChanged.connect(
+            lambda _index: self._plan_selection_changed(
+                self.context_plan_combo
+            )
+        )
+        self.edit_plan_button.clicked.connect(self._open_plan_editor)
         self.new_plan_button.clicked.connect(self._new_plan_from_preset)
         self.save_plan_button.clicked.connect(self._save_current_plan)
         self.delete_plan_button.clicked.connect(self._delete_current_plan)
@@ -1373,33 +1416,90 @@ class AssetBreakdownWindow(QMainWindow):
         self.understanding_corrections.setPlainText(item.user_corrections)
 
     def _refresh_plans(self, select_id: str = "") -> None:
-        self.plan_combo.blockSignals(True)
+        combos = (self.plan_combo, self.context_plan_combo)
+        for combo in combos:
+            combo.blockSignals(True)
         try:
-            self.plan_combo.clear()
+            for combo in combos:
+                combo.clear()
             if self._state is None:
                 return
             for plan in self._state.breakdown_plans:
-                suffix = "（已确认）" if plan.status == "confirmed" else "（草稿）"
-                self.plan_combo.addItem(f"{plan.name}{suffix}", plan.plan_id)
+                suffix = " · 已确认" if plan.status == "confirmed" else " · 草稿"
+                for combo in combos:
+                    combo.addItem(f"{plan.name}{suffix}", plan.plan_id)
             target = select_id or self._state.selected_plan_id
-            index = self.plan_combo.findData(target)
-            self.plan_combo.setCurrentIndex(max(0, index))
+            for combo in combos:
+                index = combo.findData(target)
+                combo.setCurrentIndex(max(0, index))
         finally:
-            self.plan_combo.blockSignals(False)
-        self._populate_plan_fields(self._selected_plan())
+            for combo in combos:
+                combo.blockSignals(False)
+        plan = self._selected_plan()
+        self._populate_plan_fields(plan)
+        self._update_basis_views(plan)
 
     def _selected_plan(self) -> BreakdownPlan | None:
         if self._state is None:
             return None
-        plan_id = str(self.plan_combo.currentData() or self._state.selected_plan_id)
+        plan_id = self._state.selected_plan_id
         return next(
             (item for item in self._state.breakdown_plans if item.plan_id == plan_id),
             None,
         )
 
+    def _plan_depth_summary(self, plan: BreakdownPlan) -> str:
+        values = [
+            f"{CATEGORY_LABELS[category]} {depth}"
+            for category, depth in plan.category_depths.items()
+            if depth > 0
+        ]
+        if len(values) > 4:
+            return "、".join(values[:4]) + f" 等 {len(values)} 类"
+        return "、".join(values) or "未纳入任何类别"
+
+    def _update_basis_views(self, plan: BreakdownPlan | None) -> None:
+        if plan is None:
+            self.context_plan_status.setText("未选择方案")
+            self.context_plan_status.setProperty("tone", "warning")
+            if hasattr(self, "prompt_panel"):
+                self.prompt_panel.set_basis(
+                    "运行依据：未选择拆分方案。",
+                    stale=True,
+                )
+            return
+        understanding = (
+            "已关联场景结构"
+            if plan.source_understanding_id
+            else "未关联场景结构"
+        )
+        self.context_plan_status.setText(
+            f"{understanding} · "
+            f"{'已确认' if plan.status == 'confirmed' else '草稿'}"
+        )
+        self.context_plan_status.setToolTip(
+            f"类别深度：{self._plan_depth_summary(plan)}"
+        )
+        self.context_plan_status.setProperty(
+            "tone",
+            "success" if plan.status == "confirmed" else "warning",
+        )
+        self.context_plan_status.style().unpolish(self.context_plan_status)
+        self.context_plan_status.style().polish(self.context_plan_status)
+        if hasattr(self, "prompt_panel"):
+            self.prompt_panel.set_basis(
+                f"运行依据：{plan.name} · {self._plan_depth_summary(plan)}"
+                f" · {'已确认' if plan.status == 'confirmed' else '草稿'}",
+                stale=plan.status != "confirmed",
+            )
+
+    def _open_plan_editor(self) -> None:
+        self.workflow_tabs.setCurrentIndex(0)
+        self.manual_tabs.setCurrentIndex(0)
+
     def _populate_plan_fields(self, plan: BreakdownPlan | None) -> None:
         if plan is None:
-            self.plan_status.setText("尚未选择方案。")
+            self.plan_status.setText("状态：未选择方案")
             return
         self.plan_name_edit.setText(plan.name)
         self.plan_purpose_edit.setPlainText(plan.purpose)
@@ -1419,22 +1519,37 @@ class AssetBreakdownWindow(QMainWindow):
             CATEGORY_LABELS[item] for item in plan.included_categories
         )
         self.plan_status.setText(
-            f"{('已确认' if plan.status == 'confirmed' else '草稿')} · "
-            f"纳入：{included or '无'}。资产清单和展示板只作用于当前方案。"
+            f"状态：{('已确认' if plan.status == 'confirmed' else '草稿')} · "
+            f"纳入 {included or '无'}。新清单、资产板和提示语均采用此方案。"
         )
 
-    def _plan_selection_changed(self, _index: int) -> None:
+    def _plan_selection_changed(self, source: QComboBox) -> None:
         if self._restoring or self._store is None:
             return
-        plan = self._selected_plan()
+        plan_id = str(source.currentData() or "")
+        plan = next(
+            (
+                item
+                for item in self._store.state.breakdown_plans
+                if item.plan_id == plan_id
+            ),
+            None,
+        )
         if plan is None:
             return
         self._store.select_plan(plan.plan_id)
         self._state = self._store.state
+        for combo in (self.plan_combo, self.context_plan_combo):
+            combo.blockSignals(True)
+            combo.setCurrentIndex(max(0, combo.findData(plan.plan_id)))
+            combo.blockSignals(False)
         self._populate_plan_fields(plan)
+        self._update_basis_views(plan)
         self._refresh_asset_tree()
         self._refresh_overlays()
         self._refresh_generation_list()
+        self._refresh_automatic_runs()
+        self._refresh_prompt_sessions()
 
     def _new_plan_from_preset(self) -> None:
         if self._store is None:
@@ -1519,7 +1634,7 @@ class AssetBreakdownWindow(QMainWindow):
         self._state = self._store.state
         self._refresh_plans(plan.plan_id)
         self.plan_status.setText(
-            "方案已确认。现在可进入“资产清单”，按该层级生成可校正清单。"
+            "状态：方案已保存。清单、自动资产板和新提示语将采用此版本。"
         )
 
     def _delete_current_plan(self) -> None:
@@ -1797,7 +1912,7 @@ class AssetBreakdownWindow(QMainWindow):
         self._ai_cancellation = cancellation
         self.understand_button.setEnabled(False)
         self.cancel_understanding_button.setEnabled(True)
-        self.statusBar().showMessage("AI 正在理解场景并比较拆分策略…")
+        self.statusBar().showMessage("正在分析场景结构与拆分策略…")
         project_id = self._state.project_id
         source_hash = self._state.main_image.sha256
 
@@ -1907,14 +2022,14 @@ class AssetBreakdownWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "缺少拆分方案",
-                "请先在“场景理解与拆分方案”中建立方案。",
+                "请先在“拆分依据”中建立方案。",
             )
             return
         if plan.status != "confirmed":
             QMessageBox.information(
                 self,
                 "方案尚未确认",
-                "请先检查各类别拆分深度，然后点击“保存并确认方案”。",
+                "请先检查各类别拆分深度，然后选择“保存方案”。",
             )
             return
         provider_id = str(self.vision_provider_combo.currentData())
@@ -2010,7 +2125,7 @@ class AssetBreakdownWindow(QMainWindow):
         self._ai_cancellation = cancellation
         self.analyze_button.setEnabled(False)
         self.cancel_analysis_button.setEnabled(True)
-        self.statusBar().showMessage("AI 正在理解场景并规划资产…")
+        self.statusBar().showMessage("正在生成结构化资产清单…")
         project_id = self._state.project_id
         source_hash = self._state.main_image.sha256
         plan_snapshot = plan
@@ -2135,21 +2250,21 @@ class AssetBreakdownWindow(QMainWindow):
             )
             QMessageBox.information(
                 self,
-                "AI 清单已完成并修复结构",
+                "资产清单已完成结构修复",
                 "资产内容已经保留。GATalk 只修复了无法成立的结构引用：\n"
                 f"{repair_text}\n\n"
-                "请在资产树中检查父子层级；修复记录已保存到本次 AI 运行。",
+                "请检查资产树的父子层级；修复记录已写入本次分析记录。",
             )
         else:
             self.statusBar().showMessage(
-                f"资产拆分完成：{len(incoming)} 项；AI 推断等待用户校正。",
+                f"资产清单已生成：{len(incoming)} 项；推断内容待人工确认。",
                 5000,
             )
 
     def _cancel_analysis(self) -> None:
         if self._ai_cancellation is not None:
             self._ai_cancellation.cancel()
-            self.statusBar().showMessage("正在取消 AI 场景理解或资产拆分…")
+            self.statusBar().showMessage("正在取消分析请求…")
 
     def _enter_add_mode(self) -> None:
         if self._loaded is None:
@@ -2301,7 +2416,7 @@ class AssetBreakdownWindow(QMainWindow):
             select_id=updated.asset_id,
             text="修改资产",
         )
-        self.statusBar().showMessage("用户修订已保存，不会被后续 AI 覆盖。", 3000)
+        self.statusBar().showMessage("人工修订已保存，后续分析不会覆盖。", 3000)
 
     def _asset_geometry_changed(self, asset_id: str, rect: object) -> None:
         if self._store is None or self._state is None:
@@ -2788,7 +2903,7 @@ class AssetBreakdownWindow(QMainWindow):
         preview = disclosure_preview(vision_provider.manifest, request)
         dialog = SendDisclosureDialog(
             preview,
-            purpose="全自动资产板",
+            purpose="自动资产板",
             extra_notice=(
                 f"确认后会先进行 1 次场景资产分析，再对最多 {limit} 项资产"
                 "分别调用图片生成，最后在本地合成资产板。"
@@ -2797,7 +2912,7 @@ class AssetBreakdownWindow(QMainWindow):
                 f"\n图片供应商：{image_provider.manifest.display_name}；"
                 f"模型：{image_provider.manifest.model_for(ProviderCapability.IMAGE_EDIT, image_model_id)}；"
                 f"分辨率：{image_resolution}。"
-                f"\n拆分方案：{plan.name if plan else '默认'}。"
+                f"\n拆分方案：{plan.name if plan else '未选择'}。"
             ),
             parent=self,
         )
@@ -2813,7 +2928,7 @@ class AssetBreakdownWindow(QMainWindow):
         scene_type = self._state.scene_type
         source_image_id = source.image_id
         self.auto_status.setText(
-            "正在分析原画并生成资产；可取消，已完成项目会保留。"
+            "状态：正在生成 · 可取消，已完成项目将保留"
         )
 
         def operation():
@@ -2845,6 +2960,12 @@ class AssetBreakdownWindow(QMainWindow):
             "image_model_id": image_model_id or "",
             "image_resolution": image_resolution,
             "asset_limit": limit,
+            "plan_id": plan.plan_id if plan else "",
+            "plan_fingerprint": plan_fingerprint(plan),
+            "plan_name": plan.name if plan else "",
+            "source_understanding_id": (
+                plan.source_understanding_id if plan else ""
+            ),
             "breakdown_plan": plan.to_dict() if plan else {},
         }
         self._start_worker(
@@ -2941,7 +3062,7 @@ class AssetBreakdownWindow(QMainWindow):
             plan_value = dict(config.get("breakdown_plan", {}))
             pages = make_asset_board_pages(
                 board_entries,
-                title=f"{self._state.title} — 全自动资产板",
+                title=f"{self._state.title} — 自动资产板",
                 grouping_strategy=str(
                     plan_value.get("grouping_strategy", "asset_family")
                 ),
@@ -2966,6 +3087,9 @@ class AssetBreakdownWindow(QMainWindow):
                 "mode": "automatic_asset_board",
                 "run_id": run_id,
                 "main_image_sha256": config["source_hash"],
+                "plan_id": config.get("plan_id", ""),
+                "plan_fingerprint": config.get("plan_fingerprint", ""),
+                "plan_name": config.get("plan_name", ""),
             },
             assets=run_assets,
             generations=(item.to_dict() for item in generations),
@@ -2991,6 +3115,12 @@ class AssetBreakdownWindow(QMainWindow):
             image_model_id=str(config["image_model_id"]),
             output_kind="isolated_concept",
             asset_limit=int(config["asset_limit"]),
+            plan_id=str(config.get("plan_id", "")),
+            plan_fingerprint=str(config.get("plan_fingerprint", "")),
+            plan_name=str(config.get("plan_name", "")),
+            source_understanding_id=str(
+                config.get("source_understanding_id", "")
+            ),
             assets=run_assets,
             generations=tuple(generations),
             board_relative_path=(
@@ -3012,7 +3142,7 @@ class AssetBreakdownWindow(QMainWindow):
             - len(result.failures),
         )
         self.auto_status.setText(
-            f"自动流程结束：识别 {len(result.assets)} 项，"
+            f"状态：运行结束 · 识别 {len(result.assets)} 项，"
             f"生成 {len(result.generated)} 项，失败 {len(result.failures)} 项，"
             f"未发送 {skipped} 项；资产板 {len(board_relatives)} 页。"
         )
@@ -3024,7 +3154,7 @@ class AssetBreakdownWindow(QMainWindow):
             )
             QMessageBox.warning(
                 self,
-                "全自动资产板部分失败",
+                "自动资产板部分失败",
                 f"{result.failures[0][1]}{suffix}\n\n"
                 "已成功生成的图片和清单仍然保存。",
             )
@@ -3033,13 +3163,13 @@ class AssetBreakdownWindow(QMainWindow):
         if self._automatic_cancellation is not None:
             self._automatic_cancellation.cancel()
             self.auto_status.setText(
-                "正在取消；当前请求结束后停止，已完成结果会保留。"
+                "状态：正在取消 · 当前请求结束后停止，已完成结果将保留"
             )
 
     def _refresh_automatic_runs(self, select_run_id: str = "") -> None:
         self.auto_run_list.clear()
         self.auto_board_preview.setPixmap(QPixmap())
-        self.auto_board_preview.setText("生成完成后在这里显示资产板。")
+        self.auto_board_preview.setText("资产板预览")
         self.auto_export_button.setEnabled(False)
         if self._state is None or self._store is None:
             return
@@ -3054,8 +3184,16 @@ class AssetBreakdownWindow(QMainWindow):
             completed = sum(
                 item.status == "completed" for item in run.generations
             )
+            plan = self._selected_plan()
+            stale = (
+                plan is None
+                or run.plan_id != plan.plan_id
+                or run.plan_fingerprint != plan_fingerprint(plan)
+            )
+            basis = " · 旧版依据" if stale else ""
             item = QListWidgetItem(
-                f"{status} · {run.created_at} · {completed}/{len(run.assets)} 项"
+                f"{status}{basis} · {run.created_at} · "
+                f"{completed}/{len(run.assets)} 项"
             )
             item.setData(Qt.ItemDataRole.UserRole, run.run_id)
             if run.error_summary:
@@ -3088,9 +3226,20 @@ class AssetBreakdownWindow(QMainWindow):
             "failed": "失败",
             "cancelled": "已取消",
         }.get(run.status, run.status)
+        plan = self._selected_plan()
+        stale = (
+            plan is None
+            or run.plan_id != plan.plan_id
+            or run.plan_fingerprint != plan_fingerprint(plan)
+        )
+        basis_text = (
+            f"；生成依据 {run.plan_name or '旧版方案'}，与当前方案不一致"
+            if stale
+            else f"；生成依据 {run.plan_name or (plan.name if plan else '未记录')}"
+        )
         self.auto_status.setText(
-            f"当前运行：{status}；识别 {len(run.assets)} 项，"
-            f"生成 {completed} 项。"
+            f"状态：{status}；识别 {len(run.assets)} 项，"
+            f"生成 {completed} 项{basis_text}。"
         )
         self.auto_export_button.setEnabled(bool(run.manifest_relative_path))
         self.auto_export_button.setProperty("run_id", run.run_id)
@@ -3131,7 +3280,7 @@ class AssetBreakdownWindow(QMainWindow):
             return
         destination = QFileDialog.getExistingDirectory(
             self,
-            "选择全自动资产板导出目录",
+            "选择自动资产板导出目录",
         )
         if not destination:
             return
@@ -3206,6 +3355,7 @@ class AssetBreakdownWindow(QMainWindow):
     def _show_prompt_session(self, session_id: str) -> None:
         if self._state is None or not session_id:
             self.prompt_panel.load_session(None)
+            self._update_basis_views(self._selected_plan())
             return
         session = next(
             (
@@ -3216,6 +3366,24 @@ class AssetBreakdownWindow(QMainWindow):
             None,
         )
         self.prompt_panel.load_session(session)
+        if session is None or session.current_revision is None:
+            self._update_basis_views(self._selected_plan())
+            return
+        plan = self._selected_plan()
+        revision = session.current_revision
+        stale = (
+            plan is None
+            or revision.plan_id != plan.plan_id
+            or revision.plan_fingerprint != plan_fingerprint(plan)
+        )
+        if stale:
+            self.prompt_panel.set_basis(
+                f"生成依据：{revision.plan_name or '旧版方案'} · "
+                "与当前方案不一致；历史版本保留，重新生成后更新。",
+                stale=True,
+            )
+        else:
+            self._update_basis_views(plan)
 
     def _prompt_session_changed(self, _index: int) -> None:
         session_id = str(
@@ -3232,7 +3400,7 @@ class AssetBreakdownWindow(QMainWindow):
             self._state = self._store.state
         self._refresh_prompt_sessions()
         self.prompt_panel.status_label.setText(
-            "已准备新会话；选择目标工具后生成初稿。"
+            "状态：新会话 · 选择目标工具后生成初稿"
         )
 
     def _prompt_target_tool(self) -> str:
@@ -3289,6 +3457,16 @@ class AssetBreakdownWindow(QMainWindow):
                             ProviderImageExportOptions(maximum_side=1536),
                         )
                     )
+        plan = self._selected_plan()
+        understanding = next(
+            (
+                item.to_dict()
+                for item in self._state.scene_understandings
+                if plan is not None
+                and item.understanding_id == plan.source_understanding_id
+            ),
+            {},
+        )
         context = AssetPromptContext(
             project_id=self._state.project_id,
             title=self._state.title,
@@ -3308,6 +3486,9 @@ class AssetBreakdownWindow(QMainWindow):
                 "assumed_srgb": self._loaded.assumed_srgb,
             },
             supplemental_references=tuple(supplemental),
+            scene_understanding=understanding,
+            breakdown_plan=plan.to_dict() if plan else {},
+            study_handoff=self._study_handoff_for_ai(),
         )
         return context, tuple(images)
 
@@ -3360,7 +3541,7 @@ class AssetBreakdownWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "缺少修改意见",
-                "请先写下希望 AI 如何调整提示语。",
+                "请填写本次修订要求。",
             )
             return
 
@@ -3410,8 +3591,8 @@ class AssetBreakdownWindow(QMainWindow):
             purpose=("提示语修订" if refine else "提示语初稿"),
             extra_notice=(
                 f"{image_notice}\n"
-                "AI 只返回文字，不调用图片生成模型；每次协商仍会产生一次"
-                "所选视觉模型调用。"
+                "本次只生成文本，不调用图片生成服务。每次修订会产生一次"
+                "所选视觉模型调用，并采用当前拆分方案。"
             ),
             parent=self,
         )
@@ -3422,9 +3603,9 @@ class AssetBreakdownWindow(QMainWindow):
         self._prompt_cancellation = cancellation
         self.prompt_panel.set_busy(True)
         self.prompt_panel.status_label.setText(
-            "AI 正在修订提示语…"
+            "状态：正在生成修订版本…"
             if refine
-            else "AI 正在分析原画并生成提示语初稿…"
+            else "状态：正在分析并生成初稿…"
         )
         project_id = self._state.project_id
         source_hash = self._state.main_image.sha256
@@ -3433,6 +3614,13 @@ class AssetBreakdownWindow(QMainWindow):
             base_revision.revision_id
             if base_revision is not None
             else ""
+        )
+        plan = self._selected_plan()
+        plan_id = plan.plan_id if plan is not None else ""
+        exact_plan_fingerprint = plan_fingerprint(plan)
+        plan_name = plan.name if plan is not None else ""
+        understanding_id = (
+            plan.source_understanding_id if plan is not None else ""
         )
 
         def operation():
@@ -3458,6 +3646,10 @@ class AssetBreakdownWindow(QMainWindow):
                 "feedback": feedback,
                 "images_sent": len(images),
                 "target_tool": context.target_tool,
+                "plan_id": plan_id,
+                "plan_fingerprint": exact_plan_fingerprint,
+                "plan_name": plan_name,
+                "source_understanding_id": understanding_id,
                 "output": output,
                 "execution": execution,
             }
@@ -3512,6 +3704,12 @@ class AssetBreakdownWindow(QMainWindow):
             change_summary=str(output["change_summary"]),
             provider_id=execution.response.provider_id,
             model_id=execution.response.model_id,
+            plan_id=str(result.get("plan_id", "")),
+            plan_fingerprint=str(result.get("plan_fingerprint", "")),
+            plan_name=str(result.get("plan_name", "")),
+            source_understanding_id=str(
+                result.get("source_understanding_id", "")
+            ),
             created_at=now,
         )
         if result["mode"] == "initial":
@@ -3567,7 +3765,7 @@ class AssetBreakdownWindow(QMainWindow):
                         role="assistant",
                         content=(
                             revision.change_summary
-                            or "已按你的意见修订提示语。"
+                            or "已按本次要求生成修订版本。"
                         ),
                         created_at=now,
                     ),
@@ -3593,6 +3791,11 @@ class AssetBreakdownWindow(QMainWindow):
                     "target_tool": revision.target_tool,
                     "images_sent": result["images_sent"],
                     "base_revision_id": result["base_revision_id"],
+                    "plan_id": revision.plan_id,
+                    "plan_fingerprint": revision.plan_fingerprint,
+                    "source_understanding_id": (
+                        revision.source_understanding_id
+                    ),
                 },
                 "result_summary": {
                     "session_id": session.session_id,
@@ -3610,9 +3813,9 @@ class AssetBreakdownWindow(QMainWindow):
         self.prompt_panel.feedback_edit.clear()
         self.prompt_panel.status_label.setText(
             (
-                "AI 修订已保存；可继续协商、手动编辑或复制。"
+                "状态：新版本已保存 · 可继续修订、编辑或复制"
                 if result["mode"] == "refine"
-                else "提示语初稿已保存；可继续协商、手动编辑或复制。"
+                else "状态：初稿已保存 · 可继续修订、编辑或复制"
             )
         )
 
@@ -3684,6 +3887,10 @@ class AssetBreakdownWindow(QMainWindow):
             change_summary="用户在 GATalk 内手动编辑并保存。",
             provider_id="user",
             model_id="",
+            plan_id=base.plan_id,
+            plan_fingerprint=base.plan_fingerprint,
+            plan_name=base.plan_name,
+            source_understanding_id=base.source_understanding_id,
             created_at=now,
         )
         updated = replace(
@@ -3724,7 +3931,7 @@ class AssetBreakdownWindow(QMainWindow):
     def _cancel_prompt_request(self) -> None:
         if self._prompt_cancellation is not None:
             self._prompt_cancellation.cancel()
-            self.prompt_panel.status_label.setText("正在取消提示语 AI 请求…")
+            self.prompt_panel.status_label.setText("状态：正在取消请求…")
 
     def _export_package(self) -> None:
         if self._store is None or self._state is None:
@@ -4423,12 +4630,12 @@ class AssetBreakdownWindow(QMainWindow):
             self._ai_cancellation = None
             self.understand_button.setEnabled(True)
             self.cancel_understanding_button.setEnabled(False)
-            title = "AI 场景理解失败"
+            title = "场景结构分析失败"
         elif kind == "ai":
             self._ai_cancellation = None
             self.analyze_button.setEnabled(True)
             self.cancel_analysis_button.setEnabled(False)
-            title = "AI 资产拆分失败"
+            title = "资产清单生成失败"
         elif kind == "generate":
             self._image_cancellation = None
             self.generate_button.setEnabled(True)
@@ -4438,13 +4645,13 @@ class AssetBreakdownWindow(QMainWindow):
             self._automatic_cancellation = None
             self.auto_start_button.setEnabled(True)
             self.auto_cancel_button.setEnabled(False)
-            self.auto_status.setText("全自动资产板失败；请查看错误原因。")
-            title = "全自动资产板失败"
+            self.auto_status.setText("状态：自动资产板失败 · 请查看错误原因")
+            title = "自动资产板失败"
         elif kind == "prompt":
             self._prompt_cancellation = None
             self.prompt_panel.set_busy(False)
             self.prompt_panel.status_label.setText(
-                "提示语 AI 请求失败；已有会话和手动内容没有丢失。"
+                "提示语生成失败；已有版本和手动内容均已保留。"
             )
             title = "资产拆分提示语失败"
         else:

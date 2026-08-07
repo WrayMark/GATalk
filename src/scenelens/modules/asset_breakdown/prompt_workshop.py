@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib.resources import files
 import json
 from typing import Any, Mapping, Sequence
@@ -30,6 +30,9 @@ class AssetPromptContext:
     target_tool: str
     image_metadata: Mapping[str, Any]
     supplemental_references: tuple[Mapping[str, Any], ...] = ()
+    scene_understanding: Mapping[str, Any] = field(default_factory=dict)
+    breakdown_plan: Mapping[str, Any] = field(default_factory=dict)
+    study_handoff: Mapping[str, Any] = field(default_factory=dict)
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -45,6 +48,9 @@ class AssetPromptContext:
             "supplemental_references": [
                 dict(item) for item in self.supplemental_references
             ],
+            "scene_understanding": dict(self.scene_understanding),
+            "breakdown_plan": dict(self.breakdown_plan),
+            "study_handoff": dict(self.study_handoff),
         }
 
 
@@ -56,6 +62,11 @@ class AssetPromptWorkshopReview:
         "给其他图像生成工具的提示语，并根据用户反馈继续修订。"
         "先识别原画中可见的建筑、模块构件、道具、植被、地形、材质、贴花、"
         "远景、角色载具和灯光特效代理，再组织成有制作价值的资产组。"
+        "若输入包含 breakdown_plan，必须逐项服从类别拆分深度：0 不纳入，"
+        "1 只保留场景区域或整体对象，2 拆到完整装配体，3 拆到生产"
+        "套件，4 才继续拆分门窗、框架、檐口和装饰组件。"
+        "scene_understanding 和 study_handoff 用于说明空间层级、复用关系"
+        "与制作目标，但不得替代当前图片证据。"
         "提示语应要求输出整洁的资产拆分展示板：资产彼此分离、轮廓完整、"
         "不裁切、背景中性、设计语言一致、保留原画身份，必要时包含主视图和"
         "少量辅助视图。不要把原画中不可见的背面、内部结构或材质细节写成"
@@ -78,6 +89,9 @@ class AssetPromptWorkshopReview:
             "main_concept_image",
             "supplemental_reference_images",
             "project_context",
+            "scene_understanding",
+            "breakdown_plan",
+            "artwork_study_handoff",
             "current_prompt_revision",
             "user_feedback",
         ),

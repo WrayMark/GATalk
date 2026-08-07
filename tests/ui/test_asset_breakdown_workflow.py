@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from io import BytesIO
 
@@ -10,6 +11,12 @@ from PySide6.QtWidgets import QApplication, QLabel
 
 from scenelens.modules.asset_breakdown.service import create_manual_asset
 from scenelens.modules.asset_breakdown.storage import AssetBreakdownStore
+from scenelens.modules.asset_breakdown.models import (
+    AssetPromptSession,
+    AutomaticAssetRun,
+    PromptRevision,
+)
+from scenelens.modules.asset_breakdown.planning import plan_fingerprint
 from scenelens.modules.asset_breakdown.prompt_workshop import (
     AssetPromptContext,
 )
@@ -301,7 +308,7 @@ def test_prompt_workshop_creates_edits_copies_and_restores(
     qtbot.addWidget(window)
     window._attach_store(store)
     qtbot.waitUntil(lambda: window._loaded is not None, timeout=5000)
-    assert window.workflow_tabs.tabText(2) == "资产拆分提示语"
+    assert window.workflow_tabs.tabText(2) == "生成提示语"
 
     request = window._prompt_reviewer.create_request(
         AssetPromptContext(
@@ -394,3 +401,80 @@ def test_prompt_workshop_creates_edits_copies_and_restores(
         reopened.state.prompt_sessions[0].revisions[-1].prompt_zh
     )
     reopened.close()
+
+
+def test_all_asset_workflows_share_plan_and_mark_old_outputs(
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "方案来源.png"
+    _complex_scene(image_path, "village")
+    store = AssetBreakdownStore.create(
+        tmp_path / "方案追踪.scenelens-assets",
+        "方案追踪",
+    )
+    main = store.import_image(image_path, "main")
+    plan = store.state.breakdown_plans[0]
+    fingerprint = plan_fingerprint(plan)
+    store.append_automatic_run(
+        AutomaticAssetRun(
+            run_id="run-plan",
+            status="completed",
+            source_image_sha256=main.sha256,
+            vision_provider_id="mock",
+            vision_model_id="mock-vision-v1",
+            image_provider_id="mock",
+            image_model_id="mock-image-v1",
+            output_kind="isolated_concept",
+            asset_limit=4,
+            plan_id=plan.plan_id,
+            plan_fingerprint=fingerprint,
+            plan_name=plan.name,
+            created_at="now",
+        )
+    )
+    revision = PromptRevision(
+        revision_id="revision-plan",
+        origin="ai",
+        title="生产套件提示语",
+        target_tool="generic",
+        analysis_summary="按当前生产套件拆分。",
+        prompt_zh="生成生产套件展示板。",
+        prompt_en="Create a production kit board.",
+        negative_prompt="",
+        plan_id=plan.plan_id,
+        plan_fingerprint=fingerprint,
+        plan_name=plan.name,
+        created_at="now",
+    )
+    store.add_or_replace_prompt_session(
+        AssetPromptSession(
+            session_id="session-plan",
+            title=revision.title,
+            source_image_sha256=main.sha256,
+            target_tool="generic",
+            revisions=(revision,),
+            created_at="now",
+            updated_at="now",
+        )
+    )
+    window = AssetBreakdownWindow()
+    qtbot.addWidget(window)
+    window._attach_store(store)
+    qtbot.waitUntil(lambda: window._loaded is not None, timeout=5000)
+    assert window.context_plan_combo.currentData() == plan.plan_id
+    assert "旧版依据" not in window.auto_run_list.item(0).text()
+
+    changed = replace(
+        plan,
+        category_depths={**plan.category_depths, "building": 4},
+    )
+    window._store.add_or_replace_plan(changed)
+    window._state = window._store.state
+    window._refresh_plans(changed.plan_id)
+    window._refresh_automatic_runs(select_run_id="run-plan")
+    window._refresh_prompt_sessions(select_session_id="session-plan")
+
+    assert "旧版依据" in window.auto_run_list.item(0).text()
+    assert "与当前方案不一致" in window.prompt_panel.basis_label.text()
+    window.close()

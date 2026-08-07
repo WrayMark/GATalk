@@ -167,7 +167,7 @@ def test_automatic_runs_are_independent_and_restore(
     reopened.close()
 
 
-def test_v3_asset_project_is_backed_up_before_v4_migration(
+def test_v3_asset_project_is_backed_up_before_v5_migration(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "migrate.scenelens-assets"
@@ -188,8 +188,8 @@ def test_v3_asset_project_is_backed_up_before_v4_migration(
     migrated.close()
 
     updated = json.loads(entry.read_text(encoding="utf-8"))
-    assert updated["format_version"] == 4
-    assert updated["module_schema_version"] == 4
+    assert updated["format_version"] == 5
+    assert updated["module_schema_version"] == 5
     assert updated["state"]["breakdown_plans"]
     assert updated["state"]["selected_plan_id"]
     backups = list((root / "backups").glob("asset_project.v3.*.json"))
