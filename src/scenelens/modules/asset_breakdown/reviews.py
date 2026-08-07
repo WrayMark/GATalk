@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib.resources import files
 import json
 from typing import Any, Mapping
@@ -29,6 +29,9 @@ class AssetBreakdownContext:
     production_goal: str
     image_metadata: Mapping[str, Any]
     supplemental_references: tuple[Mapping[str, Any], ...]
+    scene_understanding: Mapping[str, Any] = field(default_factory=dict)
+    breakdown_plan: Mapping[str, Any] = field(default_factory=dict)
+    study_handoff: Mapping[str, Any] = field(default_factory=dict)
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -43,6 +46,9 @@ class AssetBreakdownContext:
             "supplemental_references": [
                 dict(item) for item in self.supplemental_references
             ],
+            "scene_understanding": dict(self.scene_understanding),
+            "breakdown_plan": dict(self.breakdown_plan),
+            "study_handoff": dict(self.study_handoff),
             "coordinate_contract": {
                 "space": "EXIF-corrected main image",
                 "format": "[x,y,width,height]",
@@ -77,6 +83,12 @@ class AssetBreakdownReview:
         "不可见背面、精确尺寸、拓扑、材质节点、UE Actor 数量或性能收益。"
         "同一对象不要在父级与零件级重复计数：层级用 parent_asset_id 和"
         "level 表示。asset_id 使用简短稳定的 snake_case ID，引用必须存在。"
+        "如果输入包含 breakdown_plan，必须严格服从其中各类别的 depth：0 不列出，"
+        "1 只列场景区域或整体对象，2 列完整装配体，3 列生产套件，4 才继续列"
+        "门窗、框架、檐口、栏杆和装饰等细节组件。不同方案必须能够对同一原画"
+        "产生不同层级的清单，不要擅自混入未选择的更细层级。"
+        "scene_understanding 与 study_handoff 只提供上下文；当前图像证据和用户"
+        "确认的方案优先。"
         "最多列出 48 个真正影响制作规划的资产，不把每块砖或每片叶子拆成"
         "独立资产。如果输入包含 automatic_asset_limit，则资产数量不得超过该值，"
         "并优先保留英雄资产、关键模块套件和高复用项目。"
@@ -87,12 +99,15 @@ class AssetBreakdownReview:
         module_id=MODULE_ID,
         reviewer_id="asset_breakdown_review",
         display_name="游戏场景资产拆分",
-        version="1.1.0",
+        version="1.2.0",
         supported_inputs=(
             "main_concept_image",
             "supplemental_reference_images",
             "scene_profile",
             "production_goal",
+            "scene_understanding",
+            "breakdown_plan",
+            "artwork_study_handoff",
         ),
         output_schema=load_asset_breakdown_schema(),
     )

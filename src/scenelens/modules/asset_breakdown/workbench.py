@@ -4,6 +4,9 @@ from scenelens.modules.asset_breakdown.prompt_workshop import (
     AssetPromptWorkshopReview,
 )
 from scenelens.modules.asset_breakdown.reviews import AssetBreakdownReview
+from scenelens.modules.asset_breakdown.advisory import (
+    AssetBreakdownAdvisoryReview,
+)
 
 
 def register_asset_breakdown_workbench(
@@ -14,8 +17,9 @@ def register_asset_breakdown_workbench(
             module_id=MODULE_ID,
             workspace_id=WORKSPACE_ID,
             display_name="资产拆分工作台",
-            version="0.10.0",
+            version="0.11.0",
         )
     )
     registry.register_reviewer(AssetBreakdownReview())
     registry.register_reviewer(AssetPromptWorkshopReview())
+    registry.register_reviewer(AssetBreakdownAdvisoryReview())

@@ -83,6 +83,7 @@ class AssetItem:
     name: str
     category: str
     semantic_type: str
+    plan_id: str = ""
     parent_asset_id: str = ""
     level: int = 0
     normalized_rect: tuple[float, float, float, float] = (
@@ -139,6 +140,7 @@ class AssetItem:
             name=str(value["name"]),
             category=str(value.get("category", "unknown")),
             semantic_type=str(value.get("semantic_type", "")),
+            plan_id=str(value.get("plan_id", "")),
             parent_asset_id=str(value.get("parent_asset_id", "")),
             level=int(value.get("level", 0)),
             normalized_rect=tuple(
@@ -181,6 +183,201 @@ class AssetItem:
             **changes,
             user_modified=True,
             updated_at=updated_at,
+        )
+
+
+@dataclass(frozen=True)
+class StudyHandoffSnapshot:
+    """Editable local snapshot handed from 作品研究 to 资产拆分."""
+
+    handoff_id: str
+    source_module_id: str
+    source_project_id: str
+    source_project_title: str
+    source_project_path: str
+    source_image_sha256: str
+    work_type: str
+    study_goal: str
+    known_context: str
+    personal_notes: str
+    local_analysis: Mapping[str, Any] = field(default_factory=dict)
+    ai_review: Mapping[str, Any] = field(default_factory=dict)
+    user_adjustments: str = ""
+    imported_at: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> StudyHandoffSnapshot:
+        return cls(
+            handoff_id=str(value["handoff_id"]),
+            source_module_id=str(value.get("source_module_id", "")),
+            source_project_id=str(value.get("source_project_id", "")),
+            source_project_title=str(value.get("source_project_title", "")),
+            source_project_path=str(value.get("source_project_path", "")),
+            source_image_sha256=str(value.get("source_image_sha256", "")),
+            work_type=str(value.get("work_type", "")),
+            study_goal=str(value.get("study_goal", "")),
+            known_context=str(value.get("known_context", "")),
+            personal_notes=str(value.get("personal_notes", "")),
+            local_analysis=dict(value.get("local_analysis", {})),
+            ai_review=dict(value.get("ai_review", {})),
+            user_adjustments=str(value.get("user_adjustments", "")),
+            imported_at=str(value.get("imported_at", "")),
+        )
+
+
+@dataclass(frozen=True)
+class SceneUnderstanding:
+    understanding_id: str
+    source_image_sha256: str
+    scene_archetype: str
+    summary: str
+    spatial_structure: tuple[str, ...] = ()
+    production_systems: tuple[str, ...] = ()
+    asset_families: tuple[Mapping[str, Any], ...] = ()
+    visible_evidence: tuple[str, ...] = ()
+    uncertainties: tuple[str, ...] = ()
+    user_corrections: str = ""
+    provider_id: str = ""
+    model_id: str = ""
+    analyzer_version: str = ""
+    user_confirmed: bool = False
+    created_at: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> SceneUnderstanding:
+        return cls(
+            understanding_id=str(value["understanding_id"]),
+            source_image_sha256=str(value.get("source_image_sha256", "")),
+            scene_archetype=str(value.get("scene_archetype", "")),
+            summary=str(value.get("summary", "")),
+            spatial_structure=tuple(
+                str(item) for item in value.get("spatial_structure", ())
+            ),
+            production_systems=tuple(
+                str(item) for item in value.get("production_systems", ())
+            ),
+            asset_families=tuple(
+                dict(item) for item in value.get("asset_families", ())
+            ),
+            visible_evidence=tuple(
+                str(item) for item in value.get("visible_evidence", ())
+            ),
+            uncertainties=tuple(
+                str(item) for item in value.get("uncertainties", ())
+            ),
+            user_corrections=str(value.get("user_corrections", "")),
+            provider_id=str(value.get("provider_id", "")),
+            model_id=str(value.get("model_id", "")),
+            analyzer_version=str(value.get("analyzer_version", "")),
+            user_confirmed=bool(value.get("user_confirmed", False)),
+            created_at=str(value.get("created_at", "")),
+        )
+
+
+@dataclass(frozen=True)
+class BreakdownPlan:
+    plan_id: str
+    name: str
+    preset_id: str
+    purpose: str
+    scope: str
+    category_depths: Mapping[str, int]
+    grouping_strategy: str = "asset_family"
+    max_items_per_page: int = 9
+    source_understanding_id: str = ""
+    status: str = "draft"
+    user_notes: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "category_depths",
+            {
+                str(key): max(0, min(4, int(value)))
+                for key, value in self.category_depths.items()
+                if str(key) in ASSET_CATEGORIES
+            },
+        )
+        object.__setattr__(
+            self,
+            "max_items_per_page",
+            max(1, min(24, int(self.max_items_per_page))),
+        )
+        if self.status not in {"draft", "confirmed"}:
+            object.__setattr__(self, "status", "draft")
+
+    @property
+    def included_categories(self) -> tuple[str, ...]:
+        return tuple(
+            category
+            for category in ASSET_CATEGORIES
+            if int(self.category_depths.get(category, 0)) > 0
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> BreakdownPlan:
+        return cls(
+            plan_id=str(value["plan_id"]),
+            name=str(value.get("name", "未命名拆分方案")),
+            preset_id=str(value.get("preset_id", "custom")),
+            purpose=str(value.get("purpose", "")),
+            scope=str(value.get("scope", "whole_scene")),
+            category_depths={
+                str(key): int(depth)
+                for key, depth in dict(
+                    value.get("category_depths", {})
+                ).items()
+            },
+            grouping_strategy=str(
+                value.get("grouping_strategy", "asset_family")
+            ),
+            max_items_per_page=int(value.get("max_items_per_page", 9)),
+            source_understanding_id=str(
+                value.get("source_understanding_id", "")
+            ),
+            status=str(value.get("status", "draft")),
+            user_notes=str(value.get("user_notes", "")),
+            created_at=str(value.get("created_at", "")),
+            updated_at=str(value.get("updated_at", "")),
+        )
+
+
+@dataclass(frozen=True)
+class AssetBoardPage:
+    page_id: str
+    plan_id: str
+    title: str
+    group_key: str
+    page_index: int
+    asset_ids: tuple[str, ...]
+    relative_path: str
+    created_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> AssetBoardPage:
+        return cls(
+            page_id=str(value["page_id"]),
+            plan_id=str(value.get("plan_id", "")),
+            title=str(value.get("title", "")),
+            group_key=str(value.get("group_key", "")),
+            page_index=max(1, int(value.get("page_index", 1))),
+            asset_ids=tuple(str(item) for item in value.get("asset_ids", ())),
+            relative_path=str(value.get("relative_path", "")),
+            created_at=str(value.get("created_at", "")),
         )
 
 
@@ -236,6 +433,7 @@ class AutomaticAssetRun:
     assets: tuple[AssetItem, ...] = ()
     generations: tuple[GenerationRecord, ...] = ()
     board_relative_path: str = ""
+    board_relative_paths: tuple[str, ...] = ()
     manifest_relative_path: str = ""
     repair_notes: tuple[str, ...] = ()
     error_summary: str = ""
@@ -265,6 +463,14 @@ class AutomaticAssetRun:
                 for item in value.get("generations", ())
             ),
             board_relative_path=str(value.get("board_relative_path", "")),
+            board_relative_paths=tuple(
+                str(item)
+                for item in value.get("board_relative_paths", ())
+            ) or (
+                (str(value.get("board_relative_path")),)
+                if value.get("board_relative_path")
+                else ()
+            ),
             manifest_relative_path=str(
                 value.get("manifest_relative_path", "")
             ),
@@ -400,6 +606,10 @@ class AssetBreakdownState:
     generations: tuple[GenerationRecord, ...] = ()
     automatic_runs: tuple[AutomaticAssetRun, ...] = ()
     prompt_sessions: tuple[AssetPromptSession, ...] = ()
+    study_handoffs: tuple[StudyHandoffSnapshot, ...] = ()
+    scene_understandings: tuple[SceneUnderstanding, ...] = ()
+    breakdown_plans: tuple[BreakdownPlan, ...] = ()
+    board_pages: tuple[AssetBoardPage, ...] = ()
     ai_runs: tuple[Mapping[str, Any], ...] = ()
     exports: tuple[Mapping[str, Any], ...] = ()
     selected_asset_id: str = ""
@@ -408,6 +618,9 @@ class AssetBreakdownState:
     center_y: float = 0.5
     regions_visible: bool = True
     selected_prompt_session_id: str = ""
+    selected_handoff_id: str = ""
+    selected_understanding_id: str = ""
+    selected_plan_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
@@ -446,6 +659,22 @@ class AssetBreakdownState:
                 AssetPromptSession.from_dict(item)
                 for item in value.get("prompt_sessions", ())
             ),
+            study_handoffs=tuple(
+                StudyHandoffSnapshot.from_dict(item)
+                for item in value.get("study_handoffs", ())
+            ),
+            scene_understandings=tuple(
+                SceneUnderstanding.from_dict(item)
+                for item in value.get("scene_understandings", ())
+            ),
+            breakdown_plans=tuple(
+                BreakdownPlan.from_dict(item)
+                for item in value.get("breakdown_plans", ())
+            ),
+            board_pages=tuple(
+                AssetBoardPage.from_dict(item)
+                for item in value.get("board_pages", ())
+            ),
             ai_runs=tuple(dict(item) for item in value.get("ai_runs", ())),
             exports=tuple(dict(item) for item in value.get("exports", ())),
             selected_asset_id=str(value.get("selected_asset_id", "")),
@@ -456,6 +685,11 @@ class AssetBreakdownState:
             selected_prompt_session_id=str(
                 value.get("selected_prompt_session_id", "")
             ),
+            selected_handoff_id=str(value.get("selected_handoff_id", "")),
+            selected_understanding_id=str(
+                value.get("selected_understanding_id", "")
+            ),
+            selected_plan_id=str(value.get("selected_plan_id", "")),
         )
 
     @property

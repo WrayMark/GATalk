@@ -48,6 +48,7 @@ from scenelens.analysis.shared_palette import (
     palette_membership_mask,
     render_palette_source_mask,
 )
+from scenelens.core.handoffs import WorkspaceHandoff
 from scenelens.imaging.loader import LoadedImage, load_image
 from scenelens.imaging.provider_export import (
     ProviderImageExportOptions,
@@ -173,6 +174,7 @@ class ArtworkDisclosureDialog(QDialog):
 
 class ArtworkStudyWindow(QMainWindow):
     workspace_home_requested = Signal()
+    asset_breakdown_requested = Signal(object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -249,6 +251,10 @@ class ArtworkStudyWindow(QMainWindow):
         self.import_action.triggered.connect(self._choose_image)
         self.export_action = QAction("导出研究 JSON…", self)
         self.export_action.triggered.connect(self._export_review)
+        self.asset_breakdown_action = QAction("交给资产拆分…", self)
+        self.asset_breakdown_action.triggered.connect(
+            self._send_to_asset_breakdown
+        )
 
         file_menu = self.menuBar().addMenu("文件")
         for action in (
@@ -258,6 +264,7 @@ class ArtworkStudyWindow(QMainWindow):
             self.save_action,
             self.import_action,
             self.export_action,
+            self.asset_breakdown_action,
         ):
             file_menu.addAction(action)
         escape = QAction("退出遮罩或标注", self)
@@ -276,6 +283,7 @@ class ArtworkStudyWindow(QMainWindow):
         toolbar.addAction(self.open_action)
         toolbar.addAction(self.save_action)
         toolbar.addAction(self.import_action)
+        toolbar.addAction(self.asset_breakdown_action)
         toolbar.addSeparator()
         toolbar.addWidget(QLabel("观察："))
         self.mode_combo = QComboBox()
@@ -1056,6 +1064,47 @@ class ArtworkStudyWindow(QMainWindow):
             QMessageBox.warning(self, "导出失败", str(exc))
         else:
             self.statusBar().showMessage(f"已导出：{path}")
+
+    def _send_to_asset_breakdown(self) -> None:
+        if self._store is None or self._state is None:
+            QMessageBox.information(
+                self,
+                "没有作品研究",
+                "请先新建或打开作品研究。",
+            )
+            return
+        self._save_state(force=True)
+        image_path = self._store.image_path()
+        if image_path is None or not self._state.image_sha256:
+            QMessageBox.information(
+                self,
+                "缺少作品图片",
+                "请先导入作品，再交给资产拆分工作台。",
+            )
+            return
+        handoff = WorkspaceHandoff(
+            source_module_id="scenelens.artwork_study",
+            source_workspace_id="artwork_study",
+            source_project_id=self._state.study_id,
+            source_project_title=self._state.title,
+            content_type="artwork_study_to_asset_breakdown",
+            primary_image_path=str(image_path),
+            primary_image_sha256=self._state.image_sha256,
+            payload={
+                "work_type": self._state.work_type,
+                "study_goal": self._state.study_goal,
+                "known_context": self._state.known_context,
+                "personal_notes": self._state.personal_notes,
+                "local_analysis": dict(self._state.local_analysis),
+                "ai_review": dict(self._state.ai_review),
+            },
+            created_at=utc_now(),
+        )
+        self.asset_breakdown_requested.emit(handoff)
+        self.statusBar().showMessage(
+            "已创建只读交接快照；请在资产拆分工作台选择保存位置。",
+            5000,
+        )
 
     def _save_state(self, force: bool = False) -> None:
         if self._store is None or self._state is None:

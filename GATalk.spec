@@ -16,7 +16,7 @@ a = Analysis(
                 / 'modules'
                 / 'asset_breakdown'
                 / 'config'
-                / 'scene_profiles.json'
+                / '*.json'
             ),
             'scenelens/modules/asset_breakdown/config',
         ),

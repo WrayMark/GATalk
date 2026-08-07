@@ -12,6 +12,7 @@ from scenelens.modules.artwork_study.reviews import (
 )
 from scenelens.modules.artwork_study.storage import ArtworkStudyStore
 from scenelens.modules.artwork_study.ui.window import ArtworkStudyWindow
+from scenelens.core.handoffs import WorkspaceHandoff
 from scenelens.providers.contracts import (
     CancellationToken,
     ProviderImage,
@@ -69,6 +70,33 @@ def test_artwork_study_window_loads_analyzes_and_restores_project(
     assert reopened.state.study_goal == "学习空间与色彩"
     assert reopened.state.personal_notes == "个人判断"
     assert reopened.state.local_analysis["analyzer_id"]
+
+
+def test_artwork_study_emits_editable_asset_breakdown_handoff(
+    qtbot, tmp_path
+) -> None:
+    source = tmp_path / "寺院 原画.png"
+    Image.new("RGB", (120, 80), (50, 80, 100)).save(source)
+    store = ArtworkStudyStore.create(
+        tmp_path / "寺院研究.scenelens-study",
+        "寺院研究",
+    )
+    store.import_image(source)
+    window = ArtworkStudyWindow()
+    qtbot.addWidget(window)
+    window._set_store(ArtworkStudyStore.open(store.root))
+    qtbot.waitUntil(lambda: window._loaded is not None, timeout=5000)
+    window.goal_edit.setPlainText("理解建筑族与空间层级")
+    window.notes_edit.setPlainText("中央高塔是地标")
+    received = []
+    window.asset_breakdown_requested.connect(received.append)
+    window._send_to_asset_breakdown()
+    assert len(received) == 1
+    handoff = received[0]
+    assert isinstance(handoff, WorkspaceHandoff)
+    assert handoff.primary_image_sha256 == store.state.image_sha256
+    assert handoff.payload["personal_notes"] == "中央高塔是地标"
+    assert "image_path" not in handoff.payload
 
 
 def test_artwork_result_status_is_chinese_and_old_english_is_hidden(qtbot):

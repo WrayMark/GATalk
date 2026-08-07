@@ -13,6 +13,10 @@ from scenelens.modules.asset_breakdown.models import (
     GenerationRecord,
     PromptMessage,
     PromptRevision,
+    StudyHandoffSnapshot,
+)
+from scenelens.modules.asset_breakdown.planning import (
+    create_plan_from_preset,
 )
 from scenelens.modules.asset_breakdown.service import create_manual_asset
 from scenelens.modules.asset_breakdown.storage import AssetBreakdownStore
@@ -163,7 +167,7 @@ def test_automatic_runs_are_independent_and_restore(
     reopened.close()
 
 
-def test_v2_asset_project_is_backed_up_before_v3_migration(
+def test_v3_asset_project_is_backed_up_before_v4_migration(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "migrate.scenelens-assets"
@@ -171,10 +175,10 @@ def test_v2_asset_project_is_backed_up_before_v3_migration(
     store.close()
     entry = root / "asset_project.json"
     payload = json.loads(entry.read_text(encoding="utf-8"))
-    payload["format_version"] = 2
-    payload["module_schema_version"] = 2
-    payload["state"].pop("prompt_sessions", None)
-    payload["state"].pop("selected_prompt_session_id", None)
+    payload["format_version"] = 3
+    payload["module_schema_version"] = 3
+    payload["state"].pop("breakdown_plans", None)
+    payload["state"].pop("selected_plan_id", None)
     entry.write_text(
         json.dumps(payload, ensure_ascii=False),
         encoding="utf-8",
@@ -184,9 +188,11 @@ def test_v2_asset_project_is_backed_up_before_v3_migration(
     migrated.close()
 
     updated = json.loads(entry.read_text(encoding="utf-8"))
-    assert updated["format_version"] == 3
-    assert updated["module_schema_version"] == 3
-    backups = list((root / "backups").glob("asset_project.v2.*.json"))
+    assert updated["format_version"] == 4
+    assert updated["module_schema_version"] == 4
+    assert updated["state"]["breakdown_plans"]
+    assert updated["state"]["selected_plan_id"]
+    backups = list((root / "backups").glob("asset_project.v3.*.json"))
     assert len(backups) == 1
 
 
@@ -251,3 +257,78 @@ def test_prompt_sessions_restore_without_touching_source_image(
     assert reopened.state.selected_prompt_session_id == "session-1"
     assert source.read_bytes() == original
     reopened.close()
+
+
+def test_study_handoff_and_multiple_breakdown_plans_restore(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "研究原画.png"
+    original = _image(source, (40, 100, 70))
+    root = tmp_path / "交接 项目.scenelens-assets"
+    store = AssetBreakdownStore.create(root, "交接项目")
+    main = store.import_image(source, "main")
+    handoff = StudyHandoffSnapshot(
+        handoff_id="handoff-1",
+        source_module_id="scenelens.artwork_study",
+        source_project_id="study-1",
+        source_project_title="寺院研究",
+        source_project_path="C:/本地/寺院.scenelens-study",
+        source_image_sha256=main.sha256,
+        work_type="environment_concept",
+        study_goal="理解空间层次",
+        known_context="东方幻想",
+        personal_notes="中央塔楼是地标。",
+        user_adjustments="远景只作为视觉元素。",
+        imported_at=utc_now(),
+    )
+    store.add_or_replace_handoff(handoff)
+    assembly = create_plan_from_preset("assembly_set")
+    details = create_plan_from_preset("detail_components")
+    store.add_or_replace_plan(assembly)
+    store.add_or_replace_plan(details)
+    store.close()
+
+    reopened = AssetBreakdownStore.open(root)
+    assert reopened.state.study_handoffs[0].personal_notes == "中央塔楼是地标。"
+    assert {item.preset_id for item in reopened.state.breakdown_plans} >= {
+        "assembly_set",
+        "detail_components",
+    }
+    assert reopened.state.selected_plan_id == details.plan_id
+    assert source.read_bytes() == original
+    reopened.close()
+
+
+def test_assets_are_isolated_by_breakdown_plan(tmp_path: Path) -> None:
+    source = tmp_path / "scene.png"
+    _image(source, (20, 30, 40))
+    store = AssetBreakdownStore.create(
+        tmp_path / "plans.scenelens-assets",
+        "方案隔离",
+    )
+    main = store.import_image(source, "main")
+    first_plan = store.state.breakdown_plans[0]
+    second_plan = create_plan_from_preset("detail_components")
+    store.add_or_replace_plan(second_plan)
+    first_asset = create_manual_asset(
+        name="完整塔楼",
+        category="building",
+        rect=(0.1, 0.1, 0.3, 0.6),
+        source_image_id=main.image_id,
+        plan_id=first_plan.plan_id,
+    )
+    second_asset = create_manual_asset(
+        name="塔楼窗框",
+        category="modular_piece",
+        rect=(0.2, 0.2, 0.1, 0.1),
+        source_image_id=main.image_id,
+        plan_id=second_plan.plan_id,
+    )
+    store.add_or_replace_asset(first_asset)
+    store.add_or_replace_asset(second_asset)
+    assert first_asset.plan_id != second_asset.plan_id
+    store.delete_plan(second_plan.plan_id)
+    assert {item.asset_id for item in store.state.assets} == {
+        first_asset.asset_id
+    }
+    store.close()

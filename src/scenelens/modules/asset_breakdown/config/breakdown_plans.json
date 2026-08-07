@@ -1,0 +1,82 @@
+{
+  "format_version": 1,
+  "depth_levels": [
+    {"value": 0, "label": "不纳入", "description": "当前方案忽略该类别。"},
+    {"value": 1, "label": "场景／整体", "description": "只保留区域、群组或完整对象。"},
+    {"value": 2, "label": "装配体", "description": "拆到完整建筑、塔楼、桥梁、岩组或植被群落。"},
+    {"value": 3, "label": "生产套件", "description": "拆到可复用结构段、模块件、物种和材质系统。"},
+    {"value": 4, "label": "细节组件", "description": "继续拆门窗、栏杆、檐口、装饰、变体等细节。"}
+  ],
+  "presets": [
+    {
+      "id": "spatial_layout",
+      "name": "关卡空间与整体",
+      "purpose": "理解区域、地标、道路、前中后景和主要装配体，不急于拆零件。",
+      "scope": "whole_scene",
+      "grouping_strategy": "spatial_system",
+      "max_items_per_page": 8,
+      "category_depths": {
+        "building": 1, "modular_piece": 0, "prop": 1,
+        "vegetation": 1, "terrain": 1, "material": 0,
+        "decal": 0, "background": 1, "lighting_vfx": 1,
+        "character_vehicle": 1, "unknown": 0
+      }
+    },
+    {
+      "id": "assembly_set",
+      "name": "完整建筑与装配体",
+      "purpose": "拆出可独立评审的完整建筑群、塔楼、桥梁、岩组、植被群落和主要道具组合。",
+      "scope": "whole_scene",
+      "grouping_strategy": "asset_family",
+      "max_items_per_page": 9,
+      "category_depths": {
+        "building": 2, "modular_piece": 1, "prop": 2,
+        "vegetation": 2, "terrain": 2, "material": 1,
+        "decal": 1, "background": 1, "lighting_vfx": 1,
+        "character_vehicle": 2, "unknown": 1
+      }
+    },
+    {
+      "id": "production_kit",
+      "name": "可复用生产套件",
+      "purpose": "面向实际环境制作，识别复用模块、拼接边界、变体、材质系统与制作优先级。",
+      "scope": "whole_scene",
+      "grouping_strategy": "asset_family",
+      "max_items_per_page": 9,
+      "category_depths": {
+        "building": 3, "modular_piece": 3, "prop": 3,
+        "vegetation": 3, "terrain": 3, "material": 3,
+        "decal": 3, "background": 2, "lighting_vfx": 2,
+        "character_vehicle": 2, "unknown": 1
+      }
+    },
+    {
+      "id": "detail_components",
+      "name": "细节组件与变体",
+      "purpose": "在已确认的装配体内继续拆门窗、框架、栏杆、檐口、装饰、道具子件和控制变体。",
+      "scope": "selected_families",
+      "grouping_strategy": "hierarchy",
+      "max_items_per_page": 12,
+      "category_depths": {
+        "building": 4, "modular_piece": 4, "prop": 4,
+        "vegetation": 3, "terrain": 3, "material": 4,
+        "decal": 4, "background": 1, "lighting_vfx": 2,
+        "character_vehicle": 3, "unknown": 1
+      }
+    },
+    {
+      "id": "custom_mixed",
+      "name": "自定义混合层级",
+      "purpose": "为不同资产类别分别指定拆分深度。",
+      "scope": "whole_scene",
+      "grouping_strategy": "asset_family",
+      "max_items_per_page": 9,
+      "category_depths": {
+        "building": 3, "modular_piece": 3, "prop": 2,
+        "vegetation": 2, "terrain": 2, "material": 2,
+        "decal": 1, "background": 1, "lighting_vfx": 1,
+        "character_vehicle": 2, "unknown": 1
+      }
+    }
+  ]
+}

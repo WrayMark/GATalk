@@ -15,6 +15,7 @@ def asset_from_ai(
     value: Mapping[str, Any],
     *,
     source_image_id: str,
+    plan_id: str = "",
 ) -> AssetItem:
     now = utc_now()
     return AssetItem(
@@ -22,6 +23,7 @@ def asset_from_ai(
         name=str(value.get("name") or "未命名资产"),
         category=str(value.get("category", "unknown")),
         semantic_type=str(value.get("semantic_type", "")),
+        plan_id=plan_id,
         parent_asset_id=str(value.get("parent_asset_id", "")),
         level=int(value.get("level", 0)),
         normalized_rect=validate_normalized_rect(
@@ -53,13 +55,22 @@ def asset_from_ai(
 def merge_ai_assets(
     existing: tuple[AssetItem, ...],
     incoming: tuple[AssetItem, ...],
+    *,
+    active_plan_id: str = "",
 ) -> tuple[AssetItem, ...]:
     """Preserve user-authored assets while replacing the previous AI layer."""
 
     retained = [
         asset
         for asset in existing
-        if asset.user_modified or asset.evidence_kind == "user_added"
+        if (
+            asset.user_modified
+            or asset.evidence_kind == "user_added"
+            or (
+                active_plan_id
+                and asset.plan_id != active_plan_id
+            )
+        )
     ]
     existing_ids = {asset.asset_id for asset in retained}
     for asset in incoming:
@@ -76,6 +87,7 @@ def create_manual_asset(
     category: str,
     rect: tuple[float, float, float, float],
     source_image_id: str,
+    plan_id: str = "",
 ) -> AssetItem:
     now = utc_now()
     return AssetItem(
@@ -83,6 +95,7 @@ def create_manual_asset(
         name=name.strip() or "新资产",
         category=category,
         semantic_type="用户补充",
+        plan_id=plan_id,
         normalized_rect=rect,
         evidence_kind="user_added",
         confidence=1.0,
@@ -153,6 +166,7 @@ def merge_assets(
         name=name.strip() or "合并资产",
         category=category,
         semantic_type="用户合并",
+        plan_id=assets[0].plan_id,
         normalized_rect=(left, top, right - left, bottom - top),
         evidence_kind="user_added",
         visible_evidence="由用户合并多个可见区域。",
@@ -163,4 +177,3 @@ def merge_assets(
         created_at=now,
         updated_at=now,
     )
-

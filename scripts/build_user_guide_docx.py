@@ -3,8 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from docx import Document
-from docx.enum.section import WD_SECTION
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
@@ -167,7 +165,6 @@ def build() -> None:
     section.footer_distance = Inches(0.492)
     configure_styles(document)
     bullet_id = add_numbering(document, bullet=True)
-    decimal_id = add_numbering(document, bullet=False)
 
     title = document.add_paragraph()
     title.paragraph_format.space_before = Pt(0)
@@ -182,8 +179,8 @@ def build() -> None:
     metadata.paragraph_format.space_after = Pt(14)
     set_font(
         metadata.add_run(
-            "适用版本：0.7.2（资产拆分工作台 · AI 引用修复）"
-            "　更新日期：2026-07-30"
+            "适用版本：0.11.0（生产级资产拆分规划）"
+            "　更新日期：2026-08-07"
         ),
         size=9.5,
         color=MUTED,
@@ -217,6 +214,7 @@ def build() -> None:
 
     add_heading(document, "3. 作品研究")
     add_heading(document, "最短流程", 2)
+    decimal_id = add_numbering(document, bullet=False)
     for text in (
         "在首页选择“作品研究”。",
         "点击“新建作品研究”，选择目录并输入标题。",
@@ -255,18 +253,40 @@ def build() -> None:
     )
 
     add_heading(document, "4. 资产拆分工作台")
+    add_heading(document, "从作品研究接续", 2)
+    decimal_id = add_numbering(document, bullet=False)
+    for text in (
+        "在作品研究中完成本地证据或 AI 专家拆解后，点击“交给资产拆分…”。",
+        "选择资产项目保存位置。GATalk 会复制原图原始字节并核对 SHA-256，同时带入研究目标、背景、笔记和分析摘要。",
+        "进入资产拆分后先检查“作品研究交接”，可修改交接说明；本地文件路径不会发送给 AI。",
+        "也可以直接新建资产项目并导入原画，不依赖作品研究。",
+    ):
+        add_list_item(document, text, decimal_id)
+    add_heading(document, "先理解，再选择拆分程度", 2)
+    decimal_id = add_numbering(document, bullet=False)
+    for text in (
+        "在“可校正拆分 → 场景理解与拆分方案”选择视觉供应商，查看发送清单并主动确认。",
+        "先检查 AI 对空间层级、建筑或自然系统、重复规律、遮挡和不确定性的理解，并写入人工修正。",
+        "从推荐方案中选择，或建立多个并存方案。常用预设包括空间总图、建筑／构筑物组、生产模块套件和细节构件。",
+        "建筑、道具、植被、地形、材质贴花、远景等类别可分别设置拆分深度；深度 0 表示本方案不纳入该类别。",
+        "确认方案后再生成资产清单。不同方案互不覆盖，可以针对同一原画分别得到整体建筑组、模块套件和门窗细件等结果。",
+        "AI 建议只是起点；用户可修改方案名称、用途、每类深度、分组方式、单页上限和备注。",
+    ):
+        add_list_item(document, text, decimal_id)
     add_heading(document, "最短流程", 2)
+    decimal_id = add_numbering(document, bullet=False)
     for text in (
         "在首页进入“资产拆分工作台”，新建资产项目。",
         "选择场景类型，填写制作目标，导入主原画；补充参考可选。",
-        "选择视觉供应商，查看发送清单并主动确认。",
+        "先完成场景理解，选择并确认当前拆分方案。",
+        "选择视觉供应商，查看资产清单发送内容并主动确认。",
         "检查资产分类、层级、复用组、优先级和原图区域。",
         "拖动区域或在“资产详情”修改名称、分类、父级、证据和制作策略。",
         "可新增、拆分、合并或删除资产；用户修订不会被后续 AI 覆盖。",
         "在清单第一列勾选需要生成的资产。",
         "在“生成与导出”选择独立概念图、保守遮挡补全图或评审展示图。",
         "查看发送清单并确认；取消时已完成项仍会保留。",
-        "导出单项图片、asset_board.png 和 asset_manifest.json。",
+        "导出单项图片、多页 asset_board_01.png 等展示板和 asset_manifest.json。",
     ):
         add_list_item(document, text, decimal_id)
     add_heading(document, "画布与遮罩", 2)
@@ -285,6 +305,13 @@ def build() -> None:
         "离线 Mock 只验证清单、保存、遮罩、生成和导出流程，不分析图片语义。",
     ):
         add_list_item(document, text, bullet_id)
+    add_heading(document, "多方案与多页展示板", 2)
+    for text in (
+        "同一项目可以保存多个拆分方案。资产、生成记录和展示板都绑定所属方案。",
+        "展示板可按资产家族／复用组、层级、空间系统或类别分组。内容超过单页上限时自动分页，不会强行缩小到一张难以阅读的图。",
+        "AI 生成的独立资产图和展示板仍是概念辅助，不等于生产模型、真实背面或确定结构。",
+    ):
+        add_list_item(document, text, bullet_id)
     add_heading(document, "AI 清单结构修复", 2)
     for text in (
         "AI 偶尔会返回不存在的父资产 ID、重复 ID 或循环父级。新版会保留资产，只取消或修正无法成立的引用，不要求重新消耗一次 API 调用。",
@@ -294,6 +321,7 @@ def build() -> None:
         add_list_item(document, text, bullet_id)
 
     add_heading(document, "5. 场景美术控制最短流程")
+    decimal_id = add_numbering(document, bullet=False)
     for text in (
         "点击“新建项目”，选择保存位置并命名。",
         "在左侧打开“制作意图”，填写目标风格、时间、天气、情绪、焦点和限制。",
@@ -334,6 +362,7 @@ def build() -> None:
         "显示暗部、中间调、亮部比例及百分点差。可调整阈值。这里只显示测量结果，不自动判断好坏。",
     )
     add_heading(document, "成对区域", 2)
+    decimal_id = add_numbering(document, bullet=False)
     for text in (
         "进入“区域模式”。",
         "分别在参考图和当前截图拖出矩形。",
@@ -356,6 +385,7 @@ def build() -> None:
         add_list_item(document, text, bullet_id)
 
     add_heading(document, "9. AI 审阅与灯光审片")
+    decimal_id = add_numbering(document, bullet=False)
     for text in (
         "优先选择“深度主美审阅（八维）”；专项灯光问题选择“灯光专项审阅”。",
         "无 API Key 时选择“离线 Mock”验证流程。",
@@ -406,6 +436,7 @@ def build() -> None:
         "显示明度、黑白灰、色板、彩度、冷暖和区域关系等维度。可修改权重。“估计匹配度”只代表当前算法和权重，不是作品质量评分。证据不足的维度不会自动猜测。",
     )
     add_heading(document, "安全调色", 2)
+    decimal_id = add_numbering(document, bullet=False)
     for text in (
         "调整曝光、对比、白平衡、阴影、中间调、亮部和彩度。",
         "选择全图或当前选中的配对区域。",
@@ -419,6 +450,7 @@ def build() -> None:
         "安全调色完全本地运行，不修改原图。区域调色或参考色迁移不能导出通用 .cube。",
     )
     add_heading(document, "AI 优化预演", 2)
+    decimal_id = add_numbering(document, bullet=False)
     for text in (
         "选择只改灯光、只改色彩或只改雾与氛围。",
         "设置改动预算和构图、几何、资产身份保护项。",

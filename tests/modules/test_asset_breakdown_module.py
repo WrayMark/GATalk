@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
 
@@ -12,12 +13,22 @@ from scenelens.core.workspaces import WorkbenchRegistry
 from scenelens.modules.asset_breakdown.artifacts import (
     asset_crop_png,
     make_asset_board,
+    make_asset_board_pages,
     write_asset_manifest,
 )
 from scenelens.modules.asset_breakdown.models import (
     AssetItem,
     PromptMessage,
     PromptRevision,
+)
+from scenelens.modules.asset_breakdown.advisory import (
+    AssetBreakdownAdvisoryContext,
+    AssetBreakdownAdvisoryReview,
+)
+from scenelens.modules.asset_breakdown.planning import (
+    create_plan_from_preset,
+    plan_from_ai,
+    understanding_from_ai,
 )
 from scenelens.modules.asset_breakdown.prompt_workshop import (
     AssetPromptContext,
@@ -115,6 +126,61 @@ def test_asset_ai_schema_mock_and_generation_instruction() -> None:
     )
     assert instruction["output_type"] == "AssetConceptArtifact"
     assert "不可见" in " ".join(instruction["hard_constraints"])
+
+
+def test_advisory_separates_scene_understanding_from_user_plan() -> None:
+    reviewer = AssetBreakdownAdvisoryReview()
+    request = reviewer.create_request(
+        AssetBreakdownAdvisoryContext(
+            project_id="advisory",
+            title="山地寺院",
+            scene_type="stylized_environment",
+            production_goal="规划可复用建筑套件",
+            image_metadata={"width": 1920, "height": 1080},
+            study_handoff={"study_goal": "理解建筑族和空间层次"},
+        ),
+        (ProviderImage("main_concept", "image/png", b"image"),),
+        user_initiated=True,
+        disclosure_confirmed=True,
+    )
+    output = reviewer.validate_output(
+        MockProvider().review(request, "", CancellationToken()).output
+    )
+    understanding = understanding_from_ai(
+        output["scene_understanding"],
+        source_image_sha256="sha",
+        provider_id="mock",
+        model_id="mock-vision-v1",
+        analyzer_version=reviewer.descriptor.version,
+    )
+    plans = tuple(
+        plan_from_ai(item, understanding_id=understanding.understanding_id)
+        for item in output["recommended_plans"]
+    )
+    assert understanding.asset_families
+    assert len(plans) == 2
+    assert plans[0].plan_id != plans[1].plan_id
+    assert plans[0].category_depths != plans[1].category_depths
+    assert all(item.status == "draft" for item in plans)
+
+
+def test_breakdown_context_carries_selected_plan_without_local_path() -> None:
+    plan = create_plan_from_preset("detail_components")
+    context = AssetBreakdownContext(
+        project_id="p1",
+        title="细节拆分",
+        scene_type="interior",
+        scene_focus=(),
+        production_goal="拆门窗与框架",
+        image_metadata={"width": 640, "height": 360},
+        supplemental_references=(),
+        breakdown_plan=plan.to_dict(),
+        study_handoff={"study_goal": "理解建筑语言"},
+    )
+    payload = context.to_payload()
+    assert payload["breakdown_plan"]["category_depths"]["building"] == 4
+    assert payload["study_handoff"] == {"study_goal": "理解建筑语言"}
+    assert "source_project_path" not in str(payload)
 
 
 def test_asset_prompt_workshop_supports_initial_and_text_only_refinement() -> None:
@@ -236,11 +302,11 @@ def test_asset_workbench_registration() -> None:
     registry = WorkbenchRegistry()
     register_asset_breakdown_workbench(registry)
     assert registry.workspaces()[0].workspace_id == "asset_breakdown"
-    assert (
-        registry.reviewers()[0].reviewer_id
-        == "asset_breakdown_review"
-    )
-    assert registry.reviewers()[1].reviewer_id == "asset_prompt_workshop"
+    assert {item.reviewer_id for item in registry.reviewers()} == {
+        "asset_breakdown_advisory",
+        "asset_breakdown_review",
+        "asset_prompt_workshop",
+    }
 
 
 def _mock_asset_output(reviewer: AssetBreakdownReview) -> dict:
@@ -296,3 +362,32 @@ def test_crop_board_and_manifest_are_exportable(tmp_path: Path) -> None:
         generations=(),
     )
     assert "中文 道具" in manifest.read_text(encoding="utf-8")
+
+
+def test_asset_board_paginates_by_production_group(tmp_path: Path) -> None:
+    entries = []
+    for index in range(7):
+        asset = create_manual_asset(
+            name=f"塔楼模块 {index}",
+            category="building" if index < 5 else "prop",
+            rect=(0.1, 0.1, 0.2, 0.2),
+            source_image_id="main",
+        )
+        asset = replace(
+            asset,
+            reuse_group="tower" if index < 5 else "street_props",
+        )
+        path = tmp_path / f"{index}.png"
+        Image.new("RGBA", (32, 32), (30, 60, 90, 255)).save(path)
+        entries.append((asset, path))
+    pages = make_asset_board_pages(
+        entries,
+        title="模块资产板",
+        grouping_strategy="asset_family",
+        max_items_per_page=4,
+    )
+    assert len(pages) == 3
+    assert [len(item.asset_ids) for item in pages] == [4, 1, 2]
+    assert set().union(*(set(item.asset_ids) for item in pages)) == {
+        asset.asset_id for asset, _path in entries
+    }

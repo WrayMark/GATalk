@@ -17,6 +17,7 @@ from scenelens.modules.asset_breakdown.ui.window import (
     AssetBreakdownWindow,
     _combo_model_id,
 )
+from scenelens.core.handoffs import WorkspaceHandoff
 from scenelens.providers.contracts import (
     CancellationToken,
     ImageEditResponse,
@@ -115,6 +116,47 @@ def test_asset_window_loads_and_edits_region(qtbot, tmp_path: Path) -> None:
     assert window._store.state.assets[0].name == "旧名称"
     window._undo_stack.redo()
     assert window._store.state.assets[0].name == "用户修订名称"
+    window.close()
+
+
+def test_asset_window_accepts_artwork_study_handoff_and_keeps_plans_separate(
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "作品原画.png"
+    _complex_scene(image_path, "village")
+    import hashlib
+
+    sha256 = hashlib.sha256(image_path.read_bytes()).hexdigest()
+    handoff = WorkspaceHandoff(
+        source_module_id="scenelens.artwork_study",
+        source_workspace_id="artwork_study",
+        source_project_id="study-1",
+        source_project_title="村庄作品研究",
+        content_type="artwork_study_to_asset_breakdown",
+        primary_image_path=str(image_path),
+        primary_image_sha256=sha256,
+        payload={
+            "work_type": "environment_concept",
+            "study_goal": "理解建筑层级",
+            "personal_notes": "中央建筑是地标",
+        },
+        created_at="now",
+    )
+    target = tmp_path / "交接项目.scenelens-assets"
+    window = AssetBreakdownWindow()
+    qtbot.addWidget(window)
+    assert window.receive_workspace_handoff(handoff, target_root=target)
+    qtbot.waitUntil(lambda: window._loaded is not None, timeout=5000)
+    assert window._state.study_handoffs[0].personal_notes == "中央建筑是地标"
+    assert window._state.main_image.sha256 == sha256
+    first = window._state.breakdown_plans[0]
+    window.plan_preset_combo.setCurrentIndex(
+        window.plan_preset_combo.findData("detail_components")
+    )
+    window._new_plan_from_preset()
+    assert len(window._state.breakdown_plans) == 2
+    assert window._state.selected_plan_id != first.plan_id
     window.close()
 
 

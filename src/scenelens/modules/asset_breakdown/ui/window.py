@@ -61,8 +61,12 @@ from scenelens.imaging.provider_export import (
 from scenelens.imaging.qt import numpy_to_qimage
 from scenelens.modules.asset_breakdown.artifacts import (
     asset_crop_png,
-    make_asset_board,
+    make_asset_board_pages,
     write_asset_manifest,
+)
+from scenelens.modules.asset_breakdown.advisory import (
+    AssetBreakdownAdvisoryContext,
+    AssetBreakdownAdvisoryReview,
 )
 from scenelens.modules.asset_breakdown.automatic import (
     AutomaticPipelineResult,
@@ -74,11 +78,21 @@ from scenelens.modules.asset_breakdown.models import (
     ASSET_CATEGORIES,
     AssetPromptSession,
     AutomaticAssetRun,
+    AssetBoardPage,
     AssetBreakdownState,
     AssetItem,
+    BreakdownPlan,
     GenerationRecord,
     PromptMessage,
     PromptRevision,
+    StudyHandoffSnapshot,
+)
+from scenelens.modules.asset_breakdown.planning import (
+    confirm_plan,
+    create_plan_from_preset,
+    load_breakdown_plan_presets,
+    plan_from_ai,
+    understanding_from_ai,
 )
 from scenelens.modules.asset_breakdown.prompt_workshop import (
     AssetPromptContext,
@@ -117,6 +131,7 @@ from scenelens.providers.credentials import (
 from scenelens.providers.execution import ProviderExecutionService
 from scenelens.providers.factory import create_default_provider_registry
 from scenelens.storage.project_store import utc_now
+from scenelens.core.handoffs import WorkspaceHandoff
 from scenelens.ui.image_canvas import ImageCanvas, RegionOverlaySpec
 from scenelens.ui.workers import FunctionWorker
 
@@ -289,8 +304,10 @@ class AssetBreakdownWindow(QMainWindow):
         self._provider_registry = create_default_provider_registry()
         self._execution = ProviderExecutionService()
         self._reviewer = AssetBreakdownReview()
+        self._advisor = AssetBreakdownAdvisoryReview()
         self._prompt_reviewer = AssetPromptWorkshopReview()
         self._profiles = load_scene_profiles()
+        self._plan_config = load_breakdown_plan_presets()
         try:
             self._credential_store = WindowsCredentialStore()
         except OSError:
@@ -448,7 +465,10 @@ class AssetBreakdownWindow(QMainWindow):
         self.workflow_tabs = QTabWidget()
         self.workflow_tabs.setMinimumWidth(520)
         manual = QTabWidget()
-        manual.addTab(self._build_inventory_tab(), "资产清单")
+        self.manual_tabs = manual
+        inventory = self._build_inventory_tab()
+        manual.addTab(self._build_plan_tab(), "场景理解与拆分方案")
+        manual.addTab(inventory, "资产清单")
         manual.addTab(self._build_detail_tab(), "资产详情")
         manual.addTab(self._build_generation_tab(), "生成与导出")
         self.workflow_tabs.addTab(manual, "可校正拆分")
@@ -552,6 +572,137 @@ class AssetBreakdownWindow(QMainWindow):
         self.inventory_summary = QLabel("尚未生成资产清单。")
         self.inventory_summary.setWordWrap(True)
         layout.addWidget(self.inventory_summary)
+        return root
+
+    def _build_plan_tab(self) -> QWidget:
+        body = QWidget()
+        layout = QVBoxLayout(body)
+        intro = QLabel(
+            "先让 AI 理解场景和生产系统，再由你选择拆分方案。"
+            "同一张原画可保存多套互不覆盖的方案，例如“完整建筑”与"
+            "“门窗／檐口组件”。AI 建议可修改，不会直接替你确认。"
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        handoff_group = QGroupBox("来自 02 作品研究的交接（可选）")
+        handoff_layout = QVBoxLayout(handoff_group)
+        self.handoff_summary = QLabel(
+            "当前项目独立开始；也可在“作品研究”中点击“交给资产拆分”。"
+        )
+        self.handoff_summary.setWordWrap(True)
+        handoff_layout.addWidget(self.handoff_summary)
+        self.handoff_adjustments = QPlainTextEdit()
+        self.handoff_adjustments.setPlaceholderText(
+            "只写这次拆分需要修正或补充的上下文；原研究快照保持不变。"
+        )
+        self.handoff_adjustments.setMaximumHeight(72)
+        handoff_layout.addWidget(self.handoff_adjustments)
+        layout.addWidget(handoff_group)
+
+        understanding_group = QGroupBox("第 1 步：理解原画并提出方案")
+        understanding_layout = QVBoxLayout(understanding_group)
+        self.understanding_text = QPlainTextEdit()
+        self.understanding_text.setReadOnly(True)
+        self.understanding_text.setPlaceholderText(
+            "尚未生成场景理解。你也可以跳过 AI，直接从下方预设建立方案。"
+        )
+        self.understanding_text.setMinimumHeight(150)
+        understanding_layout.addWidget(self.understanding_text)
+        self.understanding_corrections = QPlainTextEdit()
+        self.understanding_corrections.setPlaceholderText(
+            "用户校正：例如“左侧与中央其实属于同一建筑族；远景只做卡片”。"
+        )
+        self.understanding_corrections.setMaximumHeight(76)
+        understanding_layout.addWidget(self.understanding_corrections)
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        self.understand_button = QPushButton("查看发送清单并让 AI 提出拆分建议")
+        self.understand_button.setProperty("primary", True)
+        self.cancel_understanding_button = QPushButton("取消")
+        self.cancel_understanding_button.setEnabled(False)
+        row_layout.addWidget(self.understand_button, 1)
+        row_layout.addWidget(self.cancel_understanding_button)
+        understanding_layout.addWidget(row)
+        layout.addWidget(understanding_group)
+
+        plan_group = QGroupBox("第 2 步：选择并校正拆分方案")
+        plan_layout = QVBoxLayout(plan_group)
+        top_form = QFormLayout()
+        self.plan_combo = QComboBox()
+        self.plan_preset_combo = QComboBox()
+        for preset in self._plan_config["presets"]:
+            self.plan_preset_combo.addItem(preset["name"], preset["id"])
+        self.plan_name_edit = QLineEdit()
+        self.plan_purpose_edit = QPlainTextEdit()
+        self.plan_purpose_edit.setMaximumHeight(68)
+        self.plan_grouping_combo = QComboBox()
+        for label, value in (
+            ("按资产族／复用组", "asset_family"),
+            ("按父子层级", "hierarchy"),
+            ("按场景空间系统", "spatial_system"),
+            ("按资产类别", "category"),
+        ):
+            self.plan_grouping_combo.addItem(label, value)
+        self.plan_page_limit = QSpinBox()
+        self.plan_page_limit.setRange(4, 16)
+        self.plan_page_limit.setValue(9)
+        top_form.addRow("当前方案", self.plan_combo)
+        top_form.addRow("从预设新建", self.plan_preset_combo)
+        top_form.addRow("方案名称", self.plan_name_edit)
+        top_form.addRow("用途", self.plan_purpose_edit)
+        top_form.addRow("资产板分组", self.plan_grouping_combo)
+        top_form.addRow("每页最多项目", self.plan_page_limit)
+        plan_layout.addLayout(top_form)
+
+        depth_group = QGroupBox("各类别拆分深度（0 不纳入，4 最细）")
+        depth_form = QFormLayout(depth_group)
+        self.plan_depth_combos: dict[str, QComboBox] = {}
+        for category in ASSET_CATEGORIES:
+            combo = QComboBox()
+            for item in self._plan_config["depth_levels"]:
+                combo.addItem(
+                    f"{item['value']} · {item['label']}",
+                    int(item["value"]),
+                )
+                combo.setItemData(
+                    combo.count() - 1,
+                    item["description"],
+                    Qt.ItemDataRole.ToolTipRole,
+                )
+            self.plan_depth_combos[category] = combo
+            depth_form.addRow(CATEGORY_LABELS[category], combo)
+        plan_layout.addWidget(depth_group)
+        self.plan_notes_edit = QPlainTextEdit()
+        self.plan_notes_edit.setPlaceholderText(
+            "本方案的人工约束，例如“塔楼整体保留，门窗拆到变体；人物不纳入”。"
+        )
+        self.plan_notes_edit.setMaximumHeight(72)
+        plan_layout.addWidget(self.plan_notes_edit)
+        actions = QWidget()
+        action_layout = QHBoxLayout(actions)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        self.new_plan_button = QPushButton("按预设新建")
+        self.save_plan_button = QPushButton("保存并确认方案")
+        self.delete_plan_button = QPushButton("删除方案")
+        action_layout.addWidget(self.new_plan_button)
+        action_layout.addWidget(self.save_plan_button, 1)
+        action_layout.addWidget(self.delete_plan_button)
+        plan_layout.addWidget(actions)
+        self.plan_status = QLabel("尚未选择方案。")
+        self.plan_status.setWordWrap(True)
+        plan_layout.addWidget(self.plan_status)
+        layout.addWidget(plan_group)
+        layout.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(body)
+        root = QWidget()
+        root_layout = QVBoxLayout(root)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.addWidget(scroll)
         return root
 
     def _build_detail_tab(self) -> QWidget:
@@ -695,7 +846,8 @@ class AssetBreakdownWindow(QMainWindow):
         layout = QVBoxLayout(root)
         intro = QLabel(
             "独立的一键流程：原画分析 → 自动资产清单 → 逐项生成 → "
-            "合成一张资产展示板。结果不会写入“可校正拆分”的资产清单，"
+            "按当前拆分方案合成一页或多页资产展示板。结果不会写入"
+            "“可校正拆分”的资产清单，"
             "两种方式可在同一项目中并存。"
         )
         intro.setWordWrap(True)
@@ -945,6 +1097,18 @@ class AssetBreakdownWindow(QMainWindow):
         self.asset_tree.itemSelectionChanged.connect(
             self._asset_selection_changed
         )
+        self.understand_button.clicked.connect(
+            self._start_scene_understanding
+        )
+        self.cancel_understanding_button.clicked.connect(
+            self._cancel_analysis
+        )
+        self.plan_combo.currentIndexChanged.connect(
+            self._plan_selection_changed
+        )
+        self.new_plan_button.clicked.connect(self._new_plan_from_preset)
+        self.save_plan_button.clicked.connect(self._save_current_plan)
+        self.delete_plan_button.clicked.connect(self._delete_current_plan)
         self.asset_tree.itemChanged.connect(self._asset_check_changed)
         self.add_asset_button.clicked.connect(self._enter_add_mode)
         self.split_asset_button.clicked.connect(self._split_selected)
@@ -1079,6 +1243,9 @@ class AssetBreakdownWindow(QMainWindow):
                 not self._state.regions_visible
             )
             self._refresh_reference_list()
+            self._refresh_handoff()
+            self._refresh_understanding()
+            self._refresh_plans()
             self._refresh_asset_tree()
             self._refresh_generation_list()
             self._refresh_automatic_runs()
@@ -1087,6 +1254,295 @@ class AssetBreakdownWindow(QMainWindow):
             self._restoring = False
         self._load_main_image()
         self.statusBar().showMessage(f"已打开：{store.root}")
+
+    def receive_workspace_handoff(
+        self,
+        handoff: object,
+        *,
+        target_root: Path | None = None,
+    ) -> bool:
+        if not isinstance(handoff, WorkspaceHandoff):
+            QMessageBox.warning(self, "交接失败", "收到的工作台交接格式无效。")
+            return False
+        if handoff.content_type != "artwork_study_to_asset_breakdown":
+            QMessageBox.warning(self, "交接失败", "该内容不能交给资产拆分工作台。")
+            return False
+        if target_root is None:
+            base = QFileDialog.getExistingDirectory(
+                self,
+                "选择新资产拆分项目保存位置",
+            )
+            if not base:
+                return False
+            folder_name = _safe_folder_name(
+                f"{handoff.source_project_title} 资产拆分"
+            )
+            target_root = Path(base) / f"{folder_name}{PROJECT_SUFFIX}"
+        try:
+            store = AssetBreakdownStore.create(
+                target_root,
+                f"{handoff.source_project_title} 资产拆分",
+            )
+            imported = store.import_image(handoff.primary_image_path, "main")
+            if imported.sha256 != handoff.primary_image_sha256:
+                store.close()
+                raise ValueError("作品研究图片在交接期间发生了变化，请重新交接。")
+            payload = dict(handoff.payload)
+            snapshot = StudyHandoffSnapshot(
+                handoff_id=str(uuid.uuid4()),
+                source_module_id=handoff.source_module_id,
+                source_project_id=handoff.source_project_id,
+                source_project_title=handoff.source_project_title,
+                source_project_path=str(
+                    Path(handoff.primary_image_path).parent.parent
+                ),
+                source_image_sha256=handoff.primary_image_sha256,
+                work_type=str(payload.get("work_type", "")),
+                study_goal=str(payload.get("study_goal", "")),
+                known_context=str(payload.get("known_context", "")),
+                personal_notes=str(payload.get("personal_notes", "")),
+                local_analysis=dict(payload.get("local_analysis", {})),
+                ai_review=dict(payload.get("ai_review", {})),
+                imported_at=utc_now(),
+            )
+            store.add_or_replace_handoff(snapshot)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "无法创建资产拆分项目", str(exc))
+            return False
+        self._attach_store(store)
+        self.manual_tabs.setCurrentIndex(0)
+        self.statusBar().showMessage(
+            "作品研究已作为可编辑快照交接；原研究不会被资产拆分修改。",
+            6000,
+        )
+        return True
+
+    def _refresh_handoff(self) -> None:
+        if self._state is None or not self._state.study_handoffs:
+            self.handoff_summary.setText(
+                "当前项目独立开始；也可在“作品研究”中点击“交给资产拆分”。"
+            )
+            self.handoff_adjustments.clear()
+            return
+        handoff = next(
+            (
+                item for item in self._state.study_handoffs
+                if item.handoff_id == self._state.selected_handoff_id
+            ),
+            self._state.study_handoffs[-1],
+        )
+        current = (
+            self._state.main_image is not None
+            and handoff.source_image_sha256 == self._state.main_image.sha256
+        )
+        self.handoff_summary.setText(
+            f"来源：{handoff.source_project_title} · {handoff.work_type or '未分类'}\n"
+            f"研究目标：{handoff.study_goal or '未填写'}\n"
+            f"图片哈希：{handoff.source_image_sha256[:12]}… · "
+            f"{'当前有效' if current else '图片已变化，交接仅供参考'}"
+        )
+        self.handoff_adjustments.setPlainText(handoff.user_adjustments)
+
+    def _refresh_understanding(self) -> None:
+        if self._state is None or not self._state.scene_understandings:
+            self.understanding_text.clear()
+            self.understanding_corrections.clear()
+            return
+        item = next(
+            (
+                value for value in self._state.scene_understandings
+                if value.understanding_id
+                == self._state.selected_understanding_id
+            ),
+            self._state.scene_understandings[-1],
+        )
+        families = "\n".join(
+            f"• {value.get('name', '')}：{value.get('role', '')}；"
+            f"复用依据 {value.get('reuse_signal', '')}"
+            for value in item.asset_families
+        )
+        self.understanding_text.setPlainText(
+            f"场景原型\n{item.scene_archetype}\n\n"
+            f"整体理解\n{item.summary}\n\n"
+            f"空间结构\n{'；'.join(item.spatial_structure)}\n\n"
+            f"生产系统\n{'；'.join(item.production_systems)}\n\n"
+            f"资产族\n{families}\n\n"
+            f"可见证据\n{'；'.join(item.visible_evidence)}\n\n"
+            f"不确定性\n{'；'.join(item.uncertainties) or '无'}"
+        )
+        self.understanding_corrections.setPlainText(item.user_corrections)
+
+    def _refresh_plans(self, select_id: str = "") -> None:
+        self.plan_combo.blockSignals(True)
+        try:
+            self.plan_combo.clear()
+            if self._state is None:
+                return
+            for plan in self._state.breakdown_plans:
+                suffix = "（已确认）" if plan.status == "confirmed" else "（草稿）"
+                self.plan_combo.addItem(f"{plan.name}{suffix}", plan.plan_id)
+            target = select_id or self._state.selected_plan_id
+            index = self.plan_combo.findData(target)
+            self.plan_combo.setCurrentIndex(max(0, index))
+        finally:
+            self.plan_combo.blockSignals(False)
+        self._populate_plan_fields(self._selected_plan())
+
+    def _selected_plan(self) -> BreakdownPlan | None:
+        if self._state is None:
+            return None
+        plan_id = str(self.plan_combo.currentData() or self._state.selected_plan_id)
+        return next(
+            (item for item in self._state.breakdown_plans if item.plan_id == plan_id),
+            None,
+        )
+
+    def _populate_plan_fields(self, plan: BreakdownPlan | None) -> None:
+        if plan is None:
+            self.plan_status.setText("尚未选择方案。")
+            return
+        self.plan_name_edit.setText(plan.name)
+        self.plan_purpose_edit.setPlainText(plan.purpose)
+        self.plan_notes_edit.setPlainText(plan.user_notes)
+        preset_index = self.plan_preset_combo.findData(plan.preset_id)
+        if preset_index >= 0:
+            self.plan_preset_combo.setCurrentIndex(preset_index)
+        grouping_index = self.plan_grouping_combo.findData(
+            plan.grouping_strategy
+        )
+        self.plan_grouping_combo.setCurrentIndex(max(0, grouping_index))
+        self.plan_page_limit.setValue(plan.max_items_per_page)
+        for category, combo in self.plan_depth_combos.items():
+            index = combo.findData(int(plan.category_depths.get(category, 0)))
+            combo.setCurrentIndex(max(0, index))
+        included = "、".join(
+            CATEGORY_LABELS[item] for item in plan.included_categories
+        )
+        self.plan_status.setText(
+            f"{('已确认' if plan.status == 'confirmed' else '草稿')} · "
+            f"纳入：{included or '无'}。资产清单和展示板只作用于当前方案。"
+        )
+
+    def _plan_selection_changed(self, _index: int) -> None:
+        if self._restoring or self._store is None:
+            return
+        plan = self._selected_plan()
+        if plan is None:
+            return
+        self._store.select_plan(plan.plan_id)
+        self._state = self._store.state
+        self._populate_plan_fields(plan)
+        self._refresh_asset_tree()
+        self._refresh_overlays()
+        self._refresh_generation_list()
+
+    def _new_plan_from_preset(self) -> None:
+        if self._store is None:
+            QMessageBox.information(self, "请先新建项目", "请先新建或打开项目。")
+            return
+        preset_id = str(self.plan_preset_combo.currentData())
+        understanding_id = (
+            self._state.selected_understanding_id if self._state else ""
+        )
+        plan = create_plan_from_preset(
+            preset_id,
+            understanding_id=understanding_id,
+        )
+        self._store.add_or_replace_plan(plan)
+        self._state = self._store.state
+        self._refresh_plans(plan.plan_id)
+        self._refresh_asset_tree()
+
+    def _save_current_plan(self) -> None:
+        if self._store is None or self._state is None:
+            return
+        plan = self._selected_plan()
+        if plan is None:
+            return
+        depths = {
+            category: int(combo.currentData())
+            for category, combo in self.plan_depth_combos.items()
+        }
+        plan = replace(
+            plan,
+            name=self.plan_name_edit.text().strip() or "未命名拆分方案",
+            purpose=self.plan_purpose_edit.toPlainText().strip(),
+            preset_id=str(self.plan_preset_combo.currentData() or "custom_mixed"),
+            category_depths=depths,
+            grouping_strategy=str(self.plan_grouping_combo.currentData()),
+            max_items_per_page=self.plan_page_limit.value(),
+            source_understanding_id=self._state.selected_understanding_id,
+        )
+        plan = confirm_plan(
+            plan,
+            notes=self.plan_notes_edit.toPlainText().strip(),
+        )
+        self._store.add_or_replace_plan(plan)
+        if self._state.selected_understanding_id:
+            understanding = next(
+                (
+                    item for item in self._store.state.scene_understandings
+                    if item.understanding_id
+                    == self._state.selected_understanding_id
+                ),
+                None,
+            )
+            if understanding is not None:
+                self._store.add_or_replace_scene_understanding(
+                    replace(
+                        understanding,
+                        user_corrections=(
+                            self.understanding_corrections
+                            .toPlainText()
+                            .strip()
+                        ),
+                        user_confirmed=True,
+                    )
+                )
+        if self._state.selected_handoff_id:
+            handoff = next(
+                (
+                    item for item in self._store.state.study_handoffs
+                    if item.handoff_id == self._state.selected_handoff_id
+                ),
+                None,
+            )
+            if handoff is not None:
+                self._store.add_or_replace_handoff(
+                    replace(
+                        handoff,
+                        user_adjustments=(
+                            self.handoff_adjustments.toPlainText().strip()
+                        ),
+                    )
+                )
+        self._state = self._store.state
+        self._refresh_plans(plan.plan_id)
+        self.plan_status.setText(
+            "方案已确认。现在可进入“资产清单”，按该层级生成可校正清单。"
+        )
+
+    def _delete_current_plan(self) -> None:
+        if self._store is None:
+            return
+        plan = self._selected_plan()
+        if plan is None:
+            return
+        if QMessageBox.question(
+            self,
+            "删除拆分方案",
+            "将同时删除该方案的资产清单、生成记录和展示板记录。继续吗？",
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self._store.delete_plan(plan.plan_id)
+        except ValueError as exc:
+            QMessageBox.information(self, "不能删除", str(exc))
+            return
+        self._state = self._store.state
+        self._refresh_plans()
+        self._refresh_asset_tree()
+        self._refresh_overlays()
 
     def _save_fields(self) -> None:
         if self._store is None or self._state is None or self._restoring:
@@ -1199,11 +1655,268 @@ class AssetBreakdownWindow(QMainWindow):
             3500,
         )
 
+    def _review_material(
+        self,
+    ) -> tuple[tuple[ProviderImage, ...], tuple[dict, ...], dict]:
+        if self._loaded is None or self._state is None:
+            raise ValueError("请先导入一张场景原画。")
+        images = [
+            prepare_provider_image(
+                self._loaded,
+                "main_concept",
+                ProviderImageExportOptions(maximum_side=2048),
+            )
+        ]
+        supplemental = []
+        if self._store is not None:
+            references = [
+                image
+                for image in self._state.source_images
+                if image.role == "reference"
+            ][:3]
+            for index, reference in enumerate(references, start=1):
+                loaded = load_image(self._store.image_path(reference))
+                role = f"supplemental_reference_{index}"
+                images.append(
+                    prepare_provider_image(
+                        loaded,
+                        role,
+                        ProviderImageExportOptions(maximum_side=1536),
+                    )
+                )
+                supplemental.append(
+                    {
+                        "role": role,
+                        "sha256": reference.sha256,
+                        "filename_hidden": True,
+                    }
+                )
+        metadata = {
+            "width": self._loaded.working_size[0],
+            "height": self._loaded.working_size[1],
+            "exif_orientation_applied": (
+                self._loaded.exif_orientation_applied
+            ),
+            "icc_converted_to_srgb": self._loaded.icc_converted_to_srgb,
+            "assumed_srgb": self._loaded.assumed_srgb,
+        }
+        return tuple(images), tuple(supplemental), metadata
+
+    def _study_handoff_for_ai(self) -> dict:
+        if self._state is None or not self._state.study_handoffs:
+            return {}
+        handoff = next(
+            (
+                item for item in self._state.study_handoffs
+                if item.handoff_id == self._state.selected_handoff_id
+            ),
+            self._state.study_handoffs[-1],
+        )
+        dimensions = []
+        for item in handoff.ai_review.get("dimension_studies", ())[:12]:
+            if isinstance(item, dict):
+                dimensions.append(
+                    {
+                        "dimension_id": item.get("dimension_id", ""),
+                        "observation": item.get("observation", ""),
+                        "visual_evidence": list(
+                            item.get("visual_evidence", ())
+                        )[:3],
+                        "learning_points": list(
+                            item.get("learning_points", ())
+                        )[:3],
+                    }
+                )
+        return {
+            "source_project_title": handoff.source_project_title,
+            "source_image_sha256": handoff.source_image_sha256,
+            "work_type": handoff.work_type,
+            "study_goal": handoff.study_goal,
+            "known_context": handoff.known_context,
+            "personal_notes": handoff.personal_notes,
+            "user_adjustments": self.handoff_adjustments.toPlainText().strip(),
+            "overall_reading": handoff.ai_review.get("overall_reading", ""),
+            "dimension_studies": dimensions,
+            "local_analysis_summary": handoff.local_analysis.get("summary", ""),
+        }
+
+    def _start_scene_understanding(self) -> None:
+        if self._loaded is None or self._state is None:
+            QMessageBox.information(self, "缺少主原画", "请先导入一张场景原画。")
+            return
+        self._save_fields()
+        provider_id = str(self.vision_provider_combo.currentData())
+        provider = self._provider_registry.get(provider_id)
+        credential = self.vision_key_edit.text().strip()
+        if provider_id != "mock" and not credential:
+            QMessageBox.information(
+                self,
+                "缺少 API Key",
+                "请输入 API Key，或选择“离线 Mock”只验证流程。",
+            )
+            return
+        try:
+            images, supplemental, metadata = self._review_material()
+        except ValueError as exc:
+            QMessageBox.information(self, "无法理解场景", str(exc))
+            return
+        profile = self._current_profile()
+        context = AssetBreakdownAdvisoryContext(
+            project_id=self._state.project_id,
+            title=self._state.title,
+            scene_type=self._state.scene_type,
+            production_goal=self._state.production_goal,
+            image_metadata=metadata,
+            scene_focus=tuple(profile.get("focus", ())),
+            supplemental_references=supplemental,
+            study_handoff=self._study_handoff_for_ai(),
+            user_corrections=(
+                self.understanding_corrections.toPlainText().strip()
+            ),
+        )
+        request = self._advisor.create_request(
+            context,
+            images,
+            model_id=self.vision_model_edit.text().strip() or None,
+            user_initiated=True,
+            disclosure_confirmed=True,
+        )
+        preview = disclosure_preview(provider.manifest, request)
+        dialog = SendDisclosureDialog(
+            preview,
+            purpose="场景理解与拆分建议",
+            extra_notice=(
+                "本次只生成场景理解和拆分方案，不生成图片，也不直接改写资产清单。"
+                "作品研究的本地路径不会发送。"
+            ),
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        cancellation = CancellationToken()
+        self._ai_cancellation = cancellation
+        self.understand_button.setEnabled(False)
+        self.cancel_understanding_button.setEnabled(True)
+        self.statusBar().showMessage("AI 正在理解场景并比较拆分策略…")
+        project_id = self._state.project_id
+        source_hash = self._state.main_image.sha256
+
+        def operation():
+            execution = self._execution.run_review_with_model_fallback(
+                provider,
+                request,
+                credential,
+                cancellation,
+                provider.manifest.fallback_models_for(
+                    ProviderCapability.VISION_REVIEW,
+                    request.model_id,
+                ),
+            )
+            output = self._advisor.validate_output(
+                execution.response.output
+            )
+            return {
+                "project_id": project_id,
+                "source_hash": source_hash,
+                "output": output,
+                "execution": execution,
+            }
+
+        self._start_worker(
+            "advisory",
+            operation,
+            self._scene_understanding_finished,
+        )
+
+    def _scene_understanding_finished(self, result: object) -> None:
+        self._ai_cancellation = None
+        self.understand_button.setEnabled(True)
+        self.cancel_understanding_button.setEnabled(False)
+        if (
+            not isinstance(result, dict)
+            or self._store is None
+            or self._state is None
+            or self._state.main_image is None
+        ):
+            return
+        if (
+            result["project_id"] != self._state.project_id
+            or result["source_hash"] != self._state.main_image.sha256
+        ):
+            self.statusBar().showMessage(
+                "项目或主原画已经切换，旧的场景理解结果已忽略。",
+                5000,
+            )
+            return
+        output = result["output"]
+        execution = result["execution"]
+        understanding = understanding_from_ai(
+            output["scene_understanding"],
+            source_image_sha256=self._state.main_image.sha256,
+            provider_id=execution.response.provider_id,
+            model_id=execution.response.model_id,
+            analyzer_version=self._advisor.descriptor.version,
+        )
+        self._store.add_scene_understanding(understanding)
+        plans = tuple(
+            plan_from_ai(
+                item,
+                understanding_id=understanding.understanding_id,
+            )
+            for item in output["recommended_plans"]
+        )
+        for plan in plans:
+            self._store.add_or_replace_plan(plan)
+        if plans:
+            self._store.select_plan(plans[0].plan_id)
+        self._store.append_ai_run(
+            {
+                "run_id": str(uuid.uuid4()),
+                "module_id": "scenelens.asset_breakdown",
+                "reviewer_id": "asset_breakdown_advisory",
+                "reviewer_version": self._advisor.descriptor.version,
+                "provider_id": execution.response.provider_id,
+                "model_id": execution.response.model_id,
+                "input_hashes": {"main": self._state.main_image.sha256},
+                "parameters": {
+                    "scene_type": self._state.scene_type,
+                    "handoff_used": bool(self._study_handoff_for_ai()),
+                },
+                "result_summary": {
+                    "understanding_id": understanding.understanding_id,
+                    "recommended_plan_ids": [item.plan_id for item in plans],
+                },
+                "created_at": utc_now(),
+            }
+        )
+        self._state = self._store.state
+        self._refresh_understanding()
+        self._refresh_plans(plans[0].plan_id if plans else "")
+        self.statusBar().showMessage(
+            f"场景理解完成；已生成 {len(plans)} 套可编辑建议。",
+            6000,
+        )
+
     def _start_ai_breakdown(self) -> None:
         if self._loaded is None or self._state is None:
             QMessageBox.information(self, "缺少主原画", "请先导入一张场景原画。")
             return
         self._save_fields()
+        plan = self._selected_plan()
+        if plan is None:
+            QMessageBox.information(
+                self,
+                "缺少拆分方案",
+                "请先在“场景理解与拆分方案”中建立方案。",
+            )
+            return
+        if plan.status != "confirmed":
+            QMessageBox.information(
+                self,
+                "方案尚未确认",
+                "请先检查各类别拆分深度，然后点击“保存并确认方案”。",
+            )
+            return
         provider_id = str(self.vision_provider_combo.currentData())
         provider = self._provider_registry.get(provider_id)
         credential = self.vision_key_edit.text().strip()
@@ -1260,6 +1973,19 @@ class AssetBreakdownWindow(QMainWindow):
                 "assumed_srgb": self._loaded.assumed_srgb,
             },
             supplemental_references=tuple(supplemental),
+            scene_understanding=(
+                next(
+                    (
+                        item.to_dict()
+                        for item in self._state.scene_understandings
+                        if item.understanding_id
+                        == plan.source_understanding_id
+                    ),
+                    {},
+                )
+            ),
+            breakdown_plan=plan.to_dict(),
+            study_handoff=self._study_handoff_for_ai(),
         )
         request = self._reviewer.create_request(
             context,
@@ -1285,6 +2011,9 @@ class AssetBreakdownWindow(QMainWindow):
         self.analyze_button.setEnabled(False)
         self.cancel_analysis_button.setEnabled(True)
         self.statusBar().showMessage("AI 正在理解场景并规划资产…")
+        project_id = self._state.project_id
+        source_hash = self._state.main_image.sha256
+        plan_snapshot = plan
 
         def operation():
             execution = self._execution.run_review_with_model_fallback(
@@ -1300,7 +2029,14 @@ class AssetBreakdownWindow(QMainWindow):
             output, repair_notes = self._reviewer.normalize_output(
                 execution.response.output
             )
-            return output, repair_notes, execution
+            return {
+                "project_id": project_id,
+                "source_hash": source_hash,
+                "plan": plan_snapshot,
+                "output": output,
+                "repair_notes": repair_notes,
+                "execution": execution,
+            }
 
         self._start_worker("ai", operation, self._ai_breakdown_finished)
 
@@ -1308,17 +2044,54 @@ class AssetBreakdownWindow(QMainWindow):
         self._ai_cancellation = None
         self.analyze_button.setEnabled(True)
         self.cancel_analysis_button.setEnabled(False)
-        if self._store is None or self._state is None:
+        if (
+            not isinstance(result, dict)
+            or self._store is None
+            or self._state is None
+        ):
             return
-        output, repair_notes, execution = result
         main = self._state.main_image
         if main is None:
             return
+        if (
+            result["project_id"] != self._state.project_id
+            or result["source_hash"] != main.sha256
+            or result["plan"].plan_id != self._state.selected_plan_id
+        ):
+            self.statusBar().showMessage(
+                "项目、原画或拆分方案已经切换，旧的后台清单结果已忽略。",
+                6000,
+            )
+            return
+        output = result["output"]
+        repair_notes = result["repair_notes"]
+        execution = result["execution"]
+        plan = result["plan"]
         incoming = tuple(
-            asset_from_ai(item, source_image_id=main.image_id)
+            asset_from_ai(
+                item,
+                source_image_id=main.image_id,
+                plan_id=plan.plan_id,
+            )
             for item in output["assets"]
+            if int(
+                plan.category_depths.get(
+                    str(item.get("category", "unknown")),
+                    0,
+                )
+            ) > 0
+            and int(item.get("level", 0)) <= int(
+                plan.category_depths.get(
+                    str(item.get("category", "unknown")),
+                    0,
+                )
+            )
         )
-        assets = merge_ai_assets(self._state.assets, incoming)
+        assets = merge_ai_assets(
+            self._state.assets,
+            incoming,
+            active_plan_id=plan.plan_id,
+        )
         self._store.replace_assets(assets)
         self._store.append_ai_run(
             {
@@ -1339,6 +2112,7 @@ class AssetBreakdownWindow(QMainWindow):
                 "parameters": {
                     "scene_type": self._state.scene_type,
                     "max_output_tokens": self._reviewer.max_output_tokens,
+                    "breakdown_plan": plan.to_dict(),
                 },
                 "result_summary": {
                     "scene_understanding": output["scene_understanding"],
@@ -1375,7 +2149,7 @@ class AssetBreakdownWindow(QMainWindow):
     def _cancel_analysis(self) -> None:
         if self._ai_cancellation is not None:
             self._ai_cancellation.cancel()
-            self.statusBar().showMessage("正在取消 AI 资产拆分…")
+            self.statusBar().showMessage("正在取消 AI 场景理解或资产拆分…")
 
     def _enter_add_mode(self) -> None:
         if self._loaded is None:
@@ -1402,6 +2176,7 @@ class AssetBreakdownWindow(QMainWindow):
             category="unknown",
             rect=tuple(float(value) for value in rect),
             source_image_id=main.image_id,
+            plan_id=self._state.selected_plan_id,
         )
         self._push_asset_state(
             (*self._state.assets, asset),
@@ -1610,6 +2385,7 @@ class AssetBreakdownWindow(QMainWindow):
             asset
             for asset in self._state.assets
             if asset.selected_for_generation
+            and asset.plan_id == self._state.selected_plan_id
         )
         if not selected:
             QMessageBox.information(
@@ -1959,6 +2735,7 @@ class AssetBreakdownWindow(QMainWindow):
                 }
             )
         profile = self._current_profile()
+        plan = self._selected_plan()
         context = AssetBreakdownContext(
             project_id=self._state.project_id,
             title=self._state.title,
@@ -1978,6 +2755,20 @@ class AssetBreakdownWindow(QMainWindow):
                 "automatic_asset_limit": self.auto_asset_limit.value(),
             },
             supplemental_references=tuple(supplemental),
+            scene_understanding=(
+                next(
+                    (
+                        item.to_dict()
+                        for item in self._state.scene_understandings
+                        if plan is not None
+                        and item.understanding_id
+                        == plan.source_understanding_id
+                    ),
+                    {},
+                )
+            ),
+            breakdown_plan=plan.to_dict() if plan else {},
+            study_handoff=self._study_handoff_for_ai(),
         )
         vision_model_id = (
             self.auto_vision_model_edit.text().strip() or None
@@ -2006,6 +2797,7 @@ class AssetBreakdownWindow(QMainWindow):
                 f"\n图片供应商：{image_provider.manifest.display_name}；"
                 f"模型：{image_provider.manifest.model_for(ProviderCapability.IMAGE_EDIT, image_model_id)}；"
                 f"分辨率：{image_resolution}。"
+                f"\n拆分方案：{plan.name if plan else '默认'}。"
             ),
             parent=self,
         )
@@ -2053,6 +2845,7 @@ class AssetBreakdownWindow(QMainWindow):
             "image_model_id": image_model_id or "",
             "image_resolution": image_resolution,
             "asset_limit": limit,
+            "breakdown_plan": plan.to_dict() if plan else {},
         }
         self._start_worker(
             "automatic",
@@ -2143,16 +2936,23 @@ class AssetBreakdownWindow(QMainWindow):
                 )
             )
 
-        board_relative = ""
+        board_relatives: list[str] = []
         if board_entries:
-            board_relative = f"{root_relative}/asset_board.png"
-            self._store.save_artifact(
-                board_relative,
-                make_asset_board(
-                    board_entries,
-                    title=f"{self._state.title} — 全自动资产板",
+            plan_value = dict(config.get("breakdown_plan", {}))
+            pages = make_asset_board_pages(
+                board_entries,
+                title=f"{self._state.title} — 全自动资产板",
+                grouping_strategy=str(
+                    plan_value.get("grouping_strategy", "asset_family")
+                ),
+                max_items_per_page=int(
+                    plan_value.get("max_items_per_page", 9)
                 ),
             )
+            for index, page in enumerate(pages, start=1):
+                relative = f"{root_relative}/asset_board_{index:02d}.png"
+                self._store.save_artifact(relative, page.png_bytes)
+                board_relatives.append(relative)
         manifest_relative = f"{root_relative}/asset_manifest.json"
         run_assets = tuple(
             saved_assets.get(asset.asset_id, asset)
@@ -2193,7 +2993,10 @@ class AssetBreakdownWindow(QMainWindow):
             asset_limit=int(config["asset_limit"]),
             assets=run_assets,
             generations=tuple(generations),
-            board_relative_path=board_relative,
+            board_relative_path=(
+                board_relatives[0] if board_relatives else ""
+            ),
+            board_relative_paths=tuple(board_relatives),
             manifest_relative_path=manifest_relative,
             repair_notes=result.repair_notes,
             error_summary=error_summary,
@@ -2211,7 +3014,7 @@ class AssetBreakdownWindow(QMainWindow):
         self.auto_status.setText(
             f"自动流程结束：识别 {len(result.assets)} 项，"
             f"生成 {len(result.generated)} 项，失败 {len(result.failures)} 项，"
-            f"未发送 {skipped} 项。"
+            f"未发送 {skipped} 项；资产板 {len(board_relatives)} 页。"
         )
         if result.failures and self.isVisible():
             suffix = (
@@ -2291,8 +3094,13 @@ class AssetBreakdownWindow(QMainWindow):
         )
         self.auto_export_button.setEnabled(bool(run.manifest_relative_path))
         self.auto_export_button.setProperty("run_id", run.run_id)
-        if run.board_relative_path:
-            path = self._store.artifact_path(run.board_relative_path)
+        preview_relative = (
+            run.board_relative_paths[0]
+            if run.board_relative_paths
+            else run.board_relative_path
+        )
+        if preview_relative:
+            path = self._store.artifact_path(preview_relative)
             pixmap = QPixmap(str(path))
             if not pixmap.isNull():
                 self.auto_board_preview.setText("")
@@ -2330,6 +3138,7 @@ class AssetBreakdownWindow(QMainWindow):
         folder = Path(destination)
         folder.mkdir(parents=True, exist_ok=True)
         relatives = [
+            *run.board_relative_paths,
             run.board_relative_path,
             run.manifest_relative_path,
             *(
@@ -2932,7 +3741,11 @@ class AssetBreakdownWindow(QMainWindow):
             asset
             for asset in self._state.assets
             if asset.selected_for_generation
-        ) or self._state.assets
+            and asset.plan_id == self._state.selected_plan_id
+        ) or tuple(
+            asset for asset in self._state.assets
+            if asset.plan_id == self._state.selected_plan_id
+        )
         completed = [
             record
             for record in self._state.generations
@@ -2965,21 +3778,44 @@ class AssetBreakdownWindow(QMainWindow):
             assets=selected,
             generations=(item.to_dict() for item in completed),
         )
-        board_path = None
+        board_paths: list[Path] = []
         if board_entries:
-            board_path = folder / "asset_board.png"
-            board_path.write_bytes(
-                make_asset_board(
-                    board_entries,
-                    title=f"{self._state.title} — 资产展示板",
-                )
+            plan = self._selected_plan()
+            pages = make_asset_board_pages(
+                board_entries,
+                title=(
+                    f"{self._state.title} — "
+                    f"{plan.name if plan else '资产展示板'}"
+                ),
+                grouping_strategy=(
+                    plan.grouping_strategy if plan else "asset_family"
+                ),
+                max_items_per_page=(
+                    plan.max_items_per_page if plan else 9
+                ),
             )
+            for index, page in enumerate(pages, start=1):
+                board_path = folder / f"asset_board_{index:02d}.png"
+                board_path.write_bytes(page.png_bytes)
+                board_paths.append(board_path)
+                record = AssetBoardPage(
+                    page_id=str(uuid.uuid4()),
+                    plan_id=plan.plan_id if plan else "",
+                    title=page.title,
+                    group_key=page.group_key,
+                    page_index=index,
+                    asset_ids=page.asset_ids,
+                    relative_path="",
+                    created_at=utc_now(),
+                )
+                self._store.append_board_page(record)
         self._store.append_export(
             {
                 "export_id": str(uuid.uuid4()),
                 "destination_hidden": True,
                 "manifest_filename": manifest_path.name,
-                "board_filename": board_path.name if board_path else "",
+                "board_filenames": [item.name for item in board_paths],
+                "plan_id": self._state.selected_plan_id,
                 "asset_count": len(selected),
                 "image_count": len(board_entries),
                 "created_at": utc_now(),
@@ -2990,7 +3826,10 @@ class AssetBreakdownWindow(QMainWindow):
             self,
             "导出完成",
             f"已导出结构化清单和 {len(board_entries)} 张资产图片。"
-            + ("\n同时生成 asset_board.png。" if board_path else ""),
+            + (
+                f"\n同时生成 {len(board_paths)} 页资产展示板。"
+                if board_paths else ""
+            ),
         )
 
     def _refresh_asset_tree(self, select_id: str = "") -> None:
@@ -3000,7 +3839,11 @@ class AssetBreakdownWindow(QMainWindow):
             if self._state is None:
                 return
             items = {}
-            pending = list(self._state.assets)
+            current_assets = [
+                asset for asset in self._state.assets
+                if asset.plan_id == self._state.selected_plan_id
+            ]
+            pending = list(current_assets)
             for _pass in range(8):
                 next_pending = []
                 for index, asset in enumerate(pending):
@@ -3056,9 +3899,9 @@ class AssetBreakdownWindow(QMainWindow):
                 items[asset.asset_id] = item
             self.asset_tree.expandAll()
             self.inventory_summary.setText(
-                f"共 {len(self._state.assets)} 项；"
-                f"用户修订 {sum(item.user_modified for item in self._state.assets)} 项；"
-                f"待生成 {sum(item.selected_for_generation for item in self._state.assets)} 项。"
+                f"当前方案共 {len(current_assets)} 项；"
+                f"用户修订 {sum(item.user_modified for item in current_assets)} 项；"
+                f"待生成 {sum(item.selected_for_generation for item in current_assets)} 项。"
             )
         finally:
             self.asset_tree.blockSignals(False)
@@ -3082,6 +3925,8 @@ class AssetBreakdownWindow(QMainWindow):
             return
         for record in reversed(self._state.generations):
             asset = self._asset_by_id(record.asset_id)
+            if asset is None or asset.plan_id != self._state.selected_plan_id:
+                continue
             name = asset.name if asset else record.asset_id
             status = "完成" if record.status == "completed" else "失败"
             item = QListWidgetItem(
@@ -3102,7 +3947,11 @@ class AssetBreakdownWindow(QMainWindow):
             asset.asset_id for asset in self._selected_assets()
         }
         specs = []
-        for index, asset in enumerate(self._state.assets):
+        current_assets = [
+            asset for asset in self._state.assets
+            if asset.plan_id == self._state.selected_plan_id
+        ]
+        for index, asset in enumerate(current_assets):
             colour = (
                 "#81C784"
                 if asset.user_modified
@@ -3570,7 +4419,12 @@ class AssetBreakdownWindow(QMainWindow):
             return
         self._callbacks.pop((kind, generation), None)
         LOGGER.error("Asset breakdown %s failed:\n%s", kind, trace)
-        if kind == "ai":
+        if kind == "advisory":
+            self._ai_cancellation = None
+            self.understand_button.setEnabled(True)
+            self.cancel_understanding_button.setEnabled(False)
+            title = "AI 场景理解失败"
+        elif kind == "ai":
             self._ai_cancellation = None
             self.analyze_button.setEnabled(True)
             self.cancel_analysis_button.setEnabled(False)

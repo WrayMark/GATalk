@@ -8,20 +8,25 @@ import uuid
 
 from scenelens.imaging.loader import load_image
 from scenelens.modules.asset_breakdown.models import (
+    AssetBoardPage,
     AssetPromptSession,
     AutomaticAssetRun,
     AssetBreakdownState,
     AssetItem,
+    BreakdownPlan,
     GenerationRecord,
+    SceneUnderstanding,
     SourceImage,
+    StudyHandoffSnapshot,
 )
+from scenelens.modules.asset_breakdown.planning import create_plan_from_preset
 from scenelens.storage.atomic import atomic_write_json, load_json, stage_asset_copy
 from scenelens.storage.project_lock import ProjectWriteLock
 from scenelens.storage.project_store import utc_now
 
 
 FORMAT_ID = "scenelens.asset_breakdown"
-FORMAT_VERSION = 3
+FORMAT_VERSION = 4
 ENTRY_FILENAME = "asset_project.json"
 
 
@@ -62,6 +67,11 @@ class AssetBreakdownStore:
             title=title.strip() or "未命名资产拆分项目",
             created_at=now,
             updated_at=now,
+            breakdown_plans=(create_plan_from_preset(),),
+        )
+        state = replace(
+            state,
+            selected_plan_id=state.breakdown_plans[0].plan_id,
         )
         write_lock = ProjectWriteLock.acquire(
             folder,
@@ -87,7 +97,10 @@ class AssetBreakdownStore:
             raise ValueError(
                 "资产拆分项目由更高版本 GATalk 创建，当前版本不能写入。"
             )
-        state = AssetBreakdownState.from_dict(data["state"])
+        state = _upgrade_state(
+            AssetBreakdownState.from_dict(data["state"]),
+            version,
+        )
         write_lock = ProjectWriteLock.acquire(
             folder,
             state.project_id,
@@ -130,7 +143,7 @@ class AssetBreakdownStore:
             {
                 "format": FORMAT_ID,
                 "format_version": FORMAT_VERSION,
-                "module_schema_version": 3,
+                "module_schema_version": 4,
                 "state": self.state.to_dict(),
             },
         )
@@ -184,9 +197,17 @@ class AssetBreakdownStore:
                 generations=(),
                 automatic_runs=(),
                 prompt_sessions=(),
+                scene_understandings=(),
+                breakdown_plans=(create_plan_from_preset(),),
+                board_pages=(),
                 ai_runs=(),
                 selected_asset_id="",
                 selected_prompt_session_id="",
+                selected_understanding_id="",
+            )
+            self.state = replace(
+                self.state,
+                selected_plan_id=self.state.breakdown_plans[0].plan_id,
             )
         images.append(record)
         self.state = replace(self.state, source_images=tuple(images))
@@ -200,6 +221,8 @@ class AssetBreakdownStore:
         return self._safe_path(relative)
 
     def add_or_replace_asset(self, asset: AssetItem) -> None:
+        if not asset.plan_id and self.state.selected_plan_id:
+            asset = replace(asset, plan_id=self.state.selected_plan_id)
         assets = list(self.state.assets)
         for index, existing in enumerate(assets):
             if existing.asset_id == asset.asset_id:
@@ -212,6 +235,108 @@ class AssetBreakdownStore:
 
     def replace_assets(self, assets: tuple[AssetItem, ...]) -> None:
         self.state = replace(self.state, assets=tuple(assets))
+        self.save()
+
+    def add_or_replace_handoff(self, handoff: StudyHandoffSnapshot) -> None:
+        values = list(self.state.study_handoffs)
+        for index, existing in enumerate(values):
+            if existing.handoff_id == handoff.handoff_id:
+                values[index] = handoff
+                break
+        else:
+            values.append(handoff)
+        self.state = replace(
+            self.state,
+            study_handoffs=tuple(values),
+            selected_handoff_id=handoff.handoff_id,
+        )
+        self.save()
+
+    def add_scene_understanding(
+        self,
+        understanding: SceneUnderstanding,
+    ) -> None:
+        self.add_or_replace_scene_understanding(understanding)
+
+    def add_or_replace_scene_understanding(
+        self,
+        understanding: SceneUnderstanding,
+    ) -> None:
+        values = list(self.state.scene_understandings)
+        for index, existing in enumerate(values):
+            if existing.understanding_id == understanding.understanding_id:
+                values[index] = understanding
+                break
+        else:
+            values.append(understanding)
+        self.state = replace(
+            self.state,
+            scene_understandings=tuple(values),
+            selected_understanding_id=understanding.understanding_id,
+        )
+        self.save()
+
+    def add_or_replace_plan(self, plan: BreakdownPlan) -> None:
+        values = list(self.state.breakdown_plans)
+        for index, existing in enumerate(values):
+            if existing.plan_id == plan.plan_id:
+                values[index] = plan
+                break
+        else:
+            values.append(plan)
+        self.state = replace(
+            self.state,
+            breakdown_plans=tuple(values),
+            selected_plan_id=plan.plan_id,
+        )
+        self.save()
+
+    def delete_plan(self, plan_id: str) -> None:
+        if len(self.state.breakdown_plans) <= 1:
+            raise ValueError("资产拆分项目至少需要保留一个拆分方案。")
+        plans = tuple(
+            item for item in self.state.breakdown_plans
+            if item.plan_id != plan_id
+        )
+        if len(plans) == len(self.state.breakdown_plans):
+            return
+        retained_ids = {
+            asset.asset_id
+            for asset in self.state.assets
+            if asset.plan_id != plan_id
+        }
+        self.state = replace(
+            self.state,
+            breakdown_plans=plans,
+            selected_plan_id=plans[0].plan_id,
+            assets=tuple(
+                asset for asset in self.state.assets
+                if asset.plan_id != plan_id
+            ),
+            generations=tuple(
+                item for item in self.state.generations
+                if item.asset_id in retained_ids
+            ),
+            board_pages=tuple(
+                item for item in self.state.board_pages
+                if item.plan_id != plan_id
+            ),
+        )
+        self.save()
+
+    def select_plan(self, plan_id: str) -> None:
+        if not any(
+            item.plan_id == plan_id for item in self.state.breakdown_plans
+        ):
+            raise ValueError("拆分方案不存在。")
+        self.state = replace(self.state, selected_plan_id=plan_id)
+        self.save()
+
+    def append_board_page(self, page: AssetBoardPage) -> None:
+        self.state = replace(
+            self.state,
+            board_pages=(*self.state.board_pages, page),
+        )
         self.save()
 
     def delete_asset(self, asset_id: str) -> None:
@@ -331,3 +456,26 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _upgrade_state(
+    state: AssetBreakdownState,
+    source_version: int,
+) -> AssetBreakdownState:
+    if source_version >= 4 and state.breakdown_plans:
+        return state
+    plan = create_plan_from_preset(
+        "production_kit",
+        name="迁移的默认生产套件",
+    )
+    return replace(
+        state,
+        breakdown_plans=(plan,),
+        selected_plan_id=plan.plan_id,
+        assets=tuple(
+            replace(asset, plan_id=plan.plan_id)
+            if not asset.plan_id
+            else asset
+            for asset in state.assets
+        ),
+    )

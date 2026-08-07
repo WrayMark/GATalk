@@ -121,6 +121,76 @@ class MockProvider:
 
 def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
     title = str(schema.get("title", ""))
+    if title == "GATalk Asset Breakdown Advisory":
+        return {
+            "schema_version": "1.0",
+            "reviewer_id": "asset_breakdown_advisory",
+            "scene_understanding": {
+                "scene_archetype": "离线流程示例",
+                "summary": (
+                    "离线 Mock 不读取图片语义；这里只演示先理解、再选择"
+                    "拆分深度的完整流程。"
+                ),
+                "spatial_structure": ["前景", "主体区", "远景"],
+                "production_systems": ["装配体", "复用套件", "材质系统"],
+                "asset_families": [
+                    {
+                        "family_id": "mock_architecture",
+                        "name": "示例建筑族",
+                        "category": "building",
+                        "role": "主体装配体",
+                        "reuse_signal": "Mock 未执行真实判断。",
+                        "visible_evidence": "没有实际视觉证据。",
+                        "confidence": 0.0,
+                    },
+                    {
+                        "family_id": "mock_surface",
+                        "name": "示例地表系统",
+                        "category": "terrain",
+                        "role": "承载场景",
+                        "reuse_signal": "Mock 未执行真实判断。",
+                        "visible_evidence": "没有实际视觉证据。",
+                        "confidence": 0.0,
+                    },
+                ],
+                "visible_evidence": ["离线 Mock 没有读取图片。"],
+                "uncertainties": ["全部语义需要用户校正或连接真实视觉模型。"],
+            },
+            "recommended_plans": [
+                {
+                    "name": "完整装配体示例",
+                    "preset_id": "assembly_set",
+                    "purpose": "先确认主要建筑、桥梁、岩组或植被群落。",
+                    "scope": "whole_scene",
+                    "category_depths": [
+                        {"category": "building", "depth": 2},
+                        {"category": "prop", "depth": 2},
+                        {"category": "vegetation", "depth": 2},
+                        {"category": "terrain", "depth": 2}
+                    ],
+                    "grouping_strategy": "asset_family",
+                    "max_items_per_page": 9,
+                    "rationale": "用于演示装配体层级。"
+                },
+                {
+                    "name": "生产套件示例",
+                    "preset_id": "production_kit",
+                    "purpose": "继续规划可复用结构段、组件和材质系统。",
+                    "scope": "whole_scene",
+                    "category_depths": [
+                        {"category": "building", "depth": 3},
+                        {"category": "modular_piece", "depth": 3},
+                        {"category": "prop", "depth": 3},
+                        {"category": "vegetation", "depth": 3},
+                        {"category": "terrain", "depth": 3},
+                        {"category": "material", "depth": 3}
+                    ],
+                    "grouping_strategy": "hierarchy",
+                    "max_items_per_page": 9,
+                    "rationale": "用于演示生产套件层级。"
+                }
+            ]
+        }
     if title == "GATalk Asset Breakdown":
         return {
             "schema_version": "1.0",

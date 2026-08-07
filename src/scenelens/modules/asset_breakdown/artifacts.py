@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 import json
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Iterable
 
 import numpy as np
@@ -14,6 +15,14 @@ from scenelens.analysis.asset_masks import (
 )
 from scenelens.modules.asset_breakdown.models import AssetItem
 from scenelens.storage.atomic import atomic_write_json
+
+
+@dataclass(frozen=True)
+class RenderedAssetBoardPage:
+    title: str
+    group_key: str
+    asset_ids: tuple[str, ...]
+    png_bytes: bytes
 
 
 def png_bytes_from_rgba(rgba: np.ndarray) -> bytes:
@@ -113,6 +122,61 @@ def make_asset_board(
     return buffer.getvalue()
 
 
+def make_asset_board_pages(
+    entries: Iterable[tuple[AssetItem, Path]],
+    *,
+    title: str,
+    grouping_strategy: str = "asset_family",
+    max_items_per_page: int = 9,
+) -> tuple[RenderedAssetBoardPage, ...]:
+    """Render deterministic, production-oriented board pages.
+
+    Assets are grouped before pagination so a large scene is not forced into
+    one unreadable sheet. The images remain concept artifacts, not 3D assets.
+    """
+
+    values = list(entries)
+    if not values:
+        raise ValueError("没有可加入资产展示板的图片。")
+    limit = max(1, min(24, int(max_items_per_page)))
+    groups: dict[str, list[tuple[AssetItem, Path]]] = {}
+    order: list[str] = []
+    for asset, path in values:
+        key = _board_group_key(asset, grouping_strategy)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append((asset, path))
+    rendered = []
+    for key in order:
+        items = groups[key]
+        chunks = [items[index : index + limit] for index in range(0, len(items), limit)]
+        for chunk_index, chunk in enumerate(chunks, start=1):
+            suffix = f" · {key}"
+            if len(chunks) > 1:
+                suffix += f" {chunk_index}/{len(chunks)}"
+            page_title = f"{title}{suffix}"
+            rendered.append(
+                RenderedAssetBoardPage(
+                    title=page_title,
+                    group_key=key,
+                    asset_ids=tuple(asset.asset_id for asset, _path in chunk),
+                    png_bytes=make_asset_board(chunk, title=page_title),
+                )
+            )
+    return tuple(rendered)
+
+
+def _board_group_key(asset: AssetItem, strategy: str) -> str:
+    if strategy == "hierarchy":
+        return asset.parent_asset_id or asset.asset_id
+    if strategy == "spatial_system":
+        return asset.semantic_type or asset.category
+    if strategy == "category":
+        return asset.category
+    return asset.reuse_group or asset.category
+
+
 def write_asset_manifest(
     destination: Path,
     *,
@@ -151,4 +215,3 @@ def _font(size: int) -> ImageFont.ImageFont:
             except OSError:
                 pass
     return ImageFont.load_default()
-

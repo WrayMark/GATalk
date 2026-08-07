@@ -456,7 +456,7 @@ def main() -> int:
         hub.raise_()
         hub.activateWindow()
 
-    def open_workspace(workspace_id: str) -> None:
+    def open_workspace(workspace_id: str):
         if workspace_id == "scene_art_control":
             window = MainWindow()
         elif workspace_id == "artwork_study":
@@ -472,9 +472,13 @@ def main() -> int:
 
             window = AssetBreakdownWindow()
         else:
-            return
+            return None
         settings_controller.register_window(window, workspace_id)
         window.workspace_home_requested.connect(show_hub)
+        if workspace_id == "artwork_study":
+            window.asset_breakdown_requested.connect(
+                open_asset_breakdown_handoff
+            )
         window.destroyed.connect(
             lambda *_args, value=window: (
                 active_windows.remove(value)
@@ -485,6 +489,12 @@ def main() -> int:
         active_windows.append(window)
         hub.hide()
         window.show()
+        return window
+
+    def open_asset_breakdown_handoff(handoff: object) -> None:
+        window = open_workspace("asset_breakdown")
+        if window is not None:
+            window.receive_workspace_handoff(handoff)
 
     hub.workspace_selected.connect(open_workspace)
     hub.show()

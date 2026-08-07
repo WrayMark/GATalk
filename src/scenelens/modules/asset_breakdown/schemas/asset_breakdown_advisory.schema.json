@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GATalk Asset Breakdown Advisory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "reviewer_id", "scene_understanding", "recommended_plans"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "reviewer_id": {"const": "asset_breakdown_advisory"},
+    "scene_understanding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene_archetype", "summary", "spatial_structure", "production_systems", "asset_families", "visible_evidence", "uncertainties"],
+      "properties": {
+        "scene_archetype": {"type": "string"},
+        "summary": {"type": "string"},
+        "spatial_structure": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"type": "string"}},
+        "production_systems": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"type": "string"}},
+        "asset_families": {
+          "type": "array", "minItems": 1, "maxItems": 20,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["family_id", "name", "category", "role", "reuse_signal", "visible_evidence", "confidence"],
+            "properties": {
+              "family_id": {"type": "string"},
+              "name": {"type": "string"},
+              "category": {"enum": ["building", "modular_piece", "prop", "vegetation", "terrain", "material", "decal", "background", "lighting_vfx", "character_vehicle", "unknown"]},
+              "role": {"type": "string"},
+              "reuse_signal": {"type": "string"},
+              "visible_evidence": {"type": "string"},
+              "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          }
+        },
+        "visible_evidence": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"type": "string"}},
+        "uncertainties": {"type": "array", "maxItems": 16, "items": {"type": "string"}}
+      }
+    },
+    "recommended_plans": {
+      "type": "array", "minItems": 2, "maxItems": 4,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "preset_id", "purpose", "scope", "category_depths", "grouping_strategy", "max_items_per_page", "rationale"],
+        "properties": {
+          "name": {"type": "string"},
+          "preset_id": {"enum": ["spatial_layout", "assembly_set", "production_kit", "detail_components", "custom_mixed"]},
+          "purpose": {"type": "string"},
+          "scope": {"enum": ["whole_scene", "selected_families", "selected_region"]},
+          "category_depths": {
+            "type": "array", "minItems": 1, "maxItems": 11,
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["category", "depth"],
+              "properties": {
+                "category": {"enum": ["building", "modular_piece", "prop", "vegetation", "terrain", "material", "decal", "background", "lighting_vfx", "character_vehicle", "unknown"]},
+                "depth": {"type": "integer", "minimum": 0, "maximum": 4}
+              }
+            }
+          },
+          "grouping_strategy": {"enum": ["spatial_system", "asset_family", "hierarchy", "category"]},
+          "max_items_per_page": {"type": "integer", "minimum": 4, "maximum": 16},
+          "rationale": {"type": "string"}
+        }
+      }
+    }
+  }
+}
