@@ -179,7 +179,7 @@ def build() -> None:
     metadata.paragraph_format.space_after = Pt(14)
     set_font(
         metadata.add_run(
-            "适用版本：0.12.0（统一拆分依据与资产工作流界面）"
+            "适用版本：0.12.1（资产工作台布局与滚动优化）"
             "　更新日期：2026-08-08"
         ),
         size=9.5,
@@ -319,6 +319,14 @@ def build() -> None:
         "生成提示语：把当前场景结构与逐类别拆分深度写入可复制的外部生图指令，可继续修订或手动编辑。",
         "工作区顶部固定显示当前拆分依据。三种方式共享方案，但输出独立保存。",
         "方案修改后，旧自动资产板和旧提示语会标记为旧版依据；历史文件不会删除。",
+    ):
+        add_list_item(document, text, bullet_id)
+    add_heading(document, "右侧工作区与滚动", 2)
+    for text in (
+        "右侧页面按当前任务分段排列，不要求在一个屏幕内显示全部内容。",
+        "内容超过窗口高度时会显示纵向滚动条；鼠标放在右侧即可滚轮滚动。",
+        "拆分依据、资产详情、生成与导出、自动资产板和生成提示语均支持纵向滚动。",
+        "中央原画画布独立显示，不会随右侧页面滚动。",
     ):
         add_list_item(document, text, bullet_id)
     add_heading(document, "AI 清单结构修复", 2)

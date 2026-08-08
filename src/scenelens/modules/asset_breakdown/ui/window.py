@@ -420,7 +420,12 @@ class AssetBreakdownWindow(QMainWindow):
         dock.setMinimumWidth(280)
         panel = QWidget()
         layout = QVBoxLayout(panel)
+        layout.setContentsMargins(14, 14, 14, 18)
+        layout.setSpacing(14)
         form = QFormLayout()
+        form.setHorizontalSpacing(10)
+        form.setVerticalSpacing(10)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self.title_edit = QLineEdit()
         self.scene_type_combo = QComboBox()
         self.scene_type_combo.setEditable(True)
@@ -459,7 +464,14 @@ class AssetBreakdownWindow(QMainWindow):
         legend.setProperty("role", "muted")
         layout.addWidget(legend)
         layout.addStretch(1)
-        dock.setWidget(panel)
+        scroll = QScrollArea()
+        scroll.setObjectName("assetProjectScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        scroll.setWidget(panel)
+        dock.setWidget(scroll)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
 
     def _build_central_ui(self) -> None:
@@ -528,8 +540,14 @@ class AssetBreakdownWindow(QMainWindow):
     def _build_inventory_tab(self) -> QWidget:
         root = QWidget()
         layout = QVBoxLayout(root)
+        layout.setContentsMargins(16, 14, 16, 16)
+        layout.setSpacing(14)
         provider_group = QGroupBox("清单分析")
+        provider_group.setObjectName("workflowSection")
         provider_form = QFormLayout(provider_group)
+        provider_form.setContentsMargins(14, 12, 14, 14)
+        provider_form.setHorizontalSpacing(12)
+        provider_form.setVerticalSpacing(10)
         self.vision_provider_combo = QComboBox()
         for provider in self._provider_registry.for_capability(
             ProviderCapability.VISION_REVIEW
@@ -606,6 +624,7 @@ class AssetBreakdownWindow(QMainWindow):
         self.asset_tree.setColumnWidth(2, 95)
         self.asset_tree.setColumnWidth(3, 50)
         self.asset_tree.setColumnWidth(4, 105)
+        self.asset_tree.setMinimumHeight(280)
         layout.addWidget(self.asset_tree, 1)
         self.inventory_summary = QLabel("状态：未生成清单")
         self.inventory_summary.setWordWrap(True)
@@ -615,6 +634,8 @@ class AssetBreakdownWindow(QMainWindow):
     def _build_plan_tab(self) -> QWidget:
         body = QWidget()
         layout = QVBoxLayout(body)
+        layout.setContentsMargins(16, 14, 16, 24)
+        layout.setSpacing(14)
         intro = QLabel(
             "先确认场景结构和生产目标，再确定拆分深度。同一原画可保存多套"
             "独立方案，例如“完整装配体”和“建筑生产套件”。分析建议不会"
@@ -747,6 +768,9 @@ class AssetBreakdownWindow(QMainWindow):
     def _build_detail_tab(self) -> QWidget:
         content = QWidget()
         form = QFormLayout(content)
+        form.setContentsMargins(16, 14, 16, 24)
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(10)
         self.detail_name = QLineEdit()
         self.detail_category = QComboBox()
         self.detail_category.setEditable(True)
@@ -803,10 +827,16 @@ class AssetBreakdownWindow(QMainWindow):
         return wrapper
 
     def _build_generation_tab(self) -> QWidget:
-        root = QWidget()
-        layout = QVBoxLayout(root)
+        body = QWidget()
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(16, 14, 16, 24)
+        layout.setSpacing(14)
         group = QGroupBox("图片生成：仅处理勾选资产")
+        group.setObjectName("workflowSection")
         form = QFormLayout(group)
+        form.setContentsMargins(14, 12, 14, 14)
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(10)
         self.image_provider_combo = QComboBox()
         for provider in self._provider_registry.for_capability(
             ProviderCapability.IMAGE_EDIT
@@ -877,12 +907,23 @@ class AssetBreakdownWindow(QMainWindow):
         export_layout.addWidget(self.export_manifest_button)
         layout.addWidget(export_group)
         self.generation_list = QListWidget()
-        layout.addWidget(self.generation_list, 1)
-        return root
+        self.generation_list.setMinimumHeight(240)
+        layout.addWidget(self.generation_list)
+        layout.addStretch(1)
+        scroll = QScrollArea()
+        scroll.setObjectName("generationPageScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        scroll.setWidget(body)
+        return scroll
 
     def _build_automatic_tab(self) -> QWidget:
-        root = QWidget()
-        layout = QVBoxLayout(root)
+        body = QWidget()
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(16, 14, 16, 24)
+        layout.setSpacing(14)
         intro = QLabel(
             "按当前拆分方案批量生成资产清单、单项概念图和分页展示板。"
             "运行结果独立保存，不写入“清单与校正”中的资产清单。"
@@ -898,7 +939,11 @@ class AssetBreakdownWindow(QMainWindow):
         layout.addWidget(shared_note)
 
         group = QGroupBox("批量生成设置")
+        group.setObjectName("workflowSection")
         form = QFormLayout(group)
+        form.setContentsMargins(14, 12, 14, 14)
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(10)
         self.auto_vision_provider_combo = QComboBox()
         for provider in self._provider_registry.for_capability(
             ProviderCapability.VISION_REVIEW
@@ -962,20 +1007,31 @@ class AssetBreakdownWindow(QMainWindow):
         self.auto_status.setWordWrap(True)
         layout.addWidget(self.auto_status)
         self.auto_run_list = QListWidget()
-        self.auto_run_list.setMaximumHeight(120)
+        self.auto_run_list.setMinimumHeight(132)
+        self.auto_run_list.setMaximumHeight(180)
         layout.addWidget(self.auto_run_list)
         self.auto_board_preview = QLabel("资产板预览")
         self.auto_board_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.auto_board_preview.setMinimumHeight(260)
         self.auto_board_preview.setScaledContents(False)
         scroll = QScrollArea()
+        scroll.setObjectName("assetBoardPreviewScroll")
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.auto_board_preview)
-        layout.addWidget(scroll, 1)
+        scroll.setMinimumHeight(340)
+        layout.addWidget(scroll)
         self.auto_export_button = QPushButton("导出当前运行")
         self.auto_export_button.setEnabled(False)
         layout.addWidget(self.auto_export_button)
-        return root
+        layout.addStretch(1)
+        page_scroll = QScrollArea()
+        page_scroll.setObjectName("automaticPageScroll")
+        page_scroll.setWidgetResizable(True)
+        page_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        page_scroll.setWidget(body)
+        return page_scroll
 
     def _connect_signals(self) -> None:
         self.canvas.file_dropped.connect(self._import_main_path)

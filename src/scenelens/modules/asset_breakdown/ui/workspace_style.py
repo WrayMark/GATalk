@@ -19,11 +19,29 @@ QFrame#workflowContextBar QComboBox,
 QFrame#workflowContextBar QPushButton {
     background-color: palette(button);
 }
+QScrollArea#assetProjectScroll,
+QScrollArea#promptWorkshopScroll,
+QScrollArea#generationPageScroll,
+QScrollArea#automaticPageScroll,
+QScrollArea#assetBoardPreviewScroll {
+    background: palette(window);
+    border: none;
+}
+QWidget#promptWorkshopBody {
+    background: palette(window);
+}
+QGroupBox#workflowSection {
+    margin-top: 16px;
+    padding-top: 14px;
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-bottom: 12px;
+}
 QLabel#workflowBasis {
     background: palette(alternate-base);
     border-left: 3px solid palette(highlight);
     border-radius: 6px;
-    padding: 8px 10px;
+    padding: 10px 12px;
 }
 QTabWidget#assetWorkflowTabs::pane {
     border-top: 1px solid palette(mid);

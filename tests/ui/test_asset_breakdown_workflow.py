@@ -7,7 +7,7 @@ from io import BytesIO
 import numpy as np
 from PIL import Image, ImageDraw
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QScrollArea
 
 from scenelens.modules.asset_breakdown.service import create_manual_asset
 from scenelens.modules.asset_breakdown.storage import AssetBreakdownStore
@@ -61,6 +61,35 @@ def test_hub_exposes_three_large_workspaces(qtbot) -> None:
     qtbot.addWidget(hub)
     labels = [label.text() for label in hub.findChildren(QLabel)]
     assert any("资产拆分工作台" in value for value in labels)
+
+
+def test_asset_workflow_pages_keep_vertical_scroll_and_readable_spacing(
+    qtbot,
+) -> None:
+    window = AssetBreakdownWindow()
+    qtbot.addWidget(window)
+    window.resize(1180, 680)
+    window.show()
+    qtbot.waitExposed(window)
+
+    prompt_scroll = window.prompt_panel.scroll_area
+    assert isinstance(prompt_scroll, QScrollArea)
+    assert prompt_scroll.horizontalScrollBarPolicy() == (
+        Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
+    assert prompt_scroll.verticalScrollBarPolicy() == (
+        Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
+    assert prompt_scroll.widget().layout().spacing() == 14
+    assert prompt_scroll.verticalScrollBar().maximum() > 0
+
+    automatic_scroll = window.workflow_tabs.widget(1)
+    assert isinstance(automatic_scroll, QScrollArea)
+    assert automatic_scroll.objectName() == "automaticPageScroll"
+    generation_scroll = window.manual_tabs.widget(3)
+    assert isinstance(generation_scroll, QScrollArea)
+    assert generation_scroll.objectName() == "generationPageScroll"
+    window.close()
 
 
 def test_two_distinct_scene_projects_restore_manual_corrections(

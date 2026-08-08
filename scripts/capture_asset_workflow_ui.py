@@ -33,6 +33,13 @@ def _scene(path: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("output", type=Path)
+    parser.add_argument(
+        "--workflow",
+        choices=("plan", "inventory", "generation", "automatic", "prompt"),
+        default="plan",
+    )
+    parser.add_argument("--width", type=int, default=1600)
+    parser.add_argument("--height", type=int, default=920)
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -49,10 +56,17 @@ def main() -> None:
         store.import_image(image_path, "main")
         window = AssetBreakdownWindow()
         window._attach_store(store)
-        window.resize(1600, 920)
+        window.resize(args.width, args.height)
         window.show()
-        window.workflow_tabs.setCurrentIndex(0)
-        window.manual_tabs.setCurrentIndex(0)
+        if args.workflow == "automatic":
+            window.workflow_tabs.setCurrentIndex(1)
+        elif args.workflow == "prompt":
+            window.workflow_tabs.setCurrentIndex(2)
+        else:
+            window.workflow_tabs.setCurrentIndex(0)
+            window.manual_tabs.setCurrentIndex(
+                {"plan": 0, "inventory": 1, "generation": 3}[args.workflow]
+            )
         for _ in range(80):
             app.processEvents()
             if window._loaded is not None:

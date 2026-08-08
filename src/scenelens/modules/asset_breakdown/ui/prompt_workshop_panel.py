@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -12,7 +13,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QPlainTextEdit,
     QPushButton,
-    QSplitter,
+    QScrollArea,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -28,6 +29,23 @@ class AssetPromptWorkshopPanel(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setObjectName("promptWorkshopScroll")
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        body = QWidget()
+        body.setObjectName("promptWorkshopBody")
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(16, 14, 16, 24)
+        body_layout.setSpacing(14)
 
         intro = QLabel(
             "根据当前场景理解和拆分方案编写外部生图指令。指令可继续修订、"
@@ -35,15 +53,19 @@ class AssetPromptWorkshopPanel(QWidget):
         )
         intro.setProperty("role", "muted")
         intro.setWordWrap(True)
-        layout.addWidget(intro)
+        body_layout.addWidget(intro)
 
         self.basis_label = QLabel("运行依据：未打开项目。")
         self.basis_label.setObjectName("workflowBasis")
         self.basis_label.setWordWrap(True)
-        layout.addWidget(self.basis_label)
+        body_layout.addWidget(self.basis_label)
 
-        settings = QGroupBox("模型与会话")
+        settings = QGroupBox("1  生成设置")
+        settings.setObjectName("workflowSection")
         form = QFormLayout(settings)
+        form.setContentsMargins(14, 12, 14, 14)
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(10)
         self.provider_combo = QComboBox()
         self.model_edit = QLineEdit()
         self.key_edit = QLineEdit()
@@ -90,23 +112,20 @@ class AssetPromptWorkshopPanel(QWidget):
         button_layout.addWidget(self.initial_button, 1)
         button_layout.addWidget(self.cancel_button)
         form.addRow(button_row)
-        layout.addWidget(settings)
 
         self.status_label = QLabel("状态：未生成")
+        self.status_label.setProperty("role", "muted")
         self.status_label.setWordWrap(True)
-        layout.addWidget(self.status_label)
+        form.addRow(self.status_label)
+        body_layout.addWidget(settings)
 
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        conversation = QGroupBox("修订记录")
-        conversation_layout = QVBoxLayout(conversation)
-        self.history_list = QListWidget()
-        self.history_list.setMinimumHeight(100)
-        conversation_layout.addWidget(self.history_list)
-        splitter.addWidget(conversation)
-
-        editor = QGroupBox("当前版本")
+        editor = QGroupBox("2  当前提示语")
+        editor.setObjectName("workflowSection")
         editor_layout = QVBoxLayout(editor)
+        editor_layout.setContentsMargins(14, 12, 14, 14)
+        editor_layout.setSpacing(10)
         self.revision_label = QLabel("未选择版本")
+        self.revision_label.setProperty("role", "muted")
         editor_layout.addWidget(self.revision_label)
         self.revision_combo = QComboBox()
         self.revision_combo.currentIndexChanged.connect(
@@ -128,30 +147,30 @@ class AssetPromptWorkshopPanel(QWidget):
         self.editor_tabs.addTab(self.constraints_edit, "硬约束")
         self.editor_tabs.addTab(self.analysis_edit, "图片理解")
         self.editor_tabs.addTab(self.asset_groups_edit, "资产组依据")
-        editor_layout.addWidget(self.editor_tabs, 1)
+        self.editor_tabs.setMinimumHeight(300)
+        editor_layout.addWidget(self.editor_tabs)
 
         action_row = QWidget()
-        action_layout = QHBoxLayout(action_row)
+        action_layout = QGridLayout(action_row)
         action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setHorizontalSpacing(8)
+        action_layout.setVerticalSpacing(8)
         self.save_manual_button = QPushButton("保存手动修改")
         self.copy_zh_button = QPushButton("复制中文")
         self.copy_en_button = QPushButton("复制英文")
         self.copy_all_button = QPushButton("复制完整提示语")
-        for button in (
-            self.save_manual_button,
-            self.copy_zh_button,
-            self.copy_en_button,
-            self.copy_all_button,
-        ):
-            action_layout.addWidget(button)
+        action_layout.addWidget(self.save_manual_button, 0, 0)
+        action_layout.addWidget(self.copy_all_button, 0, 1)
+        action_layout.addWidget(self.copy_zh_button, 1, 0)
+        action_layout.addWidget(self.copy_en_button, 1, 1)
         editor_layout.addWidget(action_row)
-        splitter.addWidget(editor)
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        layout.addWidget(splitter, 1)
+        body_layout.addWidget(editor)
 
-        refine = QGroupBox("提交修订意见")
+        refine = QGroupBox("3  继续修订")
+        refine.setObjectName("workflowSection")
         refine_layout = QVBoxLayout(refine)
+        refine_layout.setContentsMargins(14, 12, 14, 14)
+        refine_layout.setSpacing(10)
         hint = QLabel(
             "示例：减少次要道具；把建筑拆到生产套件；不补全不可见背面；"
             "按 Midjourney 的语法压缩指令。"
@@ -159,7 +178,8 @@ class AssetPromptWorkshopPanel(QWidget):
         hint.setWordWrap(True)
         refine_layout.addWidget(hint)
         self.feedback_edit = QPlainTextEdit()
-        self.feedback_edit.setMaximumHeight(92)
+        self.feedback_edit.setMinimumHeight(96)
+        self.feedback_edit.setMaximumHeight(140)
         refine_layout.addWidget(self.feedback_edit)
         self.resend_image_check = QCheckBox(
             "本次迭代重新附带原画（更耗流量和视觉模型额度）"
@@ -169,7 +189,20 @@ class AssetPromptWorkshopPanel(QWidget):
         self.iterate_button = QPushButton("检查发送内容并生成新版本")
         self.iterate_button.setProperty("primary", True)
         refine_layout.addWidget(self.iterate_button)
-        layout.addWidget(refine)
+        body_layout.addWidget(refine)
+
+        conversation = QGroupBox("版本记录")
+        conversation.setObjectName("workflowSection")
+        conversation_layout = QVBoxLayout(conversation)
+        conversation_layout.setContentsMargins(14, 12, 14, 14)
+        self.history_list = QListWidget()
+        self.history_list.setMinimumHeight(140)
+        conversation_layout.addWidget(self.history_list)
+        body_layout.addWidget(conversation)
+        body_layout.addStretch(1)
+
+        self.scroll_area.setWidget(body)
+        layout.addWidget(self.scroll_area)
         self._session: AssetPromptSession | None = None
         self.set_prompt_actions_enabled(False)
 

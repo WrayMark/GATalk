@@ -19,7 +19,7 @@ def register_visual_review_workbench(
             module_id="scenelens.visual_review",
             workspace_id="scene_art_control",
             display_name="游戏场景美术控制工作台",
-            version="0.12.0",
+            version="0.12.1",
         )
     )
     registry.register_reviewer(DeepArtDirectorReview())
