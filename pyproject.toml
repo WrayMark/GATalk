@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gatalk"
-version = "0.12.1"
+version = "0.15.0"
 description = "Local-first game art analysis and production workbench."
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -37,6 +37,7 @@ where = ["src"]
 "scenelens.modules.artwork_study.schemas" = ["*.json"]
 "scenelens.modules.asset_breakdown.config" = ["*.json"]
 "scenelens.modules.asset_breakdown.schemas" = ["*.json"]
+"scenelens.modules.comparative_study.schemas" = ["*.json"]
 "scenelens.providers.config" = ["*.json"]
 
 [tool.pytest.ini_options]

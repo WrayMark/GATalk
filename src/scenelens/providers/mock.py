@@ -121,6 +121,53 @@ class MockProvider:
 
 def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
     title = str(schema.get("title", ""))
+    if title == "GATalk Knowledge Translation":
+        return {
+            "translation": (
+                "离线 Mock 只验证翻译请求、确认、保存与恢复流程；"
+                "它没有执行真实翻译。"
+            ),
+            "terminology_notes": ["连接真实文本模型后生成专业术语说明。"],
+            "uncertainties": ["当前结果不可作为正式译文。"],
+        }
+    if title == "GATalk Comparative Artwork Study":
+        return {
+            "schema_version": "1.0",
+            "reviewer_id": "comparative_artwork_study",
+            "research_thesis": (
+                "离线 Mock 只验证对照研究的数据流程，不读取图片语义；"
+                "以下文字不能作为作品分析结论。"
+            ),
+            "work_profiles": [
+                {
+                    "item_id": "作品一",
+                    "core_strategy": "未执行真实视觉分析。",
+                    "visible_evidence": ["离线 Mock 没有读取图片。"],
+                    "uncertainty": "全部语义内容待真实视觉模型或人工研究补充。"
+                },
+                {
+                    "item_id": "作品二",
+                    "core_strategy": "未执行真实视觉分析。",
+                    "visible_evidence": ["离线 Mock 没有读取图片。"],
+                    "uncertainty": "全部语义内容待真实视觉模型或人工研究补充。"
+                }
+            ],
+            "axis_comparisons": [
+                {
+                    "axis": "流程验证",
+                    "similarities": ["两件作品均已进入请求结构。"],
+                    "differences": ["Mock 不判断真实视觉差异。"],
+                    "visual_effect": "未分析。",
+                    "evidence": ["仅确认结构化输出链路可用。"],
+                    "interpretation": "连接真实视觉模型后才会形成专业对照研究。",
+                    "confidence": 0.0
+                }
+            ],
+            "cross_axis_findings": ["离线 Mock 不生成跨维度美术结论。"],
+            "transferable_principles": ["先核对画面证据，再接受模型解释。"],
+            "limitations": ["离线 Mock 不具备本地图像语义推理能力。"],
+            "study_questions": ["两件作品在同一视觉问题上采用了哪些不同策略？"]
+        }
     if title == "GATalk Asset Breakdown Advisory":
         return {
             "schema_version": "1.0",

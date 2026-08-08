@@ -82,6 +82,7 @@ from scenelens.modules.asset_breakdown.models import (
     AssetBoardPage,
     AssetBreakdownState,
     AssetItem,
+    AssetProductionSpec,
     BreakdownPlan,
     GenerationRecord,
     PromptMessage,
@@ -95,6 +96,14 @@ from scenelens.modules.asset_breakdown.planning import (
     plan_fingerprint,
     plan_from_ai,
     understanding_from_ai,
+)
+from scenelens.modules.asset_breakdown.production_handoff import (
+    STATUS_LABELS as PRODUCTION_STATUS_LABELS,
+    build_handoff_payload,
+    export_handoff_csv,
+    export_handoff_json,
+    synchronize_production_specs,
+    validate_production_specs,
 )
 from scenelens.modules.asset_breakdown.prompt_workshop import (
     AssetPromptContext,
@@ -136,6 +145,7 @@ from scenelens.providers.credentials import (
 from scenelens.providers.execution import ProviderExecutionService
 from scenelens.providers.factory import create_default_provider_registry
 from scenelens.storage.project_store import utc_now
+from scenelens.storage.workspace_catalog import WorkspaceCatalogStore
 from scenelens.core.handoffs import WorkspaceHandoff
 from scenelens.ui.image_canvas import ImageCanvas, RegionOverlaySpec
 from scenelens.ui.workers import FunctionWorker
@@ -281,6 +291,7 @@ class _AssetStateCommand(QUndoCommand):
 
 class AssetBreakdownWindow(QMainWindow):
     workspace_home_requested = Signal()
+    review_task_requested = Signal(object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -494,6 +505,7 @@ class AssetBreakdownWindow(QMainWindow):
         manual.addTab(self._build_plan_tab(), "拆分依据")
         manual.addTab(inventory, "资产清单")
         manual.addTab(self._build_detail_tab(), "资产详情")
+        manual.addTab(self._build_production_tab(), "生产交接")
         manual.addTab(self._build_generation_tab(), "生成与导出")
         self.workflow_tabs.addTab(manual, "清单与校正")
         self.workflow_tabs.addTab(
@@ -626,6 +638,12 @@ class AssetBreakdownWindow(QMainWindow):
         self.asset_tree.setColumnWidth(4, 105)
         self.asset_tree.setMinimumHeight(280)
         layout.addWidget(self.asset_tree, 1)
+        self.asset_task_button = QPushButton("将所选资产加入审阅中心")
+        self.asset_task_button.setEnabled(False)
+        self.asset_task_button.clicked.connect(
+            self._send_selected_assets_to_review_center
+        )
+        layout.addWidget(self.asset_task_button)
         self.inventory_summary = QLabel("状态：未生成清单")
         self.inventory_summary.setWordWrap(True)
         layout.addWidget(self.inventory_summary)
@@ -825,6 +843,112 @@ class AssetBreakdownWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(scroll)
         return wrapper
+
+    def _build_production_tab(self) -> QWidget:
+        body = QWidget()
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(16, 14, 16, 24)
+        layout.setSpacing(14)
+        intro = QLabel(
+            "把当前拆分方案整理为可交接的生产规格。自动建立的内容是规划起点，"
+            "尺寸、轴心、碰撞、Nanite 和目录仍需由制作人员确认。"
+        )
+        intro.setWordWrap(True)
+        intro.setProperty("role", "muted")
+        layout.addWidget(intro)
+        toolbar = QHBoxLayout()
+        self.production_sync_button = QPushButton("同步当前方案")
+        self.production_sync_button.setProperty("primary", True)
+        toolbar.addWidget(self.production_sync_button)
+        self.production_export_csv = QPushButton("导出 CSV…")
+        toolbar.addWidget(self.production_export_csv)
+        self.production_export_json = QPushButton("导出 UE 交接 JSON…")
+        toolbar.addWidget(self.production_export_json)
+        layout.addLayout(toolbar)
+        self.production_tree = QTreeWidget()
+        self.production_tree.setHeaderLabels(
+            ["编码", "资产", "状态", "优先级", "复用组", "UE 目录"]
+        )
+        self.production_tree.setRootIsDecorated(False)
+        self.production_tree.setAlternatingRowColors(True)
+        self.production_tree.setMinimumHeight(220)
+        self.production_tree.setColumnWidth(0, 120)
+        self.production_tree.setColumnWidth(1, 180)
+        layout.addWidget(self.production_tree, 1)
+
+        details = QGroupBox("生产规格")
+        form = QFormLayout(details)
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(9)
+        self.production_code = QLineEdit()
+        self.production_status = QComboBox()
+        for value, label in PRODUCTION_STATUS_LABELS.items():
+            self.production_status.addItem(label, value)
+        self.production_dimensions = QLineEdit()
+        self.production_dimensions.setPlaceholderText("例如：400 × 300 × 650 cm")
+        self.production_pivot = QLineEdit()
+        self.production_geometry = QPlainTextEdit()
+        self.production_materials = QLineEdit()
+        self.production_materials.setPlaceholderText("用逗号分隔")
+        self.production_textures = QLineEdit()
+        self.production_textures.setPlaceholderText("BaseColor, Normal, ORM")
+        self.production_lod = QLineEdit()
+        self.production_collision = QLineEdit()
+        self.production_nanite = QComboBox()
+        for label, value in (
+            ("待评估", "evaluate"),
+            ("启用", "enabled"),
+            ("禁用", "disabled"),
+            ("不适用", "not_applicable"),
+        ):
+            self.production_nanite.addItem(label, value)
+        self.production_destination = QLineEdit()
+        self.production_dependencies = QLineEdit()
+        self.production_dependencies.setPlaceholderText("前置资产 ID，用逗号分隔")
+        self.production_deliverables = QLineEdit()
+        self.production_deliverables.setPlaceholderText("模型, 材质实例, 碰撞检查")
+        self.production_notes = QPlainTextEdit()
+        for editor in (self.production_geometry, self.production_notes):
+            editor.setMaximumHeight(72)
+        form.addRow("资产编码", self.production_code)
+        form.addRow("制作状态", self.production_status)
+        form.addRow("目标尺寸", self.production_dimensions)
+        form.addRow("轴心与装配基准", self.production_pivot)
+        form.addRow("几何策略", self.production_geometry)
+        form.addRow("材质槽", self.production_materials)
+        form.addRow("纹理集合", self.production_textures)
+        form.addRow("LOD 策略", self.production_lod)
+        form.addRow("碰撞策略", self.production_collision)
+        form.addRow("Nanite", self.production_nanite)
+        form.addRow("UE 目录", self.production_destination)
+        form.addRow("前置资产", self.production_dependencies)
+        form.addRow("交付内容", self.production_deliverables)
+        form.addRow("制作备注", self.production_notes)
+        self.production_save_button = QPushButton("保存生产规格")
+        form.addRow(self.production_save_button)
+        layout.addWidget(details)
+        self.production_summary = QLabel("尚未建立生产规格。")
+        self.production_summary.setWordWrap(True)
+        layout.addWidget(self.production_summary)
+
+        self.production_sync_button.clicked.connect(self._sync_production_specs)
+        self.production_tree.currentItemChanged.connect(self._show_production_spec)
+        self.production_save_button.clicked.connect(self._save_production_spec)
+        self.production_export_csv.clicked.connect(
+            lambda: self._export_production_handoff("csv")
+        )
+        self.production_export_json.clicked.connect(
+            lambda: self._export_production_handoff("json")
+        )
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(body)
+        root = QWidget()
+        root_layout = QVBoxLayout(root)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.addWidget(scroll)
+        return root
 
     def _build_generation_tab(self) -> QWidget:
         body = QWidget()
@@ -1322,10 +1446,23 @@ class AssetBreakdownWindow(QMainWindow):
             return
         self._attach_store(store)
 
+    def open_path(self, path: str | Path) -> bool:
+        try:
+            store = AssetBreakdownStore.open(path)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "无法打开项目", str(exc))
+            return False
+        self._attach_store(store)
+        return True
+
     def _attach_store(self, store: AssetBreakdownStore) -> None:
         if self._store is not None:
             self._store.close()
         self._store = store
+        try:
+            WorkspaceCatalogStore().remember(store.root)
+        except (OSError, ValueError):
+            pass
         self._state = store.state
         self._undo_stack.clear()
         self._restoring = True
@@ -1346,6 +1483,7 @@ class AssetBreakdownWindow(QMainWindow):
             self._refresh_understanding()
             self._refresh_plans()
             self._refresh_asset_tree()
+            self._refresh_production_specs()
             self._refresh_generation_list()
             self._refresh_automatic_runs()
             self._refresh_prompt_sessions()
@@ -4095,6 +4233,239 @@ class AssetBreakdownWindow(QMainWindow):
             ),
         )
 
+    def _production_assets(self) -> tuple[AssetItem, ...]:
+        if self._state is None:
+            return ()
+        return tuple(
+            item
+            for item in self._state.assets
+            if item.plan_id == self._state.selected_plan_id
+        )
+
+    def _sync_production_specs(self) -> None:
+        if self._store is None or self._state is None:
+            QMessageBox.information(self, "尚未打开项目", "请先打开资产拆分项目。")
+            return
+        assets = self._production_assets()
+        if not assets:
+            QMessageBox.information(
+                self,
+                "没有资产清单",
+                "请先在当前拆分方案中建立资产清单。",
+            )
+            return
+        current_ids = {item.asset_id for item in assets}
+        retained = tuple(
+            item
+            for item in self._state.production_specs
+            if item.asset_id not in current_ids
+        )
+        specs = synchronize_production_specs(
+            assets,
+            (
+                item
+                for item in self._state.production_specs
+                if item.asset_id in current_ids
+            ),
+        )
+        self._store.replace_production_specs((*retained, *specs))
+        self._state = self._store.state
+        self._refresh_production_specs()
+        self.statusBar().showMessage(
+            f"已同步 {len(specs)} 项生产规格；用户修改内容保持不变。",
+            5000,
+        )
+
+    def _refresh_production_specs(self, select_asset_id: str = "") -> None:
+        if not hasattr(self, "production_tree"):
+            return
+        current = select_asset_id
+        if not current and self.production_tree.currentItem() is not None:
+            current = str(
+                self.production_tree.currentItem().data(
+                    0, Qt.ItemDataRole.UserRole
+                )
+                or ""
+            )
+        self.production_tree.clear()
+        if self._state is None:
+            self.production_summary.setText("尚未打开项目。")
+            return
+        assets = {item.asset_id: item for item in self._production_assets()}
+        specs = [
+            item
+            for item in self._state.production_specs
+            if item.asset_id in assets
+        ]
+        for spec in specs:
+            asset = assets[spec.asset_id]
+            row = QTreeWidgetItem(
+                [
+                    spec.asset_code,
+                    asset.name,
+                    PRODUCTION_STATUS_LABELS.get(spec.status, spec.status),
+                    asset.production_priority,
+                    asset.reuse_group or "—",
+                    spec.ue_destination,
+                ]
+            )
+            row.setData(0, Qt.ItemDataRole.UserRole, spec.asset_id)
+            self.production_tree.addTopLevelItem(row)
+            if spec.asset_id == current:
+                self.production_tree.setCurrentItem(row)
+        if self.production_tree.currentItem() is None and self.production_tree.topLevelItemCount():
+            self.production_tree.setCurrentItem(self.production_tree.topLevelItem(0))
+        missing = len(assets) - len(specs)
+        approved = sum(item.status == "approved" for item in specs)
+        self.production_summary.setText(
+            f"当前方案 {len(assets)} 项资产 · {len(specs)} 项生产规格 · "
+            f"已通过 {approved} 项"
+            + (f" · 待同步 {missing} 项" if missing else "")
+        )
+
+    def _current_production_spec(self) -> AssetProductionSpec | None:
+        if self._state is None or self.production_tree.currentItem() is None:
+            return None
+        asset_id = str(
+            self.production_tree.currentItem().data(
+                0, Qt.ItemDataRole.UserRole
+            )
+            or ""
+        )
+        return next(
+            (
+                item
+                for item in self._state.production_specs
+                if item.asset_id == asset_id
+            ),
+            None,
+        )
+
+    def _show_production_spec(self, _current=None, _previous=None) -> None:
+        spec = self._current_production_spec()
+        if spec is None:
+            return
+        self.production_code.setText(spec.asset_code)
+        _set_combo_data(self.production_status, spec.status)
+        self.production_dimensions.setText(spec.target_dimensions_cm)
+        self.production_pivot.setText(spec.pivot_policy)
+        self.production_geometry.setPlainText(spec.geometry_strategy)
+        self.production_materials.setText("，".join(spec.material_slots))
+        self.production_textures.setText("，".join(spec.texture_sets))
+        self.production_lod.setText(spec.lod_policy)
+        self.production_collision.setText(spec.collision_policy)
+        _set_combo_data(self.production_nanite, spec.nanite_policy)
+        self.production_destination.setText(spec.ue_destination)
+        self.production_dependencies.setText(
+            "，".join(spec.dependency_asset_ids)
+        )
+        self.production_deliverables.setText("，".join(spec.deliverables))
+        self.production_notes.setPlainText(spec.notes)
+
+    def _save_production_spec(self) -> None:
+        if self._store is None or self._state is None:
+            return
+        spec = self._current_production_spec()
+        if spec is None:
+            QMessageBox.information(self, "未选择规格", "请先选择一项生产规格。")
+            return
+        updated = replace(
+            spec,
+            asset_code=self.production_code.text().strip(),
+            status=str(self.production_status.currentData()),
+            target_dimensions_cm=self.production_dimensions.text().strip(),
+            pivot_policy=self.production_pivot.text().strip(),
+            geometry_strategy=self.production_geometry.toPlainText().strip(),
+            material_slots=_split_list(self.production_materials.text()),
+            texture_sets=_split_list(self.production_textures.text()),
+            lod_policy=self.production_lod.text().strip(),
+            collision_policy=self.production_collision.text().strip(),
+            nanite_policy=str(self.production_nanite.currentData()),
+            ue_destination=self.production_destination.text().strip(),
+            dependency_asset_ids=_split_list(
+                self.production_dependencies.text()
+            ),
+            deliverables=_split_list(self.production_deliverables.text()),
+            notes=self.production_notes.toPlainText().strip(),
+            user_modified=True,
+            updated_at=utc_now(),
+        )
+        values = tuple(
+            updated if item.asset_id == updated.asset_id else item
+            for item in self._state.production_specs
+        )
+        try:
+            validate_production_specs(self._state.assets, values)
+            self._store.replace_production_specs(values)
+        except ValueError as exc:
+            QMessageBox.warning(self, "生产规格无效", str(exc))
+            return
+        self._state = self._store.state
+        self._refresh_production_specs(updated.asset_id)
+        self.statusBar().showMessage("生产规格已保存。", 4000)
+
+    def _export_production_handoff(self, format_id: str) -> None:
+        if self._store is None or self._state is None:
+            QMessageBox.information(self, "尚未打开项目", "请先打开资产拆分项目。")
+            return
+        assets = self._production_assets()
+        asset_ids = {item.asset_id for item in assets}
+        specs = tuple(
+            item
+            for item in self._state.production_specs
+            if item.asset_id in asset_ids
+        )
+        if not assets or len(specs) != len(assets):
+            QMessageBox.information(
+                self,
+                "生产规格未完成",
+                "请先点击“同步当前方案”，并确认每项资产的生产规格。",
+            )
+            return
+        try:
+            payload = build_handoff_payload(
+                project_id=self._state.project_id,
+                project_title=self._state.title,
+                plan=self._selected_plan(),
+                assets=assets,
+                specs=specs,
+            )
+        except ValueError as exc:
+            QMessageBox.warning(self, "无法导出", str(exc))
+            return
+        extension = "csv" if format_id == "csv" else "json"
+        filter_text = "CSV (*.csv)" if format_id == "csv" else "JSON (*.json)"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出资产生产交接",
+            f"{self._state.title}_资产生产交接.{extension}",
+            filter_text,
+        )
+        if not path:
+            return
+        try:
+            output = (
+                export_handoff_csv(path, payload)
+                if format_id == "csv"
+                else export_handoff_json(path, payload)
+            )
+            self._store.append_export(
+                {
+                    "export_id": str(uuid.uuid4()),
+                    "type": "asset_production_handoff",
+                    "format": format_id,
+                    "plan_id": self._state.selected_plan_id,
+                    "asset_count": len(assets),
+                    "path": str(output),
+                    "created_at": utc_now(),
+                }
+            )
+            self._state = self._store.state
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "导出失败", str(exc))
+            return
+        self.statusBar().showMessage(f"生产交接已导出：{output}", 5000)
+
     def _refresh_asset_tree(self, select_id: str = "") -> None:
         self.asset_tree.blockSignals(True)
         try:
@@ -4170,6 +4541,7 @@ class AssetBreakdownWindow(QMainWindow):
             self.asset_tree.blockSignals(False)
         if select_id:
             self._select_asset_by_id(select_id)
+        self._refresh_production_specs(select_id)
 
     def _refresh_reference_list(self) -> None:
         self.reference_list.clear()
@@ -4241,6 +4613,7 @@ class AssetBreakdownWindow(QMainWindow):
 
     def _asset_selection_changed(self) -> None:
         asset = self._selected_asset()
+        self.asset_task_button.setEnabled(bool(self._selected_assets()))
         if asset is None:
             return
         self._populate_detail(asset)
@@ -4320,6 +4693,12 @@ class AssetBreakdownWindow(QMainWindow):
                 item.setSelected(True)
                 break
 
+    def focus_entity(self, entity_type: str, entity_id: str) -> None:
+        if entity_type == "asset" and entity_id:
+            self.workflow_tabs.setCurrentIndex(0)
+            self.manual_tabs.setCurrentIndex(1)
+            self._select_asset_by_id(entity_id)
+
     def _select_assets_by_ids(self, asset_ids: object) -> None:
         selected = {str(item) for item in asset_ids}
         self.asset_tree.blockSignals(True)
@@ -4361,6 +4740,51 @@ class AssetBreakdownWindow(QMainWindow):
             if asset is not None:
                 values.append(asset)
         return values
+
+    def _send_selected_assets_to_review_center(self) -> None:
+        if self._store is None or self._state is None:
+            return
+        assets = self._selected_assets()
+        if not assets:
+            QMessageBox.information(self, "尚未选择资产", "请先在资产清单中选择一项或多项资产。")
+            return
+        payloads = []
+        for asset in assets:
+            details = [
+                f"分类：{CATEGORY_LABELS.get(asset.category, asset.category)}",
+                f"层级：{asset.level}",
+                f"制作策略：{asset.production_strategy or '待补充'}",
+                f"可见依据：{asset.visible_evidence or '未记录'}",
+            ]
+            if asset.uncertainty:
+                details.append(f"不确定性：{asset.uncertainty}")
+            priority = asset.production_priority
+            if priority not in {"critical", "high", "medium", "low"}:
+                priority = "medium"
+            payloads.append(
+                {
+                    "title": f"制作与复核资产：{asset.name}",
+                    "description": "\n".join(details),
+                    "acceptance_criteria": (
+                        "按当前拆分方案完成该资产，并在目标版本中核对轮廓、"
+                        "尺度、复用关系和与原画可见证据的一致性。"
+                    ),
+                    "priority": priority,
+                    "source_module_id": "scenelens.asset_breakdown",
+                    "source_project_id": self._state.project_id,
+                    "source_project_title": self._state.title,
+                    "source_project_path": str(self._store.root),
+                    "source_entity_type": "asset_item",
+                    "source_entity_id": asset.asset_id,
+                    "source_version_id": (
+                        self._state.main_image.sha256
+                        if self._state.main_image is not None
+                        else ""
+                    ),
+                    "labels": ("资产拆分", asset.category, asset.semantic_type),
+                }
+            )
+        self.review_task_requested.emit(payloads)
 
     def _asset_by_id(self, asset_id: str) -> AssetItem | None:
         if self._state is None:
@@ -4747,6 +5171,16 @@ def _safe_folder_name(value: str) -> str:
     forbidden = '<>:"/\\|?*'
     result = "".join("_" if character in forbidden else character for character in value)
     return result.strip(" .")[:80] or "未命名资产拆分"
+
+
+def _split_list(value: str) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            item.strip()
+            for item in value.replace("，", ",").replace("；", ",").split(",")
+            if item.strip()
+        )
+    )
 
 
 def _combo_model_id(combo: QComboBox) -> str | None:

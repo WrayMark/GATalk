@@ -3,10 +3,12 @@ from dataclasses import dataclass
 import pytest
 
 from scenelens.core.workspaces import (
+    KnowledgeDomainDescriptor,
     ReviewerDescriptor,
     WorkbenchRegistry,
     WorkspaceDescriptor,
 )
+from scenelens.modules.registry import create_builtin_workbench_registry
 
 
 @dataclass(frozen=True)
@@ -62,3 +64,26 @@ def test_workbench_registry_rejects_duplicate_contributions():
     with pytest.raises(ValueError, match="already registered"):
         registry.register_workspace(workspace)
 
+
+def test_builtin_registry_exposes_platform_hierarchy_and_future_domains():
+    registry = create_builtin_workbench_registry()
+    workspaces = {item.workspace_id: item for item in registry.workspaces()}
+    domains = {item.domain_id: item for item in registry.knowledge_domains()}
+
+    assert workspaces["reference_knowledge"].level == "platform"
+    assert (
+        workspaces["comparative_study"].parent_workspace_id
+        == "reference_knowledge"
+    )
+    assert domains["art_reference"].enabled
+    assert not domains["level_design"].enabled
+    assert not domains["game_design"].enabled
+
+
+def test_registry_rejects_duplicate_knowledge_domain():
+    registry = WorkbenchRegistry()
+    domain = KnowledgeDomainDescriptor("art", "美术", "", "1")
+    registry.register_knowledge_domain(domain)
+
+    with pytest.raises(ValueError, match="already registered"):
+        registry.register_knowledge_domain(domain)

@@ -14,6 +14,18 @@ a = Analysis(
                 / 'src'
                 / 'scenelens'
                 / 'modules'
+                / 'comparative_study'
+                / 'schemas'
+                / '*.json'
+            ),
+            'scenelens/modules/comparative_study/schemas',
+        ),
+        (
+            str(
+                project_root
+                / 'src'
+                / 'scenelens'
+                / 'modules'
                 / 'asset_breakdown'
                 / 'config'
                 / '*.json'

@@ -187,6 +187,88 @@ class AssetItem:
 
 
 @dataclass(frozen=True)
+class AssetProductionSpec:
+    spec_id: str
+    asset_id: str
+    asset_code: str
+    status: str = "planned"
+    target_dimensions_cm: str = ""
+    pivot_policy: str = ""
+    geometry_strategy: str = ""
+    material_slots: tuple[str, ...] = ()
+    texture_sets: tuple[str, ...] = ()
+    lod_policy: str = ""
+    collision_policy: str = ""
+    nanite_policy: str = "evaluate"
+    ue_destination: str = ""
+    dependency_asset_ids: tuple[str, ...] = ()
+    deliverables: tuple[str, ...] = ()
+    notes: str = ""
+    user_modified: bool = False
+    created_at: str = ""
+    updated_at: str = ""
+
+    def __post_init__(self) -> None:
+        if self.status not in {
+            "planned",
+            "ready",
+            "in_production",
+            "review",
+            "approved",
+            "deferred",
+        }:
+            object.__setattr__(self, "status", "planned")
+        if self.nanite_policy not in {
+            "evaluate",
+            "enabled",
+            "disabled",
+            "not_applicable",
+        }:
+            object.__setattr__(self, "nanite_policy", "evaluate")
+        object.__setattr__(
+            self,
+            "dependency_asset_ids",
+            tuple(dict.fromkeys(self.dependency_asset_ids)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> AssetProductionSpec:
+        return cls(
+            spec_id=str(value["spec_id"]),
+            asset_id=str(value["asset_id"]),
+            asset_code=str(value.get("asset_code", "")),
+            status=str(value.get("status", "planned")),
+            target_dimensions_cm=str(value.get("target_dimensions_cm", "")),
+            pivot_policy=str(value.get("pivot_policy", "")),
+            geometry_strategy=str(value.get("geometry_strategy", "")),
+            material_slots=tuple(
+                str(item) for item in value.get("material_slots", ())
+            ),
+            texture_sets=tuple(
+                str(item) for item in value.get("texture_sets", ())
+            ),
+            lod_policy=str(value.get("lod_policy", "")),
+            collision_policy=str(value.get("collision_policy", "")),
+            nanite_policy=str(value.get("nanite_policy", "evaluate")),
+            ue_destination=str(value.get("ue_destination", "")),
+            dependency_asset_ids=tuple(
+                str(item)
+                for item in value.get("dependency_asset_ids", ())
+            ),
+            deliverables=tuple(
+                str(item) for item in value.get("deliverables", ())
+            ),
+            notes=str(value.get("notes", "")),
+            user_modified=bool(value.get("user_modified", False)),
+            created_at=str(value.get("created_at", "")),
+            updated_at=str(value.get("updated_at", "")),
+        )
+
+
+@dataclass(frozen=True)
 class StudyHandoffSnapshot:
     """Editable local snapshot handed from 作品研究 to 资产拆分."""
 
@@ -623,6 +705,7 @@ class AssetBreakdownState:
     updated_at: str = ""
     source_images: tuple[SourceImage, ...] = ()
     assets: tuple[AssetItem, ...] = ()
+    production_specs: tuple[AssetProductionSpec, ...] = ()
     generations: tuple[GenerationRecord, ...] = ()
     automatic_runs: tuple[AutomaticAssetRun, ...] = ()
     prompt_sessions: tuple[AssetPromptSession, ...] = ()
@@ -666,6 +749,10 @@ class AssetBreakdownState:
             ),
             assets=tuple(
                 AssetItem.from_dict(item) for item in value.get("assets", ())
+            ),
+            production_specs=tuple(
+                AssetProductionSpec.from_dict(item)
+                for item in value.get("production_specs", ())
             ),
             generations=tuple(
                 GenerationRecord.from_dict(item)

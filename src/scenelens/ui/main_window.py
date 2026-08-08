@@ -218,6 +218,7 @@ class ImagePane(QWidget):
 
 class MainWindow(QMainWindow):
     workspace_home_requested = Signal()
+    review_task_requested = Signal(object)
 
     def __init__(self, recent_projects: RecentProjects | None = None) -> None:
         super().__init__()
@@ -2235,6 +2236,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "保存预演任务失败", str(exc))
             return
         self._refresh_workbench_tasks()
+        self._emit_review_center_task(task)
         self.statusBar().showMessage(
             "AI 预演已转为任务；真实 Version 仍保持不变"
         )
@@ -2721,6 +2723,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "保存任务失败", str(exc))
             return
         self._refresh_workbench_tasks()
+        self._emit_review_center_task(task)
         self.statusBar().showMessage("AI 发现已由用户确认为修改任务")
 
     def _show_lighting_annotations(self, scheme: object) -> None:
@@ -2826,10 +2829,10 @@ class MainWindow(QMainWindow):
             return
         now = utc_now()
         workbench = WorkbenchStore(store)
+        created_tasks = []
         try:
             for item in annotations:
-                workbench.save_task(
-                    Task(
+                task = Task(
                         id=str(uuid.uuid4()),
                         module_id=MODULE_ID,
                         shot_id=self._active_shot_id,
@@ -2849,12 +2852,46 @@ class MainWindow(QMainWindow):
                         created_at=now,
                         updated_at=now,
                     )
-                )
+                workbench.save_task(task)
+                created_tasks.append(task)
         except (StorageError, OSError, ValueError) as exc:
             QMessageBox.warning(self, "保存灯光任务失败", str(exc))
             return
         self._refresh_workbench_tasks()
+        self.review_task_requested.emit(
+            [self._review_center_payload(task) for task in created_tasks]
+        )
         self.statusBar().showMessage("灯光方案标注已由用户确认为修改任务")
+
+    def _emit_review_center_task(self, task: Task) -> None:
+        self.review_task_requested.emit(self._review_center_payload(task))
+
+    def _review_center_payload(self, task: Task) -> dict[str, object]:
+        store = self._project_store
+        verification = dict(task.verification)
+        acceptance = str(
+            verification.get("next_version_validation", "")
+            or (
+                "在新的真实 UE 截图版本中复查，并记录与当前证据的差异。"
+                if verification.get("requires_real_ue_version")
+                else "在目标版本中复查该任务，并记录可核对的画面或测量证据。"
+            )
+        )
+        return {
+            "task_id": task.id,
+            "title": task.title,
+            "description": task.description,
+            "acceptance_criteria": acceptance,
+            "priority": task.priority.value,
+            "source_module_id": task.module_id,
+            "source_project_id": "" if store is None else store.manifest.project_id,
+            "source_project_title": "" if store is None else store.manifest.name,
+            "source_project_path": "" if store is None else str(store.root),
+            "source_entity_type": "workbench_task",
+            "source_entity_id": task.id,
+            "source_version_id": task.version_id or "",
+            "labels": ("场景审阅",),
+        }
 
     def _refresh_workbench_tasks(self) -> None:
         store = self._project_store
@@ -2871,6 +2908,39 @@ class MainWindow(QMainWindow):
             LOGGER.exception("Failed to load workbench tasks")
             return
         self.ai_review_panel.show_tasks(tasks)
+
+    def focus_entity(self, entity_type: str, entity_id: str) -> None:
+        """Focus an object selected by the application-wide search."""
+
+        store = self._project_store
+        if store is None or not entity_id:
+            return
+        if entity_type == "shot":
+            if entity_id != self._active_shot_id:
+                self._activate_shot(entity_id)
+            self._refresh_project_navigator()
+            return
+        if entity_type != "workbench_task":
+            return
+        task = next(
+            (
+                item
+                for item in WorkbenchStore(store).list_tasks(MODULE_ID)
+                if item.id == entity_id
+            ),
+            None,
+        )
+        if task is None:
+            return
+        if task.shot_id and task.version_id:
+            self._activate_version(task.shot_id, task.version_id)
+        elif task.shot_id:
+            self._activate_shot(task.shot_id)
+        self.analysis_tabs.setCurrentWidget(self.ai_review_panel)
+        self.statusBar().showMessage(
+            f"已定位审阅任务：{task.title}",
+            5000,
+        )
 
     def _export_offline_review_pack(self) -> None:
         if (

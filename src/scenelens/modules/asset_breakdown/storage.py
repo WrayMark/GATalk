@@ -13,6 +13,7 @@ from scenelens.modules.asset_breakdown.models import (
     AutomaticAssetRun,
     AssetBreakdownState,
     AssetItem,
+    AssetProductionSpec,
     BreakdownPlan,
     GenerationRecord,
     SceneUnderstanding,
@@ -26,7 +27,7 @@ from scenelens.storage.project_store import utc_now
 
 
 FORMAT_ID = "scenelens.asset_breakdown"
-FORMAT_VERSION = 5
+FORMAT_VERSION = 6
 ENTRY_FILENAME = "asset_project.json"
 
 
@@ -143,7 +144,7 @@ class AssetBreakdownStore:
             {
                 "format": FORMAT_ID,
                 "format_version": FORMAT_VERSION,
-                "module_schema_version": 5,
+                "module_schema_version": 6,
                 "state": self.state.to_dict(),
             },
         )
@@ -194,6 +195,7 @@ class AssetBreakdownStore:
             self.state = replace(
                 self.state,
                 assets=(),
+                production_specs=(),
                 generations=(),
                 automatic_runs=(),
                 prompt_sessions=(),
@@ -236,6 +238,31 @@ class AssetBreakdownStore:
     def replace_assets(self, assets: tuple[AssetItem, ...]) -> None:
         self.state = replace(self.state, assets=tuple(assets))
         self.save()
+
+    def replace_production_specs(
+        self,
+        specs: tuple[AssetProductionSpec, ...],
+    ) -> None:
+        asset_ids = {item.asset_id for item in self.state.assets}
+        if any(item.asset_id not in asset_ids for item in specs):
+            raise ValueError("生产规格引用了不存在的资产。")
+        self.state = replace(self.state, production_specs=tuple(specs))
+        self.save()
+
+    def add_or_replace_production_spec(
+        self,
+        spec: AssetProductionSpec,
+    ) -> None:
+        if spec.asset_id not in {item.asset_id for item in self.state.assets}:
+            raise ValueError("生产规格引用了不存在的资产。")
+        values = list(self.state.production_specs)
+        for index, item in enumerate(values):
+            if item.asset_id == spec.asset_id:
+                values[index] = spec
+                break
+        else:
+            values.append(spec)
+        self.replace_production_specs(tuple(values))
 
     def add_or_replace_handoff(self, handoff: StudyHandoffSnapshot) -> None:
         values = list(self.state.study_handoffs)
@@ -313,6 +340,11 @@ class AssetBreakdownStore:
                 asset for asset in self.state.assets
                 if asset.plan_id != plan_id
             ),
+            production_specs=tuple(
+                item
+                for item in self.state.production_specs
+                if item.asset_id in retained_ids
+            ),
             generations=tuple(
                 item for item in self.state.generations
                 if item.asset_id in retained_ids
@@ -353,6 +385,18 @@ class AssetBreakdownStore:
         self.state = replace(
             self.state,
             assets=retained,
+            production_specs=tuple(
+                replace(
+                    item,
+                    dependency_asset_ids=tuple(
+                        value
+                        for value in item.dependency_asset_ids
+                        if value != asset_id
+                    ),
+                )
+                for item in self.state.production_specs
+                if item.asset_id != asset_id
+            ),
             generations=generations,
             selected_asset_id=(
                 "" if self.state.selected_asset_id == asset_id

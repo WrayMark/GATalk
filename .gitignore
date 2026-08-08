@@ -13,4 +13,6 @@ dist-*/
 *.log
 .dependencies-ok
 .qa/
+.artifacts/
+SceneLens_使用手册.docx
 ~$*.docx

@@ -106,3 +106,42 @@ class RecentProjects:
                 ],
             },
         )
+
+    def relink(self, project_id: str, manifest_path: Path) -> bool:
+        """Update one moved recent-project entry without changing its identity."""
+
+        projects = list(self.load())
+        normalized = Path(manifest_path).resolve()
+        changed = False
+        updated: list[RecentProject] = []
+        for item in projects:
+            if item.project_id == project_id:
+                updated.append(
+                    RecentProject(
+                        project_id=item.project_id,
+                        name=item.name,
+                        manifest_path=normalized,
+                        last_opened_at=item.last_opened_at,
+                    )
+                )
+                changed = True
+            else:
+                updated.append(item)
+        if not changed:
+            return False
+        atomic_write_json(
+            self.path,
+            {
+                "format_version": 1,
+                "projects": [
+                    {
+                        "project_id": item.project_id,
+                        "name": item.name,
+                        "manifest_path": str(item.manifest_path),
+                        "last_opened_at": item.last_opened_at,
+                    }
+                    for item in updated[: self.limit]
+                ],
+            },
+        )
+        return True

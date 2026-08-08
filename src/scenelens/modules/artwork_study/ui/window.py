@@ -66,6 +66,7 @@ from scenelens.modules.artwork_study.reviews import (
 )
 from scenelens.modules.artwork_study.storage import ArtworkStudyStore
 from scenelens.storage.project_store import utc_now
+from scenelens.storage.workspace_catalog import WorkspaceCatalogStore
 from scenelens.modules.visual_review.composition_guides import (
     COMPOSITION_GUIDES,
     composition_guide,
@@ -175,6 +176,7 @@ class ArtworkDisclosureDialog(QDialog):
 class ArtworkStudyWindow(QMainWindow):
     workspace_home_requested = Signal()
     asset_breakdown_requested = Signal(object)
+    review_task_requested = Signal(object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -454,6 +456,11 @@ class ArtworkStudyWindow(QMainWindow):
         self.ai_detail.setReadOnly(True)
         self.ai_detail.setMinimumHeight(260)
         layout.addWidget(self.ai_detail)
+        self.dimension_task_button = QPushButton("将当前研究维度加入审阅中心")
+        self.dimension_task_button.clicked.connect(
+            self._send_current_dimension_to_review_center
+        )
+        layout.addWidget(self.dimension_task_button)
         self.causal_list = QListWidget()
         self.causal_list.setMinimumHeight(150)
         layout.addWidget(QLabel("跨维度因果链"))
@@ -572,6 +579,14 @@ class ArtworkStudyWindow(QMainWindow):
         except (OSError, ValueError) as exc:
             QMessageBox.warning(self, "无法打开作品研究", str(exc))
 
+    def open_path(self, path: str | Path) -> bool:
+        try:
+            self._set_store(ArtworkStudyStore.open(path))
+            return True
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "无法打开作品研究", str(exc))
+            return False
+
     def _set_store(self, store: ArtworkStudyStore) -> None:
         self._store = store
         self._state = store.state
@@ -598,6 +613,10 @@ class ArtworkStudyWindow(QMainWindow):
         finally:
             self._restoring = False
         self._dirty = False
+        try:
+            WorkspaceCatalogStore().remember(store.root)
+        except (OSError, ValueError):
+            pass
         self.setWindowTitle(f"GATalk — 作品研究 — {store.state.title}")
         image_path = store.image_path()
         if image_path is None:
@@ -1026,6 +1045,65 @@ class ArtworkStudyWindow(QMainWindow):
             f"与其他维度的关系\n{'；'.join(item.get('relationships', []))}\n\n"
             f"可迁移学习点\n{'；'.join(item.get('learning_points', []))}\n\n"
             f"不确定性\n{item.get('uncertainty', '')}"
+        )
+
+    def focus_entity(self, entity_type: str, entity_id: str) -> None:
+        if entity_type != "dimension_study" or not entity_id:
+            return
+        for index in range(self.ai_dimension_tree.topLevelItemCount()):
+            row = self.ai_dimension_tree.topLevelItem(index)
+            value = row.data(0, Qt.ItemDataRole.UserRole)
+            if (
+                isinstance(value, Mapping)
+                and str(value.get("dimension_id", "")) == entity_id
+            ):
+                self.ai_dimension_tree.setCurrentItem(row)
+                return
+
+    def _send_current_dimension_to_review_center(self) -> None:
+        if self._store is None or self._state is None:
+            QMessageBox.information(self, "尚未打开研究", "请先打开作品研究。")
+            return
+        current = self.ai_dimension_tree.currentItem()
+        item = (
+            None
+            if current is None
+            else current.data(0, Qt.ItemDataRole.UserRole)
+        )
+        if not isinstance(item, Mapping):
+            QMessageBox.information(
+                self,
+                "尚未选择研究维度",
+                "请先在专家拆解表中选择一项研究维度。",
+            )
+            return
+        dimension_id = str(item.get("dimension_id", "study_dimension"))
+        dimension_name = current.text(0) if current is not None else dimension_id
+        learning = "；".join(str(value) for value in item.get("learning_points", ()))
+        evidence = "；".join(str(value) for value in item.get("visual_evidence", ()))
+        self.review_task_requested.emit(
+            {
+                "title": f"复查学习目标：{dimension_name}",
+                "description": (
+                    f"观察：{item.get('observation', '')}\n"
+                    f"画面证据：{evidence or '未记录'}\n"
+                    f"可迁移学习点：{learning or '未记录'}\n"
+                    f"适用边界：{item.get('uncertainty', '') or '待复核'}"
+                ),
+                "acceptance_criteria": (
+                    "在后续作品或版本中按该维度复查，记录具体画面证据，"
+                    "并确认所选学习点是否成立。"
+                ),
+                "priority": "medium",
+                "source_module_id": "scenelens.artwork_study",
+                "source_project_id": self._state.study_id,
+                "source_project_title": self._state.title,
+                "source_project_path": str(self._store.root),
+                "source_entity_type": "dimension_study",
+                "source_entity_id": dimension_id,
+                "source_version_id": self._state.image_sha256 or "",
+                "labels": ("作品研究", dimension_name),
+            }
         )
 
     def _update_report(self) -> None:

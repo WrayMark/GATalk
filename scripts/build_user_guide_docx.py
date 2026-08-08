@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from docx import Document
 from docx.oxml import OxmlElement
@@ -10,6 +11,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "GATalk_使用手册.docx"
+SOURCE = ROOT / "USER_GUIDE.md"
 
 BLUE = RGBColor(46, 116, 181)
 DARK_BLUE = RGBColor(31, 77, 120)
@@ -179,7 +181,7 @@ def build() -> None:
     metadata.paragraph_format.space_after = Pt(14)
     set_font(
         metadata.add_run(
-            "适用版本：0.12.1（资产工作台布局与滚动优化）"
+            "适用版本：0.14.0（资料研究、跨项目引用、审阅任务与质量门禁）"
             "　更新日期：2026-08-08"
         ),
         size=9.5,
@@ -208,11 +210,78 @@ def build() -> None:
         "场景美术控制：参考图与自己的 UE 截图对比、审阅、任务和版本复查。",
         "作品研究：分析一张原画、概念图、Color Key 或优秀场景作品。",
         "资产拆分工作台：把复杂场景原画整理为资产清单、区域、生成图和展示板。",
+        "作品研究集合与对照研究：把 2 至 6 件作品放在同一问题下并置研究。",
+        "参考资料与知识库位于专业工作台之上，统一管理可供多个模块使用的资料。",
+        "审阅任务与质量门禁中心位于平台层，统一管理跨项目任务和版本验收。",
         "模块内选择“文件 → 工作台首页”可返回。",
     ):
         add_list_item(document, text, bullet_id)
 
-    add_heading(document, "3. 作品研究")
+    add_heading(document, "3. 参考资料与知识库")
+    decimal_id = add_numbering(document, bullet=False)
+    for text in (
+        "在首页进入“参考资料与知识库”，新建或打开资料库目录。",
+        "在左侧新建集合，例如“雾景”“建筑语言”或“灯光案例”。",
+        "导入原画或文档，添加 ArtStation、文章、教程链接，或新建项目笔记。",
+        "填写来源类型、作者、项目、标签、资料说明和研究笔记，保存。",
+        "图片需要局部研究时建立局部截图；原始导入文件不会被修改。",
+        "需要翻译时粘贴原文，查看发送内容后主动确认，核对译文再保存。",
+        "把资料引用到场景审阅、作品研究、作品对照或资产拆分项目。",
+        "用搜索框筛选；按 Shift 或 Ctrl 多选 2 至 6 张图片可建立对照研究。",
+    ):
+        add_list_item(document, text, decimal_id)
+    for text in (
+        "同一资料可以属于多个集合，资料库只保存一个条目和一份导入文件。",
+        "网页链接默认标记尚未核实；软件不会自动访问或下载网页。",
+        "ArtStation 只保存来源链接，不绕过站点权限抓取作品或正文。",
+        "局部截图保留父资料和归一化位置；AI 翻译只发送用户确认的原文。",
+        "跨项目引用是索引，不会把资料库修改静默写回项目。",
+        "美术参考资料域已启用；关卡设计和策划资料域已预留，当前不显示伪功能。",
+        "交给对照研究时会复制所选图片并保留来源引用；两边后续独立保存。",
+    ):
+        add_list_item(document, text, bullet_id)
+
+    add_heading(document, "4. 作品研究集合与对照研究")
+    decimal_id = add_numbering(document, bullet=False)
+    for text in (
+        "从资料库选择图片建立研究，或在首页直接进入并新建项目。",
+        "输入核心研究问题和已核实背景。",
+        "勾选 2 至 6 件作品，并选择构图、明度、色彩、灯光、空间等比较维度。",
+        "运行本地对照，查看明度、黑白灰、饱和度、中性色和细节密度差异。",
+        "需要语义研究时，在“专家对照”检查发送清单后主动确认。",
+        "在“研究结论”写下综合判断、可迁移规律和研究边界并保存。",
+    ):
+        add_list_item(document, text, decimal_id)
+    for text in (
+        "第一件勾选作品是本地差异表基准；选中作品后点击“设为基准”即可更换。数值只描述特征，不自动判断优劣。",
+        "离线 Mock 只验证流程，不读取图像语义。",
+        "原图副本、SHA-256、本地分析、AI 结果和人工笔记会随项目恢复。",
+    ):
+        add_list_item(document, text, bullet_id)
+
+    add_heading(document, "5. 审阅任务与质量门禁中心")
+    add_heading(document, "建立审阅任务", 2)
+    decimal_id = add_numbering(document, bullet=False)
+    for text in (
+        "在场景美术控制确认审阅发现，在作品研究选择一个研究维度，或在资产拆分选择资产。",
+        "点击“加入审阅中心”。只有用户主动选择的内容会进入中心。",
+        "返回首页进入审阅中心，检查来源项目、对象和版本。",
+        "补充处理说明、可验证的验收条件、优先级和状态并保存。",
+    ):
+        add_list_item(document, text, decimal_id)
+    add_body(
+        document,
+        "同一来源对象不会重复建立任务。审阅中心不复制原图，也不会反向修改来源项目。",
+    )
+    add_heading(document, "版本复查与质量门禁", 2)
+    for text in (
+        "任务可按新版本记录已改善、无明显变化、进一步偏离、已解决或证据不足；每次记录保留，不覆盖旧版本。",
+        "质量门禁由用户填写名称、维度、所属项目和明确验收条件。",
+        "门禁按版本记录通过、需复核、未通过或证据不足。GATalk 不用综合分数代替判断。",
+    ):
+        add_list_item(document, text, bullet_id)
+
+    add_heading(document, "6. 作品研究")
     add_heading(document, "最短流程", 2)
     decimal_id = add_numbering(document, bullet=False)
     for text in (
@@ -252,7 +321,7 @@ def build() -> None:
         ".scenelens-study 目录保存原图副本、SHA-256、本地证据、AI 结果、研究目标、已知背景、观察状态和个人笔记。原始图片不会被覆盖。",
     )
 
-    add_heading(document, "4. 资产拆分工作台")
+    add_heading(document, "7. 资产拆分工作台")
     add_heading(document, "从作品研究接续", 2)
     decimal_id = add_numbering(document, bullet=False)
     for text in (
@@ -337,7 +406,7 @@ def build() -> None:
     ):
         add_list_item(document, text, bullet_id)
 
-    add_heading(document, "5. 场景美术控制最短流程")
+    add_heading(document, "8. 场景美术控制最短流程")
     decimal_id = add_numbering(document, bullet=False)
     for text in (
         "点击“新建项目”，选择保存位置并命名。",
@@ -352,7 +421,7 @@ def build() -> None:
         add_list_item(document, text, decimal_id)
     add_body(document, "项目会自动保存。Ctrl+S 可立即保存。")
 
-    add_heading(document, "6. 场景图片查看与基础分析")
+    add_heading(document, "9. 场景图片查看与基础分析")
     for text in (
         "滚轮缩放；左键拖动平移；双击画布恢复适配。",
         "开启“同步视图”可同步左右缩放和平移。",
@@ -367,7 +436,7 @@ def build() -> None:
         "灯光明度代理图不是真正灰模，不能剥离材质和纹理。",
     )
 
-    add_heading(document, "7. 对比分析")
+    add_heading(document, "10. 对比分析")
     add_heading(document, "共享色板", 2)
     add_body(
         document,
@@ -392,7 +461,7 @@ def build() -> None:
         "区域可移动、缩放、删除和保存。新 Version 可复制上一版本区域，复制后必须人工检查位置。",
     )
 
-    add_heading(document, "8. 制作意图与参考图视觉简报")
+    add_heading(document, "11. 制作意图与参考图视觉简报")
     for text in (
         "“制作意图”记录你希望最终画面达到什么目标。",
         "“参考图视觉简报”记录参考图实际呈现的视觉特征。",
@@ -401,7 +470,7 @@ def build() -> None:
     ):
         add_list_item(document, text, bullet_id)
 
-    add_heading(document, "9. AI 审阅与灯光审片")
+    add_heading(document, "12. AI 审阅与灯光审片")
     decimal_id = add_numbering(document, bullet=False)
     for text in (
         "优先选择“深度主美审阅（八维）”；专项灯光问题选择“灯光专项审阅”。",
@@ -446,7 +515,7 @@ def build() -> None:
         "错误窗口会显示供应商返回的脱敏原因。不要把 API Key 截图或复制给他人。",
     )
 
-    add_heading(document, "10. 优化实验室")
+    add_heading(document, "13. 优化实验室")
     add_heading(document, "目标匹配画像", 2)
     add_body(
         document,
@@ -480,7 +549,16 @@ def build() -> None:
         "AI 输出只保存为 AIConceptPreview，不会成为真实 UE Version。出现“仅适合概念参考”时，不应把预演当作可直接复现的场景结果。",
     )
 
-    add_heading(document, "11. 文件与安全")
+    add_heading(document, "14. 全局工具与文件安全")
+    for text in (
+        "Ctrl+K 打开命令面板；Ctrl+, 打开全局设置。",
+        "Ctrl+Shift+J 打开任务与供应商状态，查看 AI 调用、重试和失败原因。",
+        "Ctrl+Shift+D 打开项目诊断，检查入口、数据库、assets 和备份数量。",
+        "异常退出后，未完成任务会标记“上次退出时中断”。",
+        "诊断报告不包含图片、API Key、提示语或项目正文。",
+    ):
+        add_list_item(document, text, bullet_id)
+    add_heading(document, "文件与安全", 2)
     for text in (
         "assets：导入原图，保留原始字节和 SHA-256。",
         "artifacts：可重建分析结果和 AIConceptPreview。",
@@ -489,16 +567,18 @@ def build() -> None:
         "同一项目只能由一个进程写入；第二个进程可只读打开。",
         "作品研究的 assets 同样保留导入图片原始字节；study.json 保存研究状态。",
         "资产拆分项目使用 .scenelens-assets 目录；生成图、遮罩和导出记录与原图分开保存。",
+        "资料库使用 library.json；对照研究使用 comparison.json；两者都把原图与分析结果分开保存。",
     ):
         add_list_item(document, text, bullet_id)
 
-    add_heading(document, "12. 当前限制")
+    add_heading(document, "15. 当前限制")
     for text in (
         "只支持静态图片和矩形区域。",
         "不支持视频、HDR/EXR、多边形、自动分割或 UE 工程扫描。",
         "真实 AI 供应商需要单独验证账号、地区、模型和费用。",
         "AI 预演必须回到 UE 实施，并用新的真实截图 Version 正式复查。",
-        "作品研究暂不支持多图研究、引用资料库、自动语义分割或本地大型视觉模型。",
+        "对照研究支持 2 至 6 张静态图片；暂不提供自由画布、自动网页抓取、图像相似搜索或本地大型视觉模型。",
+        "关卡设计和策划资料域只完成注册边界，尚未开发对应资料工具。",
         "资产拆分不捆绑本地视觉大模型、SAM 2 或 CUDA，也不生成生产可用三维模型。",
         "AI 资产分类、遮挡补全和生成图仍需用户人工校正。",
     ):
@@ -511,5 +591,109 @@ def build() -> None:
     document.save(OUTPUT)
 
 
+def _plain_markdown(text: str) -> str:
+    return text.replace("**", "").replace("`", "").strip()
+
+
+def build_from_markdown() -> None:
+    """Build the compact Word guide from the authoritative Markdown guide."""
+
+    document = Document()
+    section = document.sections[0]
+    section.page_width = Inches(8.5)
+    section.page_height = Inches(11)
+    section.top_margin = Inches(1)
+    section.right_margin = Inches(1)
+    section.bottom_margin = Inches(1)
+    section.left_margin = Inches(1)
+    section.header_distance = Inches(0.492)
+    section.footer_distance = Inches(0.492)
+    configure_styles(document)
+
+    title = document.add_paragraph()
+    title.paragraph_format.space_before = Pt(0)
+    title.paragraph_format.space_after = Pt(4)
+    set_font(
+        title.add_run("GATalk 简明使用手册"),
+        size=22,
+        bold=True,
+        color=DARK_BLUE,
+    )
+    footer = section.footer.paragraphs[0]
+    footer.alignment = 2
+    set_font(footer.add_run("GATalk 使用手册  ·  "), size=8.5, color=MUTED)
+    field = OxmlElement("w:fldSimple")
+    field.set(qn("w:instr"), "PAGE")
+    footer._p.append(field)
+
+    lines = SOURCE.read_text(encoding="utf-8").splitlines()[1:]
+    bullet_id = add_numbering(document, bullet=True)
+    number_id: int | None = None
+    paragraph_parts: list[str] = []
+    list_kind = ""
+    list_text = ""
+
+    def flush_paragraph() -> None:
+        nonlocal paragraph_parts
+        if paragraph_parts:
+            add_body(document, _plain_markdown(" ".join(paragraph_parts)))
+            paragraph_parts = []
+
+    def flush_list() -> None:
+        nonlocal list_kind, list_text, number_id
+        if not list_kind:
+            return
+        if list_kind == "bullet":
+            add_list_item(document, _plain_markdown(list_text), bullet_id)
+        else:
+            if number_id is None:
+                number_id = add_numbering(document, bullet=False)
+            add_list_item(document, _plain_markdown(list_text), number_id)
+        list_kind = ""
+        list_text = ""
+
+    for raw in lines:
+        line = raw.strip()
+        heading = re.match(r"^(#{2,4})\s+(.+)$", line)
+        bullet = re.match(r"^-\s+(.+)$", line)
+        numbered = re.match(r"^\d+\.\s+(.+)$", line)
+        if heading:
+            flush_list()
+            flush_paragraph()
+            number_id = None
+            add_heading(
+                document,
+                _plain_markdown(heading.group(2)),
+                min(3, len(heading.group(1)) - 1),
+            )
+        elif bullet:
+            flush_list()
+            flush_paragraph()
+            number_id = None
+            list_kind = "bullet"
+            list_text = bullet.group(1)
+        elif numbered:
+            flush_list()
+            flush_paragraph()
+            list_kind = "number"
+            list_text = numbered.group(1)
+        elif not line:
+            flush_list()
+            flush_paragraph()
+            number_id = None
+        elif list_kind:
+            list_text += " " + line
+        else:
+            paragraph_parts.append(line)
+    flush_list()
+    flush_paragraph()
+
+    document.core_properties.title = "GATalk 简明使用手册"
+    document.core_properties.subject = "GATalk 当前功能与操作"
+    document.core_properties.author = "GATalk"
+    document.core_properties.keywords = "GATalk, 使用手册, 游戏场景美术"
+    document.save(OUTPUT)
+
+
 if __name__ == "__main__":
-    build()
+    build_from_markdown()

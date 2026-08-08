@@ -86,7 +86,7 @@ def test_asset_workflow_pages_keep_vertical_scroll_and_readable_spacing(
     automatic_scroll = window.workflow_tabs.widget(1)
     assert isinstance(automatic_scroll, QScrollArea)
     assert automatic_scroll.objectName() == "automaticPageScroll"
-    generation_scroll = window.manual_tabs.widget(3)
+    generation_scroll = window.manual_tabs.widget(4)
     assert isinstance(generation_scroll, QScrollArea)
     assert generation_scroll.objectName() == "generationPageScroll"
     window.close()

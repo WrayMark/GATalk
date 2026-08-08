@@ -44,6 +44,7 @@ _INTERNAL_TEXT_FIELDS = {
     "annotation_id",
     "evidence_type",
     "linked_dimensions",
+    "item_id",
 }
 _CJK_PATTERN = re.compile(r"[\u3400-\u9fff]")
 _LATIN_PATTERN = re.compile(r"[A-Za-z]")

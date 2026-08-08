@@ -10,6 +10,9 @@ class WorkspaceDescriptor:
     workspace_id: str
     display_name: str
     version: str
+    level: str = "professional"
+    parent_workspace_id: str | None = None
+    category: str = ""
 
     @property
     def identity(self) -> tuple[str, str]:
@@ -30,6 +33,23 @@ class ReviewerDescriptor:
         return self.module_id, self.reviewer_id
 
 
+@dataclass(frozen=True)
+class KnowledgeDomainDescriptor:
+    domain_id: str
+    display_name: str
+    description: str
+    version: str
+    enabled: bool = True
+
+
+@dataclass(frozen=True)
+class HandoffDescriptor:
+    source_workspace_id: str
+    target_workspace_id: str
+    payload_type: str
+    display_name: str
+
+
 class WorkbenchRegistry:
     """Explicit registrations for trusted, built-in workbench contributions."""
 
@@ -39,6 +59,10 @@ class WorkbenchRegistry:
         ] = {}
         self._reviewers: dict[tuple[str, str], Any] = {}
         self._providers: dict[str, Any] = {}
+        self._knowledge_domains: dict[str, KnowledgeDomainDescriptor] = {}
+        self._handoffs: dict[
+            tuple[str, str, str], HandoffDescriptor
+        ] = {}
 
     def register_workspace(self, descriptor: WorkspaceDescriptor) -> None:
         if descriptor.identity in self._workspaces:
@@ -64,6 +88,26 @@ class WorkbenchRegistry:
         if provider_id in self._providers:
             raise ValueError(f"Provider already registered: {provider_id}")
         self._providers[provider_id] = provider
+
+    def register_knowledge_domain(
+        self,
+        descriptor: KnowledgeDomainDescriptor,
+    ) -> None:
+        if descriptor.domain_id in self._knowledge_domains:
+            raise ValueError(
+                f"Knowledge domain already registered: {descriptor.domain_id}"
+            )
+        self._knowledge_domains[descriptor.domain_id] = descriptor
+
+    def register_handoff(self, descriptor: HandoffDescriptor) -> None:
+        identity = (
+            descriptor.source_workspace_id,
+            descriptor.target_workspace_id,
+            descriptor.payload_type,
+        )
+        if identity in self._handoffs:
+            raise ValueError(f"Handoff already registered: {identity}")
+        self._handoffs[identity] = descriptor
 
     def get_reviewer(self, module_id: str, reviewer_id: str) -> Any:
         try:
@@ -93,3 +137,11 @@ class WorkbenchRegistry:
     def providers(self) -> tuple[Any, ...]:
         return tuple(self._providers[key] for key in sorted(self._providers))
 
+    def knowledge_domains(self) -> tuple[KnowledgeDomainDescriptor, ...]:
+        return tuple(
+            self._knowledge_domains[key]
+            for key in sorted(self._knowledge_domains)
+        )
+
+    def handoffs(self) -> tuple[HandoffDescriptor, ...]:
+        return tuple(self._handoffs[key] for key in sorted(self._handoffs))

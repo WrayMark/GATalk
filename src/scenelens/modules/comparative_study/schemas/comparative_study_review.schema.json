@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GATalk Comparative Artwork Study",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "reviewer_id", "research_thesis", "work_profiles", "axis_comparisons", "cross_axis_findings", "transferable_principles", "limitations", "study_questions"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "reviewer_id": {"const": "comparative_artwork_study"},
+    "research_thesis": {"type": "string", "minLength": 1},
+    "work_profiles": {
+      "type": "array", "minItems": 2, "maxItems": 6,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["item_id", "core_strategy", "visible_evidence", "uncertainty"],
+        "properties": {
+          "item_id": {"type": "string"},
+          "core_strategy": {"type": "string"},
+          "visible_evidence": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "string"}},
+          "uncertainty": {"type": "string"}
+        }
+      }
+    },
+    "axis_comparisons": {
+      "type": "array", "minItems": 1, "maxItems": 12,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["axis", "similarities", "differences", "visual_effect", "evidence", "interpretation", "confidence"],
+        "properties": {
+          "axis": {"type": "string"},
+          "similarities": {"type": "array", "maxItems": 5, "items": {"type": "string"}},
+          "differences": {"type": "array", "minItems": 1, "maxItems": 6, "items": {"type": "string"}},
+          "visual_effect": {"type": "string"},
+          "evidence": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string"}},
+          "interpretation": {"type": "string"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    },
+    "cross_axis_findings": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string"}},
+    "transferable_principles": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string"}},
+    "limitations": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string"}},
+    "study_questions": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string"}}
+  }
+}

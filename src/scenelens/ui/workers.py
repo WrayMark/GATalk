@@ -6,6 +6,8 @@ from typing import Any
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
+from scenelens.core.runtime_tasks import runtime_task_center
+
 
 class WorkerSignals(QObject):
     result = Signal(str, str, int, object)
@@ -30,6 +32,28 @@ class FunctionWorker(QRunnable):
 
     @Slot()
     def run(self) -> None:
+        tracked_kinds = {
+            "analysis",
+            "local",
+            "load",
+            "export",
+            "preview",
+            "mask",
+        }
+        task_id = None
+        if self.kind in tracked_kinds:
+            task_id = runtime_task_center().begin(
+                title={
+                    "analysis": "本地图像分析",
+                    "local": "本地对照分析",
+                    "load": "读取图片",
+                    "export": "导出结果",
+                    "preview": "生成预览",
+                    "mask": "生成证据遮罩",
+                }.get(self.kind, "后台任务"),
+                task_type=self.kind,
+                module_id=f"scenelens.{self.role}",
+            )
         try:
             result = self.function()
         except Exception as exc:  # UI boundary: convert to a user-facing event.
@@ -46,6 +70,8 @@ class FunctionWorker(QRunnable):
                 message,
                 traceback.format_exc(),
             )
+            if task_id:
+                runtime_task_center().fail(task_id, message)
         else:
             self.signals.result.emit(
                 self.role,
@@ -53,5 +79,7 @@ class FunctionWorker(QRunnable):
                 self.generation,
                 result,
             )
+            if task_id:
+                runtime_task_center().finish(task_id)
         finally:
             self.signals.finished.emit(self.role, self.kind, self.generation)
