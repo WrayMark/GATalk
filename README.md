@@ -2,11 +2,17 @@
 
 GATalk 是 Windows 本地游戏美术工作台。启动后可选择：
 
+- **参考资料与知识库**：位于专业工作台之上的资料平台，管理来源、集合、标签、
+  搜索、译文、局部摘录、跨项目引用和研究交接。
+- **审阅任务与质量门禁中心**：统一接收三个专业工作台的确认任务，保存验收
+  条件，并按新版本记录改善、解决或证据不足。
+
 - **场景美术控制**：参考图、UE 截图、证据化审阅、任务、优化预演和版本复查。
 - **作品研究**：对一张原画、概念图或优秀场景作品进行本地证据观察、CG 主美
   十二维拆解和个人学习记录。
-- **资产拆分工作台**：把复杂场景原画整理为可校正的资产清单、原图区域、
-  模块关系、制作优先级、独立概念图和资产展示板。
+- **资产拆分工作台**：先理解复杂场景，再按用户选择的层级整理可复用资产
+  套件、原图证据、制作优先级、独立概念图和分页展示板。
+- **作品研究集合与对照研究**：对 2 至 6 件作品执行同轴本地测量与 AI 专家研究。
 
 原图始终只读。没有 API Key 时，本地测量、项目/研究保存和离线 Mock 流程仍可
 使用；真实网络发送只在用户查看清单并确认后发生。
@@ -15,10 +21,9 @@ GATalk 是一款面向游戏场景美术、UE 地编和环境艺术作品的 Win
 本地游戏场景美术控制工作台。它将制作目标、参考图、当前截图、证据测量、
 AI 专项审阅、修改任务、优化预演、新版本复查和质量门禁串成可追踪的工作流。
 
-M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前 `0.10.0`
-为 **GATalk 品牌与界面更新版**：正式产品名改为 GATalk，增加全局主题、
-强调色、字号、控件密度和工作台布局设置，并统一三个工作台的现代化视觉层级。
-原 SceneLens 项目、最近项目记录和 Windows 系统凭据继续兼容。
+M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前 `0.15.0`
+新增全局检索、项目恢复、阶段门禁、资产生产交接和视觉资料板；原有工作台继续
+保留。
 
 ## 环境要求
 
@@ -51,8 +56,15 @@ M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前
 作品研究：新建研究 → 导入一张作品 → 查看本地证据 → AI 十二维拆解 →
 个人学习笔记 → 保存。
 
-资产拆分：新建资产项目 → 导入场景原画与补充参考 → 选择可校正拆分、
-全自动资产板或资产拆分提示语 → 保存、生成或复制结果。
+资产拆分：新建项目或从作品研究交接 → 导入原画与补充参考 → 理解场景并
+选择拆分方案 → 使用可校正拆分、全自动资产板或提示语 → 保存、分页生成或
+复制结果。
+
+资料与对照：新建资料库 → 导入或记录来源 → 建立集合和标签 → 多选 2 至 6 张
+图片 → 建立对照研究 → 本地测量 → 可选 AI 专家对照 → 保存研究结论。
+
+审阅闭环：在专业工作台选择结论 → 加入审阅中心 → 补充验收条件 → 更新任务
+状态 → 导入或指定新版本 → 记录复查证据 → 评估质量门禁。
 
 ## 测试
 
@@ -72,15 +84,9 @@ M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前
 `pyproject.toml` 固定直接依赖；`requirements-lock.txt` 保存本轮已验证环境的
 完整版本快照。
 
-## 界面预览
-
-![GATalk 深色首页](docs/images/gatalk-0.10.0/gatalk-hub-dark-0.10.0.png)
-
-![GATalk 浅色首页](docs/images/gatalk-0.10.0/gatalk-hub-light-0.10.0.png)
-
 ## 文档
 
-- [USER_GUIDE.md](USER_GUIDE.md)：简明中文使用手册
+- [GATalk_使用手册.docx](GATalk_使用手册.docx)：纯文字简明 Word 使用手册
 - [PROJECT_BRIEF.md](PROJECT_BRIEF.md)：产品目标与范围
 - [DECISIONS.md](DECISIONS.md)：已接受的产品与技术决策
 - [ROADMAP.md](ROADMAP.md)：开发阶段与验收标准
@@ -93,6 +99,14 @@ M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前
 - [docs/M2_DATA_MODEL.md](docs/M2_DATA_MODEL.md)：M2 共享核心与 schema v5
 - [docs/M2_PROVIDER_ARCHITECTURE.md](docs/M2_PROVIDER_ARCHITECTURE.md)：
   Provider 接口、完成度和未验证项
+- [docs/KNOWLEDGE_PLATFORM_RESEARCH_2026-08-08.md](docs/KNOWLEDGE_PLATFORM_RESEARCH_2026-08-08.md)：
+  资料平台与对照研究调研
+- [docs/KNOWLEDGE_COMPARISON_ARCHITECTURE.md](docs/KNOWLEDGE_COMPARISON_ARCHITECTURE.md)：
+  平台层、数据模型和模块交接
+- [docs/KNOWLEDGE_REVIEW_CONTROL_RESEARCH_2026-08-08.md](docs/KNOWLEDGE_REVIEW_CONTROL_RESEARCH_2026-08-08.md)：
+  资料摘录、翻译、项目引用和审阅追踪调研
+- [docs/REVIEW_CONTROL_ARCHITECTURE.md](docs/REVIEW_CONTROL_ARCHITECTURE.md)：
+  审阅任务、版本复查、质量门禁和模块边界
 - [docs/PROVIDER_COMPATIBILITY_AUDIT_2026-07-19.md](docs/PROVIDER_COMPATIBILITY_AUDIT_2026-07-19.md)：
   AI 接口兼容修复、错误含义和人工联网验证项
 - [docs/COMPETITOR_REVIEW_M2.md](docs/COMPETITOR_REVIEW_M2.md)：M2 竞品审查
@@ -102,10 +116,6 @@ M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前
   资产识别、分割、补全、视图重建和商业工具调研
 - [docs/ASSET_BREAKDOWN_ARCHITECTURE.md](docs/ASSET_BREAKDOWN_ARCHITECTURE.md)：
   资产拆分模块、数据模型、Provider 与真实性边界
-- [docs/GATALK_UI_SETTINGS_RESEARCH_2026-07-31.md](docs/GATALK_UI_SETTINGS_RESEARCH_2026-07-31.md)：
-  GATalk 界面、主题和设置方案调研
-- [GATALK_UI_SETTINGS_VALIDATION.md](GATALK_UI_SETTINGS_VALIDATION.md)：
-  自动化测试、渲染检查、打包结果和人工试用步骤
 - [M6_ASSET_BREAKDOWN_VALIDATION.md](M6_ASSET_BREAKDOWN_VALIDATION.md)：
   自动验证、限制和人工试用步骤
 - [docs/M1B2_REGION_DATA_MODEL.md](docs/M1B2_REGION_DATA_MODEL.md)：区域 schema 与 Version 语义
