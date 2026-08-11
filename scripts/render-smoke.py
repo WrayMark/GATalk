@@ -18,6 +18,7 @@ from scenelens.storage.models import ArtBrief
 from scenelens.storage.project_store import ProjectStore
 from scenelens.storage.recent_projects import RecentProjects
 from scenelens.ui.main_window import MainWindow
+from scenelens.ui.settings_controller import GlobalSettingsController
 
 
 def _create_test_images(folder: Path) -> tuple[Path, Path]:
@@ -78,6 +79,8 @@ def main() -> int:
     window = MainWindow(
         RecentProjects(temp_folder / "recent-projects.json")
     )
+    controller = GlobalSettingsController(app)
+    controller.register_window(window, "visual_review_smoke")
     window.resize(1500, 900)
     window.show()
     window.open_project(store.root)

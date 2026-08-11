@@ -149,6 +149,9 @@ def test_workbench_entities_round_trip_without_network_or_credentials(
     assert store.list_tasks(MODULE_ID) == (task,)
     assert store.update_task_status(task.id, TaskStatus.DONE).status == TaskStatus.DONE
     assert store.get_ai_run(run.id) == run
+    assert store.list_ai_runs(run.module_id) == (run,)
+    assert store.delete_ai_run(run.id) is True
+    assert store.get_ai_run(run.id) is None
     assert store.get_review_profile(profile.id) == (profile, (gate,))
     assert artifact.relative_path.startswith("artifacts/")
     assert document.source_uri.startswith("local://")

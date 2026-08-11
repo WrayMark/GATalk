@@ -82,6 +82,9 @@ def test_m1b1_briefs_shared_palette_mask_and_luminance_restore(
     assert shared is not None
     assert shared.reference_sample_count == shared.current_sample_count
     assert window.comparison_panel.palette_table.rowCount() >= 2
+    assert window.comparison_panel.independent_palette_table.rowCount() >= 2
+    assert window.comparison_panel.distribution_chart._reference
+    assert window.comparison_panel.distribution_chart._current
     assert window.comparison_panel.luminance_table.item(0, 1) is not None
 
     previous_shared = window._shared_palette_result

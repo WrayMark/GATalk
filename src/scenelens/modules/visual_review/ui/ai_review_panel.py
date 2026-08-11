@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QTreeWidget,
@@ -126,6 +127,8 @@ class AIReviewPanel(QWidget):
     annotations_selected = Signal(object)
     annotation_tasks_requested = Signal(object)
     offline_export_requested = Signal()
+    history_selected = Signal(str)
+    history_delete_requested = Signal(str)
 
     def __init__(
         self,
@@ -138,6 +141,7 @@ class AIReviewPanel(QWidget):
         }
         self._findings: list[Mapping[str, Any]] = []
         self._dimension_reviews: list[Mapping[str, Any]] = []
+        self._history_read_only = False
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         body = QWidget()
@@ -237,6 +241,15 @@ class AIReviewPanel(QWidget):
 
         result_group = QGroupBox("审阅结果")
         result_layout = QVBoxLayout(result_group)
+        history_row = QHBoxLayout()
+        history_row.addWidget(QLabel("历史记录"))
+        self.history_combo = QComboBox()
+        self.history_combo.setToolTip("默认显示当前 Shot 与 Version 的最新完成记录。")
+        history_row.addWidget(self.history_combo, 1)
+        self.delete_history_button = QPushButton("删除记录")
+        self.delete_history_button.setEnabled(False)
+        history_row.addWidget(self.delete_history_button)
+        result_layout.addLayout(history_row)
         self.summary_label = QLabel("尚无结果")
         self.summary_label.setWordWrap(True)
         self.summary_label.setTextInteractionFlags(
@@ -279,6 +292,7 @@ class AIReviewPanel(QWidget):
 
         self.action_plan_list = QListWidget()
         self.action_plan_list.setToolTip("按依赖关系排序的执行计划")
+        self.action_plan_list.setWordWrap(True)
         self.action_plan_list.hide()
         self.action_plan_heading = QLabel("执行顺序")
         self.action_plan_heading.hide()
@@ -291,6 +305,15 @@ class AIReviewPanel(QWidget):
         self.preserve_heading.hide()
         result_layout.addWidget(self.preserve_heading)
         result_layout.addWidget(self.preserve_list)
+        self.performance_list = QListWidget()
+        self.performance_list.setToolTip(
+            "未提供 UE 工程设置时，这里只列人工检查项，不给出伪精确性能结论。"
+        )
+        self.performance_list.hide()
+        self.performance_heading = QLabel("UE 工程检查")
+        self.performance_heading.hide()
+        result_layout.addWidget(self.performance_heading)
+        result_layout.addWidget(self.performance_list)
         self.confidence_list = QListWidget()
         self.confidence_list.setToolTip("证据不足、输入限制和可信度说明")
         self.confidence_list.hide()
@@ -304,6 +327,12 @@ class AIReviewPanel(QWidget):
         self.scheme_combo = QComboBox()
         self.scheme_combo.setPlaceholderText("灯光方案标注")
         result_layout.addWidget(self.scheme_combo)
+        self.scheme_detail = QPlainTextEdit()
+        self.scheme_detail.setReadOnly(True)
+        self.scheme_detail.setMinimumHeight(240)
+        self.scheme_detail.setPlaceholderText("选择灯光方案后查看完整策略与 UE5 执行顺序。")
+        self.scheme_detail.hide()
+        result_layout.addWidget(self.scheme_detail)
         self.annotation_task_button = QPushButton(
             "将当前方案标注确认为任务"
         )
@@ -350,7 +379,48 @@ class AIReviewPanel(QWidget):
         self.annotation_task_button.clicked.connect(
             self._request_annotation_tasks
         )
+        self.history_combo.currentIndexChanged.connect(
+            self._history_changed
+        )
+        self.delete_history_button.clicked.connect(
+            self._delete_history
+        )
         self._provider_changed()
+
+    def set_history(
+        self,
+        entries: Sequence[Mapping[str, Any]],
+        *,
+        selected_id: str | None = None,
+        read_only: bool = False,
+    ) -> None:
+        self._history_read_only = read_only
+        self.history_combo.blockSignals(True)
+        self.history_combo.clear()
+        for entry in entries:
+            run_id = str(entry.get("run_id", ""))
+            self.history_combo.addItem(str(entry.get("label", run_id)), run_id)
+        if selected_id:
+            index = self.history_combo.findData(selected_id)
+            if index >= 0:
+                self.history_combo.setCurrentIndex(index)
+        self.history_combo.blockSignals(False)
+        self.delete_history_button.setEnabled(
+            self.history_combo.count() > 0 and not read_only
+        )
+
+    def _history_changed(self, _index: int) -> None:
+        run_id = str(self.history_combo.currentData() or "")
+        self.delete_history_button.setEnabled(
+            bool(run_id) and not self._history_read_only
+        )
+        if run_id:
+            self.history_selected.emit(run_id)
+
+    def _delete_history(self) -> None:
+        run_id = str(self.history_combo.currentData() or "")
+        if run_id:
+            self.history_delete_requested.emit(run_id)
 
     def options(self) -> ReviewPanelOptions:
         second_provider = (
@@ -419,6 +489,14 @@ class AIReviewPanel(QWidget):
             "lighting_atmosphere": "灯光与氛围",
             "material_readability": "材质可读性",
             "world_design_narrative": "世界设计与叙事",
+            "exposure_value_range": "曝光与明度范围",
+            "key_fill_balance": "主光与填充关系",
+            "focal_hierarchy": "灯光焦点层级",
+            "depth_separation": "前中后景分离",
+            "colour_temperature": "冷暖与色温组织",
+            "shadow_silhouette": "阴影与剪影塑造",
+            "atmosphere_volumetrics": "雾与体积效果",
+            "gameplay_readability": "游戏可读性",
         }
         status_labels = {
             "meets_target": "符合目标",
@@ -516,6 +594,7 @@ class AIReviewPanel(QWidget):
             self.findings_tree.addTopLevelItem(item)
         self.findings_tree.resizeColumnToContents(0)
         self.validation_list.clear()
+        self.validation_list.show()
         for validation in outcome.component_validations:
             value = (
                 "无"
@@ -544,8 +623,14 @@ class AIReviewPanel(QWidget):
             text = (
                 f"{action.get('order', '-')}．{action.get('action', '')}"
             )
+            if action.get("why_now"):
+                text += f"\n为什么现在做：{action.get('why_now')}"
             if ue_steps:
-                text += f"｜UE：{ue_steps}"
+                text += f"\nUE5：{ue_steps}"
+            if action.get("risk"):
+                text += f"\n风险：{action.get('risk')}"
+            if action.get("verification"):
+                text += f"\n验证：{action.get('verification')}"
             self.action_plan_list.addItem(text)
         has_actions = self.action_plan_list.count() > 0
         self.action_plan_list.setVisible(has_actions)
@@ -557,6 +642,13 @@ class AIReviewPanel(QWidget):
         has_preserve = self.preserve_list.count() > 0
         self.preserve_list.setVisible(has_preserve)
         self.preserve_heading.setVisible(has_preserve)
+
+        self.performance_list.clear()
+        for value in outcome.output.get("performance_checklist", []):
+            self.performance_list.addItem(str(value))
+        has_performance = self.performance_list.count() > 0
+        self.performance_list.setVisible(has_performance)
+        self.performance_heading.setVisible(has_performance)
 
         self.confidence_list.clear()
         for value in outcome.output.get("confidence_notes", []):
@@ -582,6 +674,7 @@ class AIReviewPanel(QWidget):
         if self.scheme_combo.count():
             self.scheme_combo.setCurrentIndex(0)
         self.scheme_combo.blockSignals(False)
+        self.scheme_detail.setVisible(self.scheme_combo.count() > 0)
         self.annotation_task_button.setEnabled(
             self.scheme_combo.count() > 0
         )
@@ -596,6 +689,39 @@ class AIReviewPanel(QWidget):
             f"完成：{outcome.provider_id} / {outcome.model_id}"
             f"{fallback_note}。"
         )
+
+    def clear_outcome(self) -> None:
+        self._findings = []
+        self._dimension_reviews = []
+        self.summary_label.setText("尚无结果")
+        self.target_readback_label.clear()
+        self.target_readback_label.hide()
+        self.dimension_tree.clear()
+        self.dimension_tree.hide()
+        self.dimension_detail.setText("选择一个维度查看制作目标、参考呈现和当前效果。")
+        self.findings_tree.clear()
+        for widget in (
+            self.validation_list,
+            self.action_plan_list,
+            self.preserve_list,
+            self.performance_list,
+            self.confidence_list,
+        ):
+            widget.clear()
+            widget.hide()
+        for heading in (
+            self.action_plan_heading,
+            self.preserve_heading,
+            self.performance_heading,
+            self.confidence_heading,
+        ):
+            heading.hide()
+        self.scheme_combo.clear()
+        self.scheme_detail.clear()
+        self.scheme_detail.hide()
+        self.create_task_button.setEnabled(False)
+        self.annotation_task_button.setEnabled(False)
+        self.annotations_selected.emit({})
 
     def show_error(self, message: str) -> None:
         self.set_running(False)
@@ -677,8 +803,39 @@ class AIReviewPanel(QWidget):
     def _scheme_changed(self, index: int) -> None:
         scheme = self.scheme_combo.itemData(index)
         if isinstance(scheme, dict):
+            labels = (
+                ("key_direction_and_altitude", "主光方向与高度角"),
+                ("key_softness", "主光软硬"),
+                ("key_fill_relationship", "主光与环境填充"),
+                ("colour_temperature_strategy", "色温策略"),
+                ("sky_and_indirect_light", "天空光与间接光"),
+                ("exposure_direction", "曝光调整方向"),
+                ("fog_and_atmospheric_perspective", "雾与空气透视"),
+                ("volumetric_light", "体积光"),
+                ("focus_emphasis", "焦点强调"),
+                ("depth_separation", "前中后景分离"),
+            )
+            lines = [
+                f"{label}\n{scheme.get(key, '')}"
+                for key, label in labels
+                if scheme.get(key)
+            ]
+            for key, label in (
+                ("regions_to_darken_or_lift", "需要压暗或提亮的区域"),
+                ("ue53_execution_order", "UE5.3 执行顺序"),
+                ("risks", "风险"),
+                ("validation", "验证方法"),
+            ):
+                values = [str(value) for value in scheme.get(key, ())]
+                if values:
+                    lines.append(label + "\n" + "\n".join(
+                        f"{position + 1}. {value}"
+                        for position, value in enumerate(values)
+                    ))
+            self.scheme_detail.setPlainText("\n\n".join(lines))
             self.annotations_selected.emit(dict(scheme))
         else:
+            self.scheme_detail.clear()
             self.annotations_selected.emit({})
 
     def _request_annotation_tasks(self) -> None:

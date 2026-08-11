@@ -519,6 +519,16 @@ def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
             "confidence_notes": ["Mock 输出不能作为美术结论。"],
         }
     if title == "GATalk Lighting Review":
+        dimensions = (
+            "exposure_value_range",
+            "key_fill_balance",
+            "focal_hierarchy",
+            "depth_separation",
+            "colour_temperature",
+            "shadow_silhouette",
+            "atmosphere_volumetrics",
+            "gameplay_readability",
+        )
         schemes = []
         for strategy in (
             "faithful_to_reference",
@@ -546,13 +556,39 @@ def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
                 }
             )
         return {
-            "schema_version": "1.0",
+            "schema_version": "2.0",
             "reviewer_id": "lighting_review",
-            "summary": "离线 Mock：结构化灯光审阅流程可用。",
+            "summary": "离线 Mock：八维灯光审阅、执行顺序与三套方案结构可用。",
+            "target_readback": {
+                "production_stage": "Mock 未分析",
+                "target_mood": "Mock 未分析",
+                "primary_focus": "Mock 未分析",
+                "protected_content": [],
+                "review_exclusions": [],
+            },
+            "dimension_reviews": [
+                {
+                    "dimension_id": dimension,
+                    "status": "insufficient_evidence",
+                    "intent_target": "连接真实视觉 Provider 后分析",
+                    "reference_read": "Mock 不读取图片语义",
+                    "current_read": "Mock 不读取图片语义",
+                    "evidence_summary": ["仅验证结构化流程"],
+                    "strengths": [],
+                    "risks": [],
+                    "linked_finding_ids": [],
+                    "confidence": 0.0,
+                    "uncertainty": "离线 Mock 不执行灯光语义推断",
+                }
+                for dimension in dimensions
+            ],
             "lighting_components": [],
             "findings": [],
+            "preserve_items": [],
+            "action_plan": [],
             "target_schemes": schemes,
             "performance_checklist": [],
+            "confidence_notes": ["Mock 输出不能作为灯光结论。"],
         }
     if title == "GATalk Second Opinion":
         return {

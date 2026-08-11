@@ -60,6 +60,17 @@ class LuminanceComparison:
 
 
 @dataclass(frozen=True)
+class DistributionComparison:
+    metric: str
+    reference_values: tuple[float, ...]
+    current_values: tuple[float, ...]
+    range_min: float
+    range_max: float
+    reference_excluded_ratio: float = 0.0
+    current_excluded_ratio: float = 0.0
+
+
+@dataclass(frozen=True)
 class RenderSettings:
     mode: str = "original"
     blur_sigma: float = 0.0

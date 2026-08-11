@@ -7,15 +7,72 @@
     "schema_version",
     "reviewer_id",
     "summary",
+    "target_readback",
+    "dimension_reviews",
     "lighting_components",
     "findings",
+    "preserve_items",
+    "action_plan",
     "target_schemes",
-    "performance_checklist"
+    "performance_checklist",
+    "confidence_notes"
   ],
   "properties": {
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"const": "2.0"},
     "reviewer_id": {"const": "lighting_review"},
     "summary": {"type": "string", "minLength": 1},
+    "target_readback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "production_stage", "target_mood", "primary_focus",
+        "protected_content", "review_exclusions"
+      ],
+      "properties": {
+        "production_stage": {"type": "string"},
+        "target_mood": {"type": "string"},
+        "primary_focus": {"type": "string"},
+        "protected_content": {"type": "array", "items": {"type": "string"}},
+        "review_exclusions": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "dimension_reviews": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "dimension_id", "status", "intent_target", "reference_read",
+          "current_read", "evidence_summary", "strengths", "risks",
+          "linked_finding_ids", "confidence", "uncertainty"
+        ],
+        "properties": {
+          "dimension_id": {
+            "type": "string",
+            "enum": [
+              "exposure_value_range", "key_fill_balance", "focal_hierarchy",
+              "depth_separation", "colour_temperature", "shadow_silhouette",
+              "atmosphere_volumetrics", "gameplay_readability"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["meets_target", "partially_meets", "deviates", "insufficient_evidence"]
+          },
+          "intent_target": {"type": "string"},
+          "reference_read": {"type": "string", "minLength": 1},
+          "current_read": {"type": "string", "minLength": 1},
+          "evidence_summary": {"type": "array", "maxItems": 6, "items": {"type": "string", "minLength": 1}},
+          "strengths": {"type": "array", "maxItems": 3, "items": {"type": "string", "minLength": 1}},
+          "risks": {"type": "array", "maxItems": 3, "items": {"type": "string", "minLength": 1}},
+          "linked_finding_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+          "uncertainty": {"type": "string"}
+        }
+      }
+    },
     "lighting_components": {
       "type": "array",
       "items": {
@@ -83,10 +140,13 @@
         "additionalProperties": false,
         "required": [
           "finding_id",
+          "dimension_ids",
           "observation",
           "image_evidence",
           "measurement_evidence",
           "linked_region_ids",
+          "linked_image_role",
+          "evidence_claims",
           "impact",
           "recommended_action",
           "priority",
@@ -96,6 +156,18 @@
         ],
         "properties": {
           "finding_id": {"type": "string", "minLength": 1},
+          "dimension_ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": [
+                "exposure_value_range", "key_fill_balance", "focal_hierarchy",
+                "depth_separation", "colour_temperature", "shadow_silhouette",
+                "atmosphere_volumetrics", "gameplay_readability"
+              ]
+            }
+          },
           "observation": {"type": "string", "minLength": 1},
           "image_evidence": {"type": "string", "minLength": 1},
           "measurement_evidence": {
@@ -105,6 +177,59 @@
           "linked_region_ids": {
             "type": "array",
             "items": {"type": "string", "minLength": 1}
+          },
+          "linked_image_role": {
+            "type": "string",
+            "enum": ["reference", "current", "both"]
+          },
+          "evidence_claims": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "claim_id", "description", "current_rect", "reference_rect",
+                "metric", "operator", "threshold", "tolerance", "confidence"
+              ],
+              "properties": {
+                "claim_id": {"type": "string", "minLength": 1},
+                "description": {"type": "string", "minLength": 1},
+                "current_rect": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["x", "y", "width", "height"],
+                  "properties": {
+                    "x": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                    "y": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                    "width": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                    "height": {"type": "number", "minimum": 0.0, "maximum": 1.0}
+                  }
+                },
+                "reference_rect": {
+                  "type": ["object", "null"],
+                  "additionalProperties": false,
+                  "required": ["x", "y", "width", "height"],
+                  "properties": {
+                    "x": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                    "y": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                    "width": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                    "height": {"type": "number", "minimum": 0.0, "maximum": 1.0}
+                  }
+                },
+                "metric": {
+                  "type": "string",
+                  "enum": [
+                    "mean_luminance", "local_contrast", "highlight_ratio",
+                    "shadow_ratio", "warmth_oklab_b", "reference_luminance_delta"
+                  ]
+                },
+                "operator": {"type": "string", "enum": [">=", "<=", "abs>="]},
+                "threshold": {"type": "number"},
+                "tolerance": {"type": "number", "minimum": 0.0},
+                "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0}
+              }
+            }
           },
           "impact": {"type": "string", "minLength": 1},
           "recommended_action": {"type": "string", "minLength": 1},
@@ -119,6 +244,33 @@
           },
           "counterevidence_or_uncertainty": {"type": "string"},
           "next_version_validation": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "preserve_items": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "action_plan": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "order", "finding_ids", "action", "why_now", "dependencies",
+          "ue5_steps", "risk", "verification"
+        ],
+        "properties": {
+          "order": {"type": "integer", "minimum": 1},
+          "finding_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "action": {"type": "string", "minLength": 1},
+          "why_now": {"type": "string", "minLength": 1},
+          "dependencies": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "ue5_steps": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "risk": {"type": "string"},
+          "verification": {"type": "string", "minLength": 1}
         }
       }
     },
@@ -220,6 +372,11 @@
     },
     "performance_checklist": {
       "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "confidence_notes": {
+      "type": "array",
+      "maxItems": 8,
       "items": {"type": "string", "minLength": 1}
     }
   }

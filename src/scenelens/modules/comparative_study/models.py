@@ -68,6 +68,7 @@ class ComparativeStudyState:
     local_comparison: Mapping[str, Any] = field(default_factory=dict)
     ai_comparison: Mapping[str, Any] = field(default_factory=dict)
     ai_run: Mapping[str, Any] = field(default_factory=dict)
+    ai_history: tuple[Mapping[str, Any], ...] = ()
     synthesis_notes: str = ""
     transferable_principles: str = ""
     limitations: str = ""
@@ -87,6 +88,7 @@ class ComparativeStudyState:
             "local_comparison": dict(self.local_comparison),
             "ai_comparison": dict(self.ai_comparison),
             "ai_run": dict(self.ai_run),
+            "ai_history": [dict(item) for item in self.ai_history],
             "synthesis_notes": self.synthesis_notes,
             "transferable_principles": self.transferable_principles,
             "limitations": self.limitations,
@@ -115,6 +117,10 @@ class ComparativeStudyState:
             local_comparison=dict(value.get("local_comparison", {})),
             ai_comparison=dict(value.get("ai_comparison", {})),
             ai_run=dict(value.get("ai_run", {})),
+            ai_history=tuple(
+                dict(item) for item in value.get("ai_history", ())
+                if isinstance(item, Mapping)
+            ),
             synthesis_notes=str(value.get("synthesis_notes", "")),
             transferable_principles=str(
                 value.get("transferable_principles", "")
@@ -124,4 +130,3 @@ class ComparativeStudyState:
             created_at=str(value.get("created_at", "")),
             updated_at=str(value.get("updated_at", "")),
         )
-

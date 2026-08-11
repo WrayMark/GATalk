@@ -53,12 +53,21 @@ def test_artwork_study_store_preserves_original_bytes_and_restores_state(tmp_pat
             personal_notes="远景靠低对比退后",
             display_mode="grayscale",
             local_analysis={"analyzer_id": "test"},
+            ai_history=(
+                {
+                    "run_id": "run-1",
+                    "completed_at": "2026-08-12T10:00:00Z",
+                    "run": {"provider_id": "mock", "model_id": "mock"},
+                    "output": {"executive_thesis": "历史结果"},
+                },
+            ),
         )
     )
     reopened = ArtworkStudyStore.open(store.root)
     assert reopened.state.study_goal == "研究明度与空间"
     assert reopened.state.display_mode == "grayscale"
     assert reopened.state.local_analysis["analyzer_id"] == "test"
+    assert reopened.state.ai_history[0]["run_id"] == "run-1"
     assert reopened.image_path().read_bytes() == source.read_bytes()
 
 

@@ -381,6 +381,38 @@ class WorkbenchStore:
             ).fetchone()
         return None if row is None else self._ai_run_from_row(row)
 
+    def list_ai_runs(
+        self,
+        module_id: str,
+        *,
+        reviewer_id: str | None = None,
+        status: AIRunStatus | None = None,
+    ) -> tuple[AIRun, ...]:
+        clauses = ["module_id = ?"]
+        values: list[object] = [module_id]
+        if reviewer_id is not None:
+            clauses.append("reviewer_id = ?")
+            values.append(reviewer_id)
+        if status is not None:
+            clauses.append("status = ?")
+            values.append(status.value)
+        query = (
+            "SELECT * FROM workbench_ai_runs WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY COALESCE(completed_at, created_at) DESC, id DESC"
+        )
+        with self.project.workspace_read_connection() as connection:
+            rows = connection.execute(query, values).fetchall()
+        return tuple(self._ai_run_from_row(row) for row in rows)
+
+    def delete_ai_run(self, run_id: str) -> bool:
+        with self.project.workspace_write_connection() as connection:
+            cursor = connection.execute(
+                "DELETE FROM workbench_ai_runs WHERE id = ?",
+                (run_id,),
+            )
+        return cursor.rowcount > 0
+
     def save_source_document(
         self,
         document: SourceDocument,

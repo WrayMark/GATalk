@@ -7,6 +7,7 @@ from scenelens.analysis.evidence_validation import (
     EvidenceClaim,
     EvidenceExpectation,
     EvidenceMetric,
+    EvidenceStatus,
     EvidenceValidation,
     NormalizedBox,
     validate_evidence_claim,
@@ -54,6 +55,129 @@ class ReviewRunOutcome:
     attempted_model_ids: tuple[str, ...] = ()
     model_fallback_used: bool = False
     model_fallback_reason: str = ""
+
+
+def review_outcome_to_payload(outcome: ReviewRunOutcome) -> dict[str, Any]:
+    return {
+        "format": "gatalk.visual_review.outcome",
+        "format_version": 1,
+        "reviewer_id": outcome.reviewer_id,
+        "provider_id": outcome.provider_id,
+        "model_id": outcome.model_id,
+        "output": dict(outcome.output),
+        "component_validations": [
+            {
+                "claim_id": value.claim_id,
+                "status": value.status.value,
+                "measured_value": value.measured_value,
+                "threshold": value.threshold,
+                "adjusted_confidence": value.adjusted_confidence,
+                "reason": value.reason,
+            }
+            for value in outcome.component_validations
+        ],
+        "merged_findings": [
+            {
+                "finding": dict(value.finding),
+                "primary_provider_id": value.primary_provider_id,
+                "second_opinion_provider_id": value.second_opinion_provider_id,
+                "second_opinion_status": value.second_opinion_status,
+                "disagreement": value.disagreement,
+            }
+            for value in outcome.merged_findings
+        ],
+        "second_opinion_provider_id": outcome.second_opinion_provider_id,
+        "omissions": list(outcome.omissions),
+        "normalization_warnings": list(outcome.normalization_warnings),
+        "requested_model_id": outcome.requested_model_id,
+        "attempted_model_ids": list(outcome.attempted_model_ids),
+        "model_fallback_used": outcome.model_fallback_used,
+        "model_fallback_reason": outcome.model_fallback_reason,
+    }
+
+
+def review_outcome_from_payload(payload: Mapping[str, Any]) -> ReviewRunOutcome:
+    if payload.get("format") != "gatalk.visual_review.outcome":
+        output = dict(payload)
+        provider_id = str(payload.get("provider_id", "历史记录"))
+        return ReviewRunOutcome(
+            reviewer_id=str(payload.get("reviewer_id", "")),
+            provider_id=provider_id,
+            model_id=str(payload.get("model_id", "")),
+            output=output,
+            component_validations=(),
+            merged_findings=tuple(
+                MergedFinding(
+                    finding=dict(value),
+                    primary_provider_id=provider_id,
+                    second_opinion_provider_id=None,
+                    second_opinion_status=None,
+                    disagreement=None,
+                )
+                for value in output.get("findings", ())
+                if isinstance(value, Mapping)
+            ),
+        )
+    return ReviewRunOutcome(
+        reviewer_id=str(payload.get("reviewer_id", "")),
+        provider_id=str(payload.get("provider_id", "")),
+        model_id=str(payload.get("model_id", "")),
+        output=dict(payload.get("output", {})),
+        component_validations=tuple(
+            EvidenceValidation(
+                claim_id=str(value.get("claim_id", "")),
+                status=EvidenceStatus(str(value.get("status", "unverifiable"))),
+                measured_value=(
+                    None
+                    if value.get("measured_value") is None
+                    else float(value["measured_value"])
+                ),
+                threshold=float(value.get("threshold", 0.0)),
+                adjusted_confidence=float(value.get("adjusted_confidence", 0.0)),
+                reason=str(value.get("reason", "")),
+            )
+            for value in payload.get("component_validations", ())
+            if isinstance(value, Mapping)
+        ),
+        merged_findings=tuple(
+            MergedFinding(
+                finding=dict(value.get("finding", {})),
+                primary_provider_id=str(value.get("primary_provider_id", "")),
+                second_opinion_provider_id=(
+                    None
+                    if value.get("second_opinion_provider_id") is None
+                    else str(value["second_opinion_provider_id"])
+                ),
+                second_opinion_status=(
+                    None
+                    if value.get("second_opinion_status") is None
+                    else str(value["second_opinion_status"])
+                ),
+                disagreement=(
+                    None
+                    if value.get("disagreement") is None
+                    else str(value["disagreement"])
+                ),
+            )
+            for value in payload.get("merged_findings", ())
+            if isinstance(value, Mapping)
+        ),
+        second_opinion_provider_id=(
+            None
+            if payload.get("second_opinion_provider_id") is None
+            else str(payload["second_opinion_provider_id"])
+        ),
+        omissions=tuple(str(value) for value in payload.get("omissions", ())),
+        normalization_warnings=tuple(
+            str(value) for value in payload.get("normalization_warnings", ())
+        ),
+        requested_model_id=str(payload.get("requested_model_id", "")),
+        attempted_model_ids=tuple(
+            str(value) for value in payload.get("attempted_model_ids", ())
+        ),
+        model_fallback_used=bool(payload.get("model_fallback_used", False)),
+        model_fallback_reason=str(payload.get("model_fallback_reason", "")),
+    )
 
 
 class ReviewCoordinator:

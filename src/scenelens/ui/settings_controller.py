@@ -1,8 +1,14 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QByteArray, QEvent, QObject, QTimer, Signal
+from PySide6.QtCore import QByteArray, QEvent, QObject, QTimer, Signal, Qt
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
+from PySide6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QToolBar,
+)
 
 from scenelens.storage.app_settings import AppSettings, AppSettingsStore
 from scenelens.ui.settings_dialog import GlobalSettingsDialog
@@ -14,6 +20,7 @@ class GlobalSettingsController(QObject):
     settings_changed = Signal(object)
     task_center_requested = Signal(object)
     diagnostics_requested = Signal(object)
+    global_search_requested = Signal(object)
 
     def __init__(
         self,
@@ -70,6 +77,7 @@ class GlobalSettingsController(QObject):
             lambda _checked=False, value=window: self.show_shortcuts(value)
         )
         help_menu.addAction(shortcuts_action)
+        self._install_workspace_navigation(window)
         if self.settings.remember_window_layout:
             QTimer.singleShot(
                 0,
@@ -85,8 +93,12 @@ class GlobalSettingsController(QObject):
         dialog.exec()
 
     def open_command_palette(self, parent: QMainWindow) -> None:
-        CommandPaletteDialog(
-            (
+        entries = [
+                CommandEntry(
+                    "全局检索",
+                    "Ctrl+K",
+                    lambda: self.global_search_requested.emit(parent),
+                ),
                 CommandEntry(
                     "打开全局设置",
                     "Ctrl+,",
@@ -107,9 +119,61 @@ class GlobalSettingsController(QObject):
                     "F1",
                     lambda: self.show_shortcuts(parent),
                 ),
-            ),
+            ]
+        home_signal = getattr(parent, "workspace_home_requested", None)
+        if home_signal is not None:
+            entries.insert(
+                0,
+                CommandEntry(
+                    "返回工作台首页",
+                    "Ctrl+Shift+H",
+                    home_signal.emit,
+                ),
+            )
+        CommandPaletteDialog(
+            tuple(entries),
             parent,
         ).exec()
+
+    def _install_workspace_navigation(self, window: QMainWindow) -> None:
+        home_signal = getattr(window, "workspace_home_requested", None)
+        if home_signal is None:
+            return
+        toolbar = QToolBar("全局导航", window)
+        toolbar.setObjectName("gatalkGlobalNavigation")
+        toolbar.setMovable(False)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        home = QPushButton("←  工作台首页")
+        home.setObjectName("workspaceHomeButton")
+        home.setProperty("primary", True)
+        home.setMinimumSize(152, 38)
+        home.setToolTip("返回工作台首页（Ctrl+Shift+H）")
+        home.clicked.connect(lambda _checked=False: home_signal.emit())
+        toolbar.addWidget(home)
+        toolbar.addSeparator()
+        search = toolbar.addAction("全局检索")
+        search.setToolTip("搜索项目、资料、任务和研究（Ctrl+K）")
+        search.triggered.connect(
+            lambda _checked=False: self.global_search_requested.emit(window)
+        )
+        task = toolbar.addAction("任务中心")
+        task.triggered.connect(
+            lambda _checked=False: self.task_center_requested.emit(window)
+        )
+        settings = toolbar.addAction("全局设置")
+        settings.triggered.connect(
+            lambda _checked=False: self.open_dialog(window)
+        )
+        existing = [
+            value
+            for value in window.findChildren(QToolBar)
+            if value is not toolbar
+        ]
+        if existing:
+            window.insertToolBar(existing[0], toolbar)
+            window.insertToolBarBreak(existing[0])
+        else:
+            window.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
 
     def show_shortcuts(self, parent: QMainWindow) -> None:
         QMessageBox.information(

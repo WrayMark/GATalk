@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -41,12 +42,25 @@ def test_comparative_store_preserves_sources_and_active_selection(tmp_path: Path
     )
     second = store.import_image(paths[1])
     store.set_active_items((second.item_id, first.item_id))
+    store.save(
+        replace(
+            store.state,
+            ai_history=(
+                {
+                    "run_id": "run-1",
+                    "run": {"provider_id": "mock", "model_id": "mock"},
+                    "output": {"executive_summary": "历史结果"},
+                },
+            ),
+        )
+    )
 
     reopened = ComparativeStudyStore.open(root)
 
     assert reopened.state.active_item_ids == (second.item_id, first.item_id)
     assert reopened.item(first.item_id).source_reference == "library:item-1"
     assert reopened.integrity_issues() == ()
+    assert reopened.state.ai_history[0]["run_id"] == "run-1"
 
 
 def test_removing_comparative_item_does_not_delete_original_asset(tmp_path: Path):

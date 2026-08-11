@@ -4,6 +4,7 @@ from dataclasses import replace
 import logging
 from pathlib import Path
 from typing import Any, Callable, Mapping
+import uuid
 
 from PySide6.QtCore import QThread, QThreadPool, QTimer, Qt, Signal
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
@@ -279,8 +280,6 @@ class ArtworkStudyWindow(QMainWindow):
         toolbar.setObjectName("artworkStudyToolbar")
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
-        toolbar.addAction(self.home_action)
-        toolbar.addSeparator()
         toolbar.addAction(self.new_action)
         toolbar.addAction(self.open_action)
         toolbar.addAction(self.save_action)
@@ -445,6 +444,15 @@ class ArtworkStudyWindow(QMainWindow):
         )
         self.ai_status.setWordWrap(True)
         layout.addWidget(self.ai_status)
+        history_row = QHBoxLayout()
+        history_row.addWidget(QLabel("研究记录"))
+        self.ai_history_combo = QComboBox()
+        self.ai_history_combo.setToolTip("默认显示最新一次完成的专家拆解。")
+        history_row.addWidget(self.ai_history_combo, 1)
+        self.delete_ai_history_button = QPushButton("删除记录")
+        self.delete_ai_history_button.setEnabled(False)
+        history_row.addWidget(self.delete_ai_history_button)
+        layout.addLayout(history_row)
         self.ai_dimension_tree = QTreeWidget()
         self.ai_dimension_tree.setHeaderLabels(
             ["研究维度", "评价状态", "证据摘要", "可信度"]
@@ -538,6 +546,12 @@ class ArtworkStudyWindow(QMainWindow):
         self.save_credential_button.clicked.connect(self._save_credential)
         self.run_ai_button.clicked.connect(self._start_ai_review)
         self.cancel_ai_button.clicked.connect(self._cancel_ai_review)
+        self.ai_history_combo.currentIndexChanged.connect(
+            self._show_selected_ai_history
+        )
+        self.delete_ai_history_button.clicked.connect(
+            self._delete_selected_ai_history
+        )
         self.ai_dimension_tree.currentItemChanged.connect(
             self._dimension_selected
         )
@@ -632,6 +646,7 @@ class ArtworkStudyWindow(QMainWindow):
                     "当前保存的是旧版英文或无效结果，已停止显示。"
                     "请重新执行一次专家拆解以生成简体中文结果。"
                 )
+        self._refresh_ai_history()
 
     def _choose_image(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -926,31 +941,37 @@ class ArtworkStudyWindow(QMainWindow):
         value = dict(result)
         output = dict(value["output"])
         if self._state is not None:
+            completed_at = utc_now()
+            run = {
+                "provider_id": value["provider_id"],
+                "model_id": value["model_id"],
+                "requested_model_id": value["requested_model_id"],
+                "attempted_model_ids": list(value["attempted_model_ids"]),
+                "model_fallback_used": bool(value["fallback_used"]),
+                "model_fallback_reason": value["fallback_reason"],
+                "reviewer_id": self._reviewer.descriptor.reviewer_id,
+                "reviewer_version": self._reviewer.descriptor.version,
+                "image_sha256": self._state.image_sha256,
+                "language": "zh-CN",
+                "language_normalized": bool(value["language_normalized"]),
+                "completed_at": completed_at,
+            }
+            history_entry = {
+                "run_id": str(uuid.uuid4()),
+                "completed_at": completed_at,
+                "run": run,
+                "output": output,
+            }
             self._state = replace(
                 self._state,
                 ai_review=output,
-                ai_run={
-                    "provider_id": value["provider_id"],
-                    "model_id": value["model_id"],
-                    "requested_model_id": value["requested_model_id"],
-                    "attempted_model_ids": list(
-                        value["attempted_model_ids"]
-                    ),
-                    "model_fallback_used": bool(value["fallback_used"]),
-                    "model_fallback_reason": value["fallback_reason"],
-                    "reviewer_id": self._reviewer.descriptor.reviewer_id,
-                    "reviewer_version": self._reviewer.descriptor.version,
-                    "image_sha256": self._state.image_sha256,
-                    "language": "zh-CN",
-                    "language_normalized": bool(
-                        value["language_normalized"]
-                    ),
-                    "completed_at": utc_now(),
-                },
+                ai_run=run,
+                ai_history=(*self._state.ai_history, history_entry),
             )
             self._dirty = True
             self._save_state()
         self._show_ai_output(output)
+        self._refresh_ai_history(history_entry["run_id"])
         self.tabs.setCurrentIndex(1)
         language_note = (
             "；已自动规范为简体中文"
@@ -968,6 +989,69 @@ class ArtworkStudyWindow(QMainWindow):
             f"（模型 {value['model_id']}）{fallback_note}{language_note}"
         )
         self._update_report()
+
+    def _refresh_ai_history(self, selected_id: str | None = None) -> None:
+        self.ai_history_combo.blockSignals(True)
+        self.ai_history_combo.clear()
+        history = () if self._state is None else self._state.ai_history
+        for entry in reversed(history):
+            run = entry.get("run", {})
+            stamp = str(entry.get("completed_at", "")).replace("T", " ")[:19]
+            label = (
+                f"{stamp} · {run.get('provider_id', '')} / "
+                f"{run.get('model_id', '')}"
+            )
+            self.ai_history_combo.addItem(label, str(entry.get("run_id", "")))
+        if selected_id:
+            index = self.ai_history_combo.findData(selected_id)
+            if index >= 0:
+                self.ai_history_combo.setCurrentIndex(index)
+        self.ai_history_combo.blockSignals(False)
+        self.delete_ai_history_button.setEnabled(bool(history))
+
+    def _show_selected_ai_history(self, _index: int) -> None:
+        if self._state is None:
+            return
+        run_id = str(self.ai_history_combo.currentData() or "")
+        entry = next(
+            (value for value in self._state.ai_history if value.get("run_id") == run_id),
+            None,
+        )
+        if entry is None:
+            return
+        output = entry.get("output", {})
+        if isinstance(output, Mapping):
+            self._show_ai_output(output)
+            run = entry.get("run", {})
+            self.ai_status.setText(
+                f"历史记录：{run.get('provider_id', '')} / {run.get('model_id', '')}"
+            )
+
+    def _delete_selected_ai_history(self) -> None:
+        if self._state is None or self._store is None:
+            return
+        run_id = str(self.ai_history_combo.currentData() or "")
+        if not run_id or QMessageBox.question(
+            self, "删除研究记录", "删除这次专家拆解记录？个人笔记不会受影响。"
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        remaining = tuple(
+            value for value in self._state.ai_history
+            if value.get("run_id") != run_id
+        )
+        latest = remaining[-1] if remaining else {}
+        self._state = replace(
+            self._state,
+            ai_history=remaining,
+            ai_review=dict(latest.get("output", {})),
+            ai_run=dict(latest.get("run", {})),
+        )
+        self._store.save(self._state)
+        self._refresh_ai_history()
+        if self._state.ai_review:
+            self._show_ai_output(self._state.ai_review)
+        else:
+            self._clear_ai_output()
 
     def _show_ai_output(self, output: Mapping[str, Any]) -> None:
         labels = {

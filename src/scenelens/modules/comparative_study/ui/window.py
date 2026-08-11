@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
+import uuid
 
 from PySide6.QtCore import QThreadPool, Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence, QPixmap
@@ -223,6 +224,21 @@ class ComparativeStudyWindow(QMainWindow):
         self.ai_status.setWordWrap(True)
         self.ai_status.setProperty("role", "muted")
         ai_layout.addWidget(self.ai_status)
+        history_row = QHBoxLayout()
+        history_row.addWidget(QLabel("研究记录"))
+        self.ai_history_combo = QComboBox()
+        self.ai_history_combo.setToolTip("默认显示最新一次完成的专家对照。")
+        history_row.addWidget(self.ai_history_combo, 1)
+        self.delete_ai_history_button = QPushButton("删除记录")
+        self.delete_ai_history_button.setEnabled(False)
+        history_row.addWidget(self.delete_ai_history_button)
+        ai_layout.addLayout(history_row)
+        self.ai_history_combo.currentIndexChanged.connect(
+            self._show_selected_ai_history
+        )
+        self.delete_ai_history_button.clicked.connect(
+            self._delete_selected_ai_history
+        )
         self.ai_output = QPlainTextEdit()
         self.ai_output.setReadOnly(True)
         self.ai_output.setMinimumHeight(420)
@@ -345,6 +361,7 @@ class ComparativeStudyWindow(QMainWindow):
             if state.ai_comparison
             else ""
         )
+        self._refresh_ai_history()
         self.setWindowTitle(f"GATalk — 对照研究 — {state.title}")
 
     def _refresh_items(self) -> None:
@@ -666,25 +683,98 @@ class ComparativeStudyWindow(QMainWindow):
             return
         execution, output = result
         response = execution.response
+        completed_at = utc_now()
+        run = {
+            "provider_id": response.provider_id,
+            "model_id": response.model_id,
+            "reviewer_id": self._reviewer.descriptor.reviewer_id,
+            "reviewer_version": self._reviewer.descriptor.version,
+            "image_hashes": [
+                self._store.item(value).sha256
+                for value in self._store.state.active_item_ids
+            ],
+            "completed_at": completed_at,
+        }
+        history_entry = {
+            "run_id": str(uuid.uuid4()),
+            "completed_at": completed_at,
+            "run": run,
+            "output": output,
+        }
         self._store.save(
             replace(
                 self._store.state,
                 ai_comparison=output,
-                ai_run={
-                    "provider_id": response.provider_id,
-                    "model_id": response.model_id,
-                    "reviewer_id": self._reviewer.descriptor.reviewer_id,
-                    "reviewer_version": self._reviewer.descriptor.version,
-                    "image_hashes": [
-                        self._store.item(value).sha256
-                        for value in self._store.state.active_item_ids
-                    ],
-                    "completed_at": utc_now(),
-                },
+                ai_run=run,
+                ai_history=(*self._store.state.ai_history, history_entry),
             )
         )
         self.ai_output.setPlainText(format_comparative_review(output))
+        self._refresh_ai_history(history_entry["run_id"])
         self.ai_status.setText(f"完成：{response.provider_id} / {response.model_id}")
+
+    def _refresh_ai_history(self, selected_id: str | None = None) -> None:
+        self.ai_history_combo.blockSignals(True)
+        self.ai_history_combo.clear()
+        history = () if self._store is None else self._store.state.ai_history
+        for entry in reversed(history):
+            run = entry.get("run", {})
+            stamp = str(entry.get("completed_at", "")).replace("T", " ")[:19]
+            self.ai_history_combo.addItem(
+                f"{stamp} · {run.get('provider_id', '')} / {run.get('model_id', '')}",
+                str(entry.get("run_id", "")),
+            )
+        if selected_id:
+            index = self.ai_history_combo.findData(selected_id)
+            if index >= 0:
+                self.ai_history_combo.setCurrentIndex(index)
+        self.ai_history_combo.blockSignals(False)
+        self.delete_ai_history_button.setEnabled(bool(history))
+
+    def _show_selected_ai_history(self, _index: int) -> None:
+        if self._store is None:
+            return
+        run_id = str(self.ai_history_combo.currentData() or "")
+        entry = next(
+            (value for value in self._store.state.ai_history if value.get("run_id") == run_id),
+            None,
+        )
+        if entry is None:
+            return
+        output = entry.get("output", {})
+        if isinstance(output, dict):
+            self.ai_output.setPlainText(format_comparative_review(output))
+            run = entry.get("run", {})
+            self.ai_status.setText(
+                f"历史记录：{run.get('provider_id', '')} / {run.get('model_id', '')}"
+            )
+
+    def _delete_selected_ai_history(self) -> None:
+        if self._store is None:
+            return
+        run_id = str(self.ai_history_combo.currentData() or "")
+        if not run_id or QMessageBox.question(
+            self, "删除研究记录", "删除这次专家对照记录？研究笔记不会受影响。"
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        remaining = tuple(
+            value for value in self._store.state.ai_history
+            if value.get("run_id") != run_id
+        )
+        latest = remaining[-1] if remaining else {}
+        self._store.save(
+            replace(
+                self._store.state,
+                ai_history=remaining,
+                ai_comparison=dict(latest.get("output", {})),
+                ai_run=dict(latest.get("run", {})),
+            )
+        )
+        self._refresh_ai_history()
+        self.ai_output.setPlainText(
+            format_comparative_review(self._store.state.ai_comparison)
+            if self._store.state.ai_comparison else ""
+        )
 
     def _worker_error(self, _role, _kind, generation, message, _traceback) -> None:
         if generation != self._generation:

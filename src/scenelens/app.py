@@ -547,6 +547,9 @@ def main() -> int:
             bool(session_guard.previous_unclean_session), parent
         ).exec()
     )
+    settings_controller.global_search_requested.connect(
+        lambda parent: show_global_search(parent)
+    )
     hub.task_center_requested.connect(lambda: TaskCenterDialog(hub).exec())
     hub.diagnostics_requested.connect(
         lambda: DiagnosticsDialog(

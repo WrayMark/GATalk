@@ -104,10 +104,43 @@ def _lighting_output() -> dict:
     dramatic["strategy"] = "heightened_drama"
     readable = copy.deepcopy(scheme)
     readable["strategy"] = "gameplay_readability"
+    dimensions = (
+        "exposure_value_range",
+        "key_fill_balance",
+        "focal_hierarchy",
+        "depth_separation",
+        "colour_temperature",
+        "shadow_silhouette",
+        "atmosphere_volumetrics",
+        "gameplay_readability",
+    )
     return {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "reviewer_id": "lighting_review",
         "summary": "灯光焦点可进一步集中。",
+        "target_readback": {
+            "production_stage": "灯光初版",
+            "target_mood": "宁静",
+            "primary_focus": "入口",
+            "protected_content": [],
+            "review_exclusions": [],
+        },
+        "dimension_reviews": [
+            {
+                "dimension_id": dimension,
+                "status": "partially_meets",
+                "intent_target": "建立清楚的灯光层级",
+                "reference_read": "参考图用局部亮区组织焦点。",
+                "current_read": "当前亮区较分散。",
+                "evidence_summary": ["共享明度数据支持比较"],
+                "strengths": ["入口已有亮度基础"],
+                "risks": ["背景可能竞争焦点"],
+                "linked_finding_ids": [],
+                "confidence": 0.7,
+                "uncertainty": "缺少 UE 工程灯光参数",
+            }
+            for dimension in dimensions
+        ],
         "lighting_components": [
             {
                 "component_id": "light-1",
@@ -126,11 +159,14 @@ def _lighting_output() -> dict:
             }
         ],
         "findings": [],
+        "preserve_items": ["入口附近已有暖色组织"],
+        "action_plan": [],
         "target_schemes": [scheme, dramatic, readable],
         "performance_checklist": [
             "确认 Lumen 模式",
             "记录阴影光源数量",
         ],
+        "confidence_notes": ["灯光组件类型仅为截图推断。"],
     }
 
 

@@ -5,6 +5,8 @@ import numpy as np
 from scenelens.modules.visual_review.review_coordinator import (
     ReviewCoordinator,
     ReviewRunOptions,
+    review_outcome_from_payload,
+    review_outcome_to_payload,
 )
 from scenelens.modules.visual_review.reviews import (
     ArtDirectorReview,
@@ -60,10 +62,35 @@ def _lighting_output():
     dramatic["strategy"] = "heightened_drama"
     readable = copy.deepcopy(scheme)
     readable["strategy"] = "gameplay_readability"
+    dimensions = (
+        "exposure_value_range", "key_fill_balance", "focal_hierarchy",
+        "depth_separation", "colour_temperature", "shadow_silhouette",
+        "atmosphere_volumetrics", "gameplay_readability",
+    )
     return {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "reviewer_id": "lighting_review",
         "summary": "mock",
+        "target_readback": {
+            "production_stage": "", "target_mood": "", "primary_focus": "",
+            "protected_content": [], "review_exclusions": [],
+        },
+        "dimension_reviews": [
+            {
+                "dimension_id": value,
+                "status": "insufficient_evidence",
+                "intent_target": "",
+                "reference_read": "mock",
+                "current_read": "mock",
+                "evidence_summary": [],
+                "strengths": [],
+                "risks": [],
+                "linked_finding_ids": [],
+                "confidence": 0.0,
+                "uncertainty": "mock",
+            }
+            for value in dimensions
+        ],
         "lighting_components": [
             {
                 "component_id": "shadow",
@@ -82,8 +109,11 @@ def _lighting_output():
             }
         ],
         "findings": [],
+        "preserve_items": [],
+        "action_plan": [],
         "target_schemes": [scheme, dramatic, readable],
         "performance_checklist": ["确认 Lumen 配置"],
+        "confidence_notes": [],
     }
 
 
@@ -108,6 +138,8 @@ def test_coordinator_validates_ai_coordinates_with_local_pixels() -> None:
         cancellation=CancellationToken(),
     )
     assert outcome.component_validations[0].status.value == "supported"
+    restored = review_outcome_from_payload(review_outcome_to_payload(outcome))
+    assert restored == outcome
     coordinator.close()
 
 

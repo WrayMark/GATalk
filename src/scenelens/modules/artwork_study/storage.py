@@ -118,6 +118,7 @@ class ArtworkStudyStore:
                 "local_analysis": dict(self.state.local_analysis),
                 "ai_review": dict(self.state.ai_review),
                 "ai_run": dict(self.state.ai_run),
+                "ai_history": [dict(item) for item in self.state.ai_history],
                 "personal_notes": self.state.personal_notes,
             },
         )

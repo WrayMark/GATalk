@@ -27,6 +27,7 @@ class ArtworkStudyState:
     local_analysis: Mapping[str, Any] = field(default_factory=dict)
     ai_review: Mapping[str, Any] = field(default_factory=dict)
     ai_run: Mapping[str, Any] = field(default_factory=dict)
+    ai_history: tuple[Mapping[str, Any], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -59,6 +60,10 @@ class ArtworkStudyState:
             local_analysis=dict(value.get("local_analysis", {})),
             ai_review=dict(value.get("ai_review", {})),
             ai_run=dict(value.get("ai_run", {})),
+            ai_history=tuple(
+                dict(item) for item in value.get("ai_history", ())
+                if isinstance(item, Mapping)
+            ),
         )
 
 

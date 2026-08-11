@@ -36,9 +36,13 @@ from PySide6.QtWidgets import (
 from scenelens.analysis.luminance import quantize_three_value_with_thresholds
 from scenelens import __version__
 from scenelens.analysis.grading import SafeGradeRecipe, apply_safe_grade
+from scenelens.analysis.comparison_distributions import (
+    compare_colour_distribution,
+)
 from scenelens.analysis.match_profile import MatchProfile, build_match_profile
 from scenelens.analysis.models import (
     ImageMeasurements,
+    DistributionComparison,
     LuminanceComparison,
     RenderSettings,
     SharedPaletteResult,
@@ -115,6 +119,8 @@ from scenelens.modules.visual_review.region_results import (
 from scenelens.modules.visual_review.review_coordinator import (
     ReviewCoordinator,
     ReviewRunOutcome,
+    review_outcome_from_payload,
+    review_outcome_to_payload,
 )
 from scenelens.modules.visual_review.review_pack_io import (
     write_offline_review_pack,
@@ -551,6 +557,12 @@ class MainWindow(QMainWindow):
         self.comparison_panel.thresholds_changed.connect(
             self._comparison_thresholds_changed
         )
+        self.comparison_panel.independent_palette_selected.connect(
+            self._independent_palette_selected
+        )
+        self.comparison_panel.distribution_parameters_changed.connect(
+            self._schedule_comparison_analysis
+        )
         self.region_panel = RegionPairPanel()
         self.comparison_panel.set_region_panel(self.region_panel)
         self.analysis_tabs.addTab(self.comparison_panel, "对比分析")
@@ -580,6 +592,12 @@ class MainWindow(QMainWindow):
         )
         self.ai_review_panel.offline_export_requested.connect(
             self._export_offline_review_pack
+        )
+        self.ai_review_panel.history_selected.connect(
+            self._show_saved_ai_review
+        )
+        self.ai_review_panel.history_delete_requested.connect(
+            self._delete_saved_ai_review
         )
         self.analysis_tabs.addTab(self.ai_review_panel, "AI 审阅与任务")
         self.optimization_panel = OptimizationLabPanel(
@@ -893,6 +911,7 @@ class MainWindow(QMainWindow):
             self._refresh_project_navigator()
             self._load_active_project_images()
             self._refresh_workbench_tasks()
+            self._refresh_ai_review_history()
         finally:
             self._restoring_workspace = False
             self._workspace_dirty = False
@@ -1125,6 +1144,7 @@ class MainWindow(QMainWindow):
         self._clear_role("current")
         self._refresh_project_navigator()
         self._load_active_project_images()
+        self._refresh_ai_review_history()
         self._mark_workspace_dirty()
 
     def _activate_version(self, shot_id: str, version_id: str) -> None:
@@ -1150,6 +1170,7 @@ class MainWindow(QMainWindow):
         self._clear_role("current")
         self._refresh_project_navigator()
         self._load_active_project_images()
+        self._refresh_ai_review_history()
         self._mark_workspace_dirty()
 
     def _refresh_project_navigator(self) -> None:
@@ -1392,8 +1413,9 @@ class MainWindow(QMainWindow):
                 )
             self._finish_ai_run(
                 status=AIRunStatus.COMPLETE,
-                output=dict(result.output),
+                output=review_outcome_to_payload(result),
             )
+            self._refresh_ai_review_history()
             self._refresh_workbench_tasks()
             return
 
@@ -2361,6 +2383,9 @@ class MainWindow(QMainWindow):
             capability=ProviderCapability.VISION_REVIEW.value,
             request_hash=request_hash,
             input_manifest={
+                "project_id": store.manifest.project_id,
+                "shot_id": self._active_shot_id,
+                "version_id": self._active_version_id,
                 "payload_fields": list(preview.payload_fields),
                 "images": [
                     {
@@ -2646,6 +2671,92 @@ class MainWindow(QMainWindow):
         )
         self._persist_ai_run(finished)
         self._active_ai_run = None
+
+    def _matching_ai_review_runs(self) -> tuple[AIRun, ...]:
+        store = self._project_store
+        if store is None or self._active_shot_id is None or self._active_version_id is None:
+            return ()
+        try:
+            runs = WorkbenchStore(store).list_ai_runs(
+                MODULE_ID,
+                status=AIRunStatus.COMPLETE,
+            )
+        except (StorageError, OSError, ValueError):
+            LOGGER.exception("Failed to list saved AI reviews")
+            return ()
+        return tuple(
+            run
+            for run in runs
+            if run.input_manifest.get("shot_id") == self._active_shot_id
+            and run.input_manifest.get("version_id") == self._active_version_id
+            and run.output is not None
+        )
+
+    def _refresh_ai_review_history(self, selected_id: str | None = None) -> None:
+        runs = self._matching_ai_review_runs()
+        reviewer_labels = {
+            "deep_art_director_review": "深度主美",
+            "art_director_review": "主美专项",
+            "lighting_review": "灯光专项",
+        }
+        entries = [
+            {
+                "run_id": run.id,
+                "label": (
+                    f"{(run.completed_at or run.created_at).replace('T', ' ')[:19]} · "
+                    f"{reviewer_labels.get(run.reviewer_id, run.reviewer_id)} · "
+                    f"{run.provider_id} / {run.model_id}"
+                ),
+            }
+            for run in runs
+        ]
+        chosen = selected_id or (runs[0].id if runs else None)
+        self.ai_review_panel.set_history(
+            entries,
+            selected_id=chosen,
+            read_only=bool(self._project_store and self._project_store.read_only),
+        )
+        if chosen:
+            self._show_saved_ai_review(chosen)
+        else:
+            self._last_review_outcome = None
+            self.ai_review_panel.clear_outcome()
+
+    def _show_saved_ai_review(self, run_id: str) -> None:
+        store = self._project_store
+        if store is None:
+            return
+        try:
+            run = WorkbenchStore(store).get_ai_run(run_id)
+            if run is None or run.output is None:
+                return
+            outcome = review_outcome_from_payload(run.output)
+        except (StorageError, OSError, ValueError, KeyError) as exc:
+            QMessageBox.warning(self, "无法读取审阅记录", str(exc))
+            return
+        self._last_review_outcome = outcome
+        self.ai_review_panel.show_outcome(outcome)
+        index = self.ai_review_panel.reviewer_combo.findData(run.reviewer_id)
+        if index >= 0:
+            self.ai_review_panel.reviewer_combo.setCurrentIndex(index)
+
+    def _delete_saved_ai_review(self, run_id: str) -> None:
+        store = self._project_store
+        if store is None or store.read_only:
+            return
+        if QMessageBox.question(
+            self,
+            "删除审阅记录",
+            "删除这次 AI 审阅记录？由它确认生成的任务和证据不会被删除。",
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            WorkbenchStore(store).delete_ai_run(run_id)
+        except (StorageError, OSError, ValueError) as exc:
+            QMessageBox.warning(self, "无法删除审阅记录", str(exc))
+            return
+        self._refresh_ai_review_history()
+        self.statusBar().showMessage("审阅记录已删除；任务与证据保持不变")
 
     def _confirm_review_task(self, finding: object) -> None:
         if not isinstance(finding, dict):
@@ -3164,6 +3275,9 @@ class MainWindow(QMainWindow):
             self._workspace_template.palette_max_samples,
         )
         low, high = self.comparison_panel.thresholds()
+        distribution_metric, distribution_bins, neutral_threshold = (
+            self.comparison_panel.distribution_parameters()
+        )
         luminance_parameters = (
             self._luminance_comparison_analyzer.default_parameters(low, high)
         )
@@ -3268,6 +3382,13 @@ class MainWindow(QMainWindow):
                     low,
                     high,
                 ),
+                "distribution": compare_colour_distribution(
+                    reference.rgb,
+                    current.rgb,
+                    metric=distribution_metric,
+                    bins=distribution_bins,
+                    neutral_threshold=neutral_threshold,
+                ),
             }
 
         self.statusBar().showMessage("正在计算共享色板与三阶明度比较…")
@@ -3294,10 +3415,11 @@ class MainWindow(QMainWindow):
             return
         shared = result.get("shared")
         luminance = result.get("luminance")
+        distribution = result.get("distribution")
         if not isinstance(shared, SharedPaletteResult) or not isinstance(
             luminance,
             LuminanceComparison,
-        ):
+        ) or not isinstance(distribution, DistributionComparison):
             return
         self._shared_palette_result = shared
         self.comparison_panel.set_shared_palette(shared)
@@ -3310,6 +3432,14 @@ class MainWindow(QMainWindow):
             numpy_to_qimage(result["reference_thumbnail"]),
             numpy_to_qimage(result["current_thumbnail"]),
         )
+        self.comparison_panel.set_distribution(distribution)
+        reference_measurements = self._measurements.get("reference")
+        current_measurements = self._measurements.get("current")
+        if reference_measurements is not None and current_measurements is not None:
+            self.comparison_panel.set_independent_palettes(
+                reference_measurements.palette,
+                current_measurements.palette,
+            )
         self._update_region_analysis_freshness()
         store = self._project_store
         if (

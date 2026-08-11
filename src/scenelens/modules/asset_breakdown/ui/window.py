@@ -377,7 +377,6 @@ class AssetBreakdownWindow(QMainWindow):
         menu = self.menuBar().addMenu("文件")
         menu.addActions(
             [
-                self.home_action,
                 self.new_action,
                 self.open_action,
                 self.save_action,
