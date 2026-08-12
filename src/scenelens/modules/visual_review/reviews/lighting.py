@@ -32,8 +32,8 @@ class LightingReview(StructuredVisionReviewer):
     descriptor = ReviewerDescriptor(
         module_id="scenelens.visual_review",
         reviewer_id="lighting_review",
-        display_name="灯光专项审阅",
-        version="2.0.0",
+        display_name="场景灯光审阅",
+        version="2.1.0",
         supported_inputs=(
             "creative_intent",
             "reference_visual_brief",

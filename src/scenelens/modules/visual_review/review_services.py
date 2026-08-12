@@ -69,13 +69,13 @@ def evaluate_quality_gate(
     )
     if passed:
         state = QualityGateState.PASS
-        reason = "用户定义的质量门禁已满足。"
+        reason = "用户定义的验收标准已满足。"
     elif warning:
         state = QualityGateState.WARNING
-        reason = "接近门禁阈值，需要人工复核。"
+        reason = "接近验收阈值，需要人工复核。"
     else:
         state = QualityGateState.FAIL
-        reason = "尚未满足用户定义的质量门禁。"
+        reason = "尚未满足用户定义的验收标准。"
     return GateEvaluation(gate.id, state, float(measured), reason)
 
 

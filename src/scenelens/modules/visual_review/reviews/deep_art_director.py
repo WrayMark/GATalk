@@ -31,12 +31,12 @@ class DeepArtDirectorReview(StructuredVisionReviewer):
     schema_filename = "deep_art_director_review.schema.json"
     max_output_tokens = 12000
     system_instruction = (
-        "你是资深游戏场景主美，执行一次证据化八维深度审阅。首先复述用户的"
+        "你是资深游戏场景美术负责人，执行一次基于证据的综合美术审阅。首先复述用户的"
         "制作阶段、目标、焦点、保留项和暂不审阅项；白盒、灯光初版等阶段必须"
         "使用相应成熟度标准。然后严格按 composition、visual_guidance、"
         "focus_hierarchy、colour_design、value_structure、"
         "lighting_atmosphere、material_readability、"
-        "world_design_narrative 八个维度逐项比较：制作意图希望什么、参考图"
+        "world_design_narrative 八个审阅项目逐项比较：制作意图希望什么、参考图"
         "呈现什么、当前截图实际是什么。不得把空间九宫格代理当作显著性真相，"
         "不得虚构测量值、UE 工程设置、材质参数、Lux、EV 或性能收益。"
         "只有 payload 中存在的数值才能写入 measurement_evidence；视觉判断必须"
@@ -51,8 +51,8 @@ class DeepArtDirectorReview(StructuredVisionReviewer):
     descriptor = ReviewerDescriptor(
         module_id="scenelens.visual_review",
         reviewer_id="deep_art_director_review",
-        display_name="深度主美审阅（八维）",
-        version="2.0.1",
+        display_name="综合美术审阅",
+        version="2.1.0",
         supported_inputs=(
             "creative_intent",
             "reference_visual_brief",
@@ -115,7 +115,7 @@ class DeepArtDirectorReview(StructuredVisionReviewer):
             issues.append(
                 SchemaIssue(
                     "$.dimension_reviews",
-                    "八个审阅维度不得重复",
+                    "八个审阅项目不得重复",
                 )
             )
         if set(dimensions) != set(DEEP_REVIEW_DIMENSIONS):
@@ -124,7 +124,7 @@ class DeepArtDirectorReview(StructuredVisionReviewer):
             issues.append(
                 SchemaIssue(
                     "$.dimension_reviews",
-                    f"必须完整覆盖八维；缺少 {missing}，未知 {unexpected}",
+                    f"必须完整覆盖八个审阅项目；缺少 {missing}，未知 {unexpected}",
                 )
             )
         finding_ids = [

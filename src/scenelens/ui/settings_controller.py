@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from PySide6.QtCore import QByteArray, QEvent, QObject, QTimer, Signal, Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
     QMessageBox,
+    QMenu,
     QPushButton,
     QToolBar,
 )
@@ -15,6 +18,15 @@ from scenelens.ui.settings_dialog import GlobalSettingsDialog
 from scenelens.ui.theme import apply_appearance
 from scenelens.ui.command_palette import CommandEntry, CommandPaletteDialog
 from scenelens.ui.localization import configure_localization
+
+
+@dataclass(frozen=True)
+class WindowPresentation:
+    """Window geometry and presentation state carried across workspaces."""
+
+    geometry: QByteArray
+    maximized: bool
+    full_screen: bool
 
 
 class GlobalSettingsController(QObject):
@@ -42,12 +54,18 @@ class GlobalSettingsController(QObject):
             self._system_theme_changed
         )
 
-    def register_window(self, window: QMainWindow, key: str) -> None:
+    def register_window(
+        self,
+        window: QMainWindow,
+        key: str,
+        *,
+        presentation: WindowPresentation | None = None,
+    ) -> None:
         if window in self._window_keys:
             return
         self._window_keys[window] = key
         window.installEventFilter(self)
-        settings_menu = window.menuBar().addMenu("设置")
+        settings_menu = self._menu(window, "设置")
         action = QAction("全局设置…", window)
         action.setObjectName("globalSettingsAction")
         action.setShortcut(QKeySequence("Ctrl+,"))
@@ -55,14 +73,14 @@ class GlobalSettingsController(QObject):
             lambda _checked=False, value=window: self.open_dialog(value)
         )
         settings_menu.addAction(action)
-        tools_menu = window.menuBar().addMenu("工具")
+        tools_menu = self._menu(window, "工具")
         palette_action = QAction("命令面板…", window)
         palette_action.setShortcut(QKeySequence("Ctrl+Shift+P"))
         palette_action.triggered.connect(
             lambda _checked=False, value=window: self.open_command_palette(value)
         )
         tools_menu.addAction(palette_action)
-        task_action = QAction("任务与供应商状态…", window)
+        task_action = QAction("运行状态", window)
         task_action.setShortcut(QKeySequence("Ctrl+Shift+J"))
         task_action.triggered.connect(
             lambda _checked=False, value=window: self.task_center_requested.emit(value)
@@ -74,7 +92,7 @@ class GlobalSettingsController(QObject):
             lambda _checked=False, value=window: self.diagnostics_requested.emit(value)
         )
         tools_menu.addAction(diagnostics_action)
-        help_menu = window.menuBar().addMenu("帮助")
+        help_menu = self._menu(window, "帮助")
         shortcuts_action = QAction("快捷键", window)
         shortcuts_action.setShortcut(QKeySequence("F1"))
         shortcuts_action.triggered.connect(
@@ -82,13 +100,16 @@ class GlobalSettingsController(QObject):
         )
         help_menu.addAction(shortcuts_action)
         self._install_workspace_navigation(window)
-        if self.settings.remember_window_layout:
-            QTimer.singleShot(
-                0,
-                lambda value=window, layout_key=key: (
-                    self._restore_window(value, layout_key)
-                ),
-            )
+        QTimer.singleShot(
+            0,
+            lambda value=window, layout_key=key, inherited=presentation: (
+                self._restore_registered_window(
+                    value,
+                    layout_key,
+                    inherited,
+                )
+            ),
+        )
 
     def open_dialog(self, parent: QMainWindow | None = None) -> None:
         dialog = GlobalSettingsDialog(self.settings, parent)
@@ -109,7 +130,7 @@ class GlobalSettingsController(QObject):
                     lambda: self.open_dialog(parent),
                 ),
                 CommandEntry(
-                    "打开任务与供应商状态",
+                    "打开运行状态",
                     "Ctrl+Shift+J",
                     lambda: self.task_center_requested.emit(parent),
                 ),
@@ -154,13 +175,22 @@ class GlobalSettingsController(QObject):
         home.setToolTip("返回工作台首页（Ctrl+Shift+H）")
         home.clicked.connect(lambda _checked=False: home_signal.emit())
         toolbar.addWidget(home)
+
+        home_shortcut = QAction(window)
+        home_shortcut.setObjectName("workspaceHomeShortcut")
+        home_shortcut.setShortcut(QKeySequence("Ctrl+Shift+H"))
+        home_shortcut.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
+        home_shortcut.triggered.connect(
+            lambda _checked=False: home_signal.emit()
+        )
+        window.addAction(home_shortcut)
         toolbar.addSeparator()
         search = toolbar.addAction("全局检索")
         search.setToolTip("搜索项目、资料、任务和研究（Ctrl+K）")
         search.triggered.connect(
             lambda _checked=False: self.global_search_requested.emit(window)
         )
-        task = toolbar.addAction("任务中心")
+        task = toolbar.addAction("运行状态")
         task.triggered.connect(
             lambda _checked=False: self.task_center_requested.emit(window)
         )
@@ -179,6 +209,14 @@ class GlobalSettingsController(QObject):
         else:
             window.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
 
+    @staticmethod
+    def _menu(window: QMainWindow, title: str) -> QMenu:
+        for action in window.menuBar().actions():
+            menu = action.menu()
+            if menu is not None and menu.title().replace("&", "") == title:
+                return menu
+        return window.menuBar().addMenu(title)
+
     def show_shortcuts(self, parent: QMainWindow) -> None:
         QMessageBox.information(
             parent,
@@ -186,7 +224,7 @@ class GlobalSettingsController(QObject):
             "Ctrl+K  全局检索\n"
             "Ctrl+Shift+P  命令面板\n"
             "Ctrl+,  全局设置\n"
-            "Ctrl+Shift+J  任务与供应商状态\n"
+            "Ctrl+Shift+J  运行状态\n"
             "Ctrl+Shift+D  项目诊断\n"
             "Ctrl+Shift+H  返回工作台首页\n"
             "Ctrl+N / Ctrl+O / Ctrl+S  新建 / 打开 / 保存\n"
@@ -250,6 +288,44 @@ class GlobalSettingsController(QObject):
             window.restoreState(
                 QByteArray.fromBase64(state.encode("ascii"))
             )
+
+    def capture_window_presentation(
+        self,
+        window: QMainWindow,
+    ) -> WindowPresentation:
+        """Capture the user's current size/state for a workspace transition."""
+
+        return WindowPresentation(
+            geometry=QByteArray(window.saveGeometry()),
+            maximized=window.isMaximized(),
+            full_screen=window.isFullScreen(),
+        )
+
+    def apply_window_presentation(
+        self,
+        window: QMainWindow,
+        presentation: WindowPresentation,
+    ) -> None:
+        """Apply a transition state without replacing workspace dock layouts."""
+
+        window.restoreGeometry(QByteArray(presentation.geometry))
+        if presentation.full_screen:
+            window.showFullScreen()
+        elif presentation.maximized:
+            window.showMaximized()
+        else:
+            window.showNormal()
+
+    def _restore_registered_window(
+        self,
+        window: QMainWindow,
+        key: str,
+        presentation: WindowPresentation | None,
+    ) -> None:
+        if self.settings.remember_window_layout:
+            self._restore_window(window, key)
+        if presentation is not None:
+            self.apply_window_presentation(window, presentation)
 
     def _system_theme_changed(self, _scheme) -> None:
         if self.settings.theme_mode == "system":

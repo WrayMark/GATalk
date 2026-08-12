@@ -238,10 +238,6 @@ class ArtworkStudyWindow(QMainWindow):
         self.statusBar().showMessage("新建或打开作品研究，然后导入一张作品。")
 
     def _build_actions(self) -> None:
-        self.home_action = QAction("工作台首页", self)
-        self.home_action.triggered.connect(
-            lambda _checked=False: self.workspace_home_requested.emit()
-        )
         self.new_action = QAction("新建作品研究…", self)
         self.new_action.setShortcut(QKeySequence.StandardKey.New)
         self.new_action.triggered.connect(self._new_study)
@@ -262,7 +258,6 @@ class ArtworkStudyWindow(QMainWindow):
 
         file_menu = self.menuBar().addMenu("文件")
         for action in (
-            self.home_action,
             self.new_action,
             self.open_action,
             self.save_action,
@@ -399,7 +394,7 @@ class ArtworkStudyWindow(QMainWindow):
         scroll.setWidgetResizable(True)
         body = QWidget()
         layout = QVBoxLayout(body)
-        provider_group = QGroupBox("CG 主美作品深度研究")
+        provider_group = QGroupBox("作品视觉研究")
         form = QFormLayout(provider_group)
         self.provider_combo = QComboBox()
         for provider in self._provider_registry.for_capability(
@@ -448,7 +443,7 @@ class ArtworkStudyWindow(QMainWindow):
         history_row = QHBoxLayout()
         history_row.addWidget(QLabel("研究记录"))
         self.ai_history_combo = QComboBox()
-        self.ai_history_combo.setToolTip("默认显示最新一次完成的专家拆解。")
+        self.ai_history_combo.setToolTip("默认显示最新一次完成的作品解读。")
         history_row.addWidget(self.ai_history_combo, 1)
         self.delete_ai_history_button = QPushButton("删除记录")
         self.delete_ai_history_button.setEnabled(False)
@@ -465,7 +460,7 @@ class ArtworkStudyWindow(QMainWindow):
         self.ai_detail.setReadOnly(True)
         self.ai_detail.setMinimumHeight(260)
         layout.addWidget(self.ai_detail)
-        self.dimension_task_button = QPushButton("将当前研究维度加入审阅中心")
+        self.dimension_task_button = QPushButton("将当前研究维度加入制作任务")
         self.dimension_task_button.clicked.connect(
             self._send_current_dimension_to_review_center
         )
@@ -475,7 +470,7 @@ class ArtworkStudyWindow(QMainWindow):
         layout.addWidget(QLabel("跨维度因果链"))
         layout.addWidget(self.causal_list)
         scroll.setWidget(body)
-        self.tabs.addTab(scroll, "专家拆解")
+        self.tabs.addTab(scroll, "作品解读")
 
     def _build_study_dock(self) -> None:
         dock = QDockWidget("研究设置", self)
@@ -510,10 +505,10 @@ class ArtworkStudyWindow(QMainWindow):
         )
         self.context_edit.setMaximumHeight(130)
         layout.addWidget(self.context_edit)
-        question_group = QGroupBox("研究方式")
+        question_group = QGroupBox("分析框架")
         question_layout = QVBoxLayout(question_group)
-        for question in self._presets["study_prompts"]:
-            label = QLabel(f"• {question}")
+        for item in self._presets["study_prompts"]:
+            label = QLabel(f"• {item}")
             label.setWordWrap(True)
             question_layout.addWidget(label)
         layout.addWidget(question_group)
@@ -645,7 +640,7 @@ class ArtworkStudyWindow(QMainWindow):
                 self._clear_ai_output()
                 self.ai_status.setText(
                     "当前保存的是旧版英文或无效结果，已停止显示。"
-                    "请重新执行一次专家拆解以生成简体中文结果。"
+                    "请重新执行一次作品解读以生成简体中文结果。"
                 )
         self._refresh_ai_history()
 
@@ -1036,7 +1031,7 @@ class ArtworkStudyWindow(QMainWindow):
             return
         run_id = str(self.ai_history_combo.currentData() or "")
         if not run_id or QMessageBox.question(
-            self, "删除研究记录", "删除这次专家拆解记录？个人笔记不会受影响。"
+            self, "删除研究记录", "删除本次作品解读记录？个人笔记不会受影响。"
         ) != QMessageBox.StandardButton.Yes:
             return
         remaining = tuple(
@@ -1162,7 +1157,7 @@ class ArtworkStudyWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "尚未选择研究维度",
-                "请先在专家拆解表中选择一项研究维度。",
+                "请先在作品解读表中选择一项研究内容。",
             )
             return
         dimension_id = str(item.get("dimension_id", "study_dimension"))
@@ -1206,7 +1201,7 @@ class ArtworkStudyWindow(QMainWindow):
             else:
                 parts.append(
                     "旧版 AI 结果不是完整简体中文，已停止显示。"
-                    "请重新执行专家拆解。"
+                    "请重新执行作品解读。"
                 )
         if self.notes_edit.toPlainText().strip():
             parts.append("个人学习笔记\n" + self.notes_edit.toPlainText().strip())

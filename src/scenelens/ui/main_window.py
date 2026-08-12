@@ -365,11 +365,6 @@ class MainWindow(QMainWindow):
         )
 
     def _build_actions_and_menus(self) -> None:
-        self.home_action = QAction("工作台首页", self)
-        self.home_action.triggered.connect(
-            lambda _checked=False: self.workspace_home_requested.emit()
-        )
-
         self.new_project_action = QAction("新建项目…", self)
         self.new_project_action.setShortcut(QKeySequence.StandardKey.New)
         self.new_project_action.triggered.connect(self._new_project_dialog)
@@ -384,8 +379,6 @@ class MainWindow(QMainWindow):
         self.save_project_action.triggered.connect(self._save_project_action)
 
         file_menu = self.menuBar().addMenu("文件")
-        file_menu.addAction(self.home_action)
-        file_menu.addSeparator()
         file_menu.addAction(self.new_project_action)
         file_menu.addAction(self.open_project_action)
         file_menu.addAction(self.save_project_action)
@@ -599,7 +592,7 @@ class MainWindow(QMainWindow):
         self.ai_review_panel.history_delete_requested.connect(
             self._delete_saved_ai_review
         )
-        self.analysis_tabs.addTab(self.ai_review_panel, "AI 审阅与任务")
+        self.analysis_tabs.addTab(self.ai_review_panel, "审阅与任务")
         self.optimization_panel = OptimizationLabPanel(
             self._provider_registry.manifests()
         )
@@ -2695,8 +2688,8 @@ class MainWindow(QMainWindow):
     def _refresh_ai_review_history(self, selected_id: str | None = None) -> None:
         runs = self._matching_ai_review_runs()
         reviewer_labels = {
-            "deep_art_director_review": "深度主美",
-            "art_director_review": "主美专项",
+            "deep_art_director_review": "综合美术",
+            "art_director_review": "美术方向",
             "lighting_review": "灯光专项",
         }
         entries = [
@@ -2811,7 +2804,7 @@ class MainWindow(QMainWindow):
             shot_id=self._active_shot_id,
             version_id=self._active_version_id,
             source_evidence_id=evidence.id,
-            title=str(finding.get("observation", "AI 审阅任务")),
+            title=str(finding.get("observation", "待处理审阅意见")),
             description=(
                 f"{finding.get('recommended_action', '')}\n"
                 f"影响：{finding.get('impact', '')}"
@@ -3049,7 +3042,7 @@ class MainWindow(QMainWindow):
             self._activate_shot(task.shot_id)
         self.analysis_tabs.setCurrentWidget(self.ai_review_panel)
         self.statusBar().showMessage(
-            f"已定位审阅任务：{task.title}",
+            f"已定位制作任务：{task.title}",
             5000,
         )
 

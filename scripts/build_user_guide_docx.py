@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import re
 
@@ -10,7 +11,12 @@ from docx.shared import Inches, Pt, RGBColor
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "GATalk_使用手册.docx"
+OUTPUT = Path(
+    os.environ.get(
+        "GATALK_USER_GUIDE_OUTPUT",
+        str(ROOT / "GATalk_使用手册.docx"),
+    )
+)
 SOURCE = ROOT / "USER_GUIDE.md"
 
 BLUE = RGBColor(46, 116, 181)
@@ -181,8 +187,8 @@ def build() -> None:
     metadata.paragraph_format.space_after = Pt(14)
     set_font(
         metadata.add_run(
-            "适用版本：0.14.0（资料研究、跨项目引用、审阅任务与质量门禁）"
-            "　更新日期：2026-08-08"
+            "适用版本：0.18.0（统一导航与视觉供应商扩展）"
+            "　更新日期：2026-08-12"
         ),
         size=9.5,
         color=MUTED,

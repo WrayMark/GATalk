@@ -485,7 +485,7 @@ def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
             "schema_version": "2.0",
             "reviewer_id": "deep_art_director_review",
             "executive_summary": (
-                "离线 Mock：八维结构、证据字段和执行顺序可用；"
+                "离线 Mock：综合审阅结构、证据字段和执行顺序可用；"
                 "未生成真实美术结论。"
             ),
             "target_readback": {
@@ -558,7 +558,7 @@ def _default_mock_output(schema: Mapping[str, Any]) -> dict[str, Any]:
         return {
             "schema_version": "2.0",
             "reviewer_id": "lighting_review",
-            "summary": "离线 Mock：八维灯光审阅、执行顺序与三套方案结构可用。",
+            "summary": "离线 Mock：场景灯光审阅、执行顺序与三套方案结构可用。",
             "target_readback": {
                 "production_stage": "Mock 未分析",
                 "target_mood": "Mock 未分析",

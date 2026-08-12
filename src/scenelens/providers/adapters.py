@@ -170,7 +170,7 @@ class OpenAICompatibleChatProvider:
         ):
             structured_output_mode = "json_schema"
         system_instruction = request.system_instruction
-        if structured_output_mode == "json_object":
+        if structured_output_mode in {"json_object", "prompt_only"}:
             system_instruction = (
                 f"{system_instruction}\nReturn JSON only and do not wrap it "
                 "in Markdown."
@@ -189,8 +189,9 @@ class OpenAICompatibleChatProvider:
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": content},
             ],
-            "temperature": 0.2,
         }
+        if not bool(self.manifest.options.get("omit_temperature", False)):
+            body["temperature"] = 0.2
         if structured_output_mode == "json_schema":
             body["response_format"] = {
                 "type": "json_schema",
@@ -346,6 +347,158 @@ class ResponsesVisionProvider:
             provider_id=self.manifest.provider_id,
             model_id=str(response.get("model", wire.body["model"])),
             output=_parse_json_text(str(text)),
+            request_id=(
+                None if response.get("id") is None else str(response["id"])
+            ),
+            usage=dict(response.get("usage", {})),
+        )
+
+    def generate_structured(
+        self,
+        request: StructuredOutputRequest,
+        credential: str,
+        cancellation: CancellationToken,
+    ) -> ProviderResponse:
+        return self.review(
+            _vision_from_structured(request, self.manifest),
+            credential,
+            cancellation,
+        )
+
+
+class AnthropicMessagesProvider:
+    """Claude Messages API adapter with native JSON-schema output."""
+
+    def __init__(
+        self,
+        manifest: ProviderManifest,
+        transport: JsonTransport | None = None,
+    ) -> None:
+        self.manifest = manifest
+        self.transport = transport or UrllibJsonTransport()
+
+    def build_request(
+        self,
+        request: VisionReviewRequest,
+        credential: str,
+    ) -> JsonTransportRequest:
+        return self._build_request(
+            request,
+            credential,
+            native_schema=True,
+        )
+
+    def _build_request(
+        self,
+        request: VisionReviewRequest,
+        credential: str,
+        *,
+        native_schema: bool,
+    ) -> JsonTransportRequest:
+        require_user_approval(request)
+        model = self.manifest.model_for(
+            ProviderCapability.VISION_REVIEW,
+            request.model_id,
+        )
+        content: list[dict[str, Any]] = []
+        for image in request.images:
+            content.append(
+                {
+                    "type": "text",
+                    "text": f"IMAGE_ROLE={image.role}",
+                }
+            )
+            content.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": image.media_type,
+                        "data": base64.b64encode(image.data).decode("ascii"),
+                    },
+                }
+            )
+        content.append(
+            {
+                "type": "text",
+                "text": request.canonical_payload(),
+            }
+        )
+        if not native_schema:
+            content.append(
+                {
+                    "type": "text",
+                    "text": _structured_schema_prompt(
+                        request.output_schema
+                    ),
+                }
+            )
+        max_tokens = request.max_output_tokens or int(
+            self.manifest.options.get("default_max_output_tokens", 16384)
+        )
+        body: dict[str, Any] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": request.system_instruction,
+            "messages": [{"role": "user", "content": content}],
+        }
+        if native_schema:
+            body["output_config"] = {
+                "format": {
+                    "type": "json_schema",
+                    "schema": dict(request.output_schema),
+                }
+            }
+        return JsonTransportRequest(
+            url=f"{self.manifest.base_url}/messages",
+            headers={
+                "x-api-key": credential,
+                "anthropic-version": str(
+                    self.manifest.options.get(
+                        "anthropic_version", "2023-06-01"
+                    )
+                ),
+                "Content-Type": "application/json",
+            },
+            body=body,
+            timeout_seconds=request.timeout_seconds,
+        )
+
+    def review(
+        self,
+        request: VisionReviewRequest,
+        credential: str,
+        cancellation: CancellationToken,
+    ) -> ProviderResponse:
+        wire = self.build_request(request, credential)
+        try:
+            response = self.transport.send(wire, cancellation)
+        except ProviderError as exc:
+            if exc.code != "http_400" or "output_config" not in wire.body:
+                raise
+            cancellation.raise_if_cancelled()
+            wire = self._build_request(
+                request,
+                credential,
+                native_schema=False,
+            )
+            response = self.transport.send(wire, cancellation)
+        blocks = response.get("content", [])
+        text = "".join(
+            str(item.get("text", ""))
+            for item in blocks
+            if isinstance(item, Mapping) and item.get("type") == "text"
+        )
+        if not text:
+            raise ProviderError(
+                "AI 服务响应缺少结构化输出。",
+                code="missing_output",
+                retryable=False,
+            )
+        return ProviderResponse(
+            provider_id=self.manifest.provider_id,
+            model_id=str(response.get("model", wire.body["model"])),
+            output=_parse_json_text(text),
             request_id=(
                 None if response.get("id") is None else str(response["id"])
             ),
@@ -665,6 +818,8 @@ def create_vision_provider(
         return ResponsesVisionProvider(manifest, transport)
     if manifest.api_style == "gemini_generate_content":
         return GeminiVisionProvider(manifest, transport)
+    if manifest.api_style == "anthropic_messages":
+        return AnthropicMessagesProvider(manifest, transport)
     raise ValueError(
         f"Provider {manifest.provider_id} does not expose vision review."
     )

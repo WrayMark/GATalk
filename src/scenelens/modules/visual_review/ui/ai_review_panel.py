@@ -147,15 +147,15 @@ class AIReviewPanel(QWidget):
         body = QWidget()
         layout = QVBoxLayout(body)
 
-        provider_group = QGroupBox("专项审阅")
+        provider_group = QGroupBox("审阅设置")
         form = QFormLayout(provider_group)
         self.reviewer_combo = QComboBox()
         self.reviewer_combo.addItem(
-            "深度主美审阅（八维）",
+            "综合美术审阅",
             "deep_art_director_review",
         )
-        self.reviewer_combo.addItem("主美专项审阅", "art_director_review")
-        self.reviewer_combo.addItem("灯光专项审阅", "lighting_review")
+        self.reviewer_combo.addItem("美术方向审阅", "art_director_review")
+        self.reviewer_combo.addItem("场景灯光审阅", "lighting_review")
         form.addRow("审阅器", self.reviewer_combo)
 
         self.provider_combo = QComboBox()
@@ -624,7 +624,7 @@ class AIReviewPanel(QWidget):
                 f"{action.get('order', '-')}．{action.get('action', '')}"
             )
             if action.get("why_now"):
-                text += f"\n为什么现在做：{action.get('why_now')}"
+                text += f"\n安排依据：{action.get('why_now')}"
             if ue_steps:
                 text += f"\nUE5：{ue_steps}"
             if action.get("risk"):

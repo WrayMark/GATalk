@@ -580,16 +580,46 @@ def main() -> int:
         return review_store_holder[0]
 
     def show_hub() -> None:
+        source = next(
+            (
+                value
+                for value in reversed(active_windows)
+                if getattr(value, "isVisible", lambda: False)()
+            ),
+            None,
+        )
+        presentation = (
+            settings_controller.capture_window_presentation(source)
+            if isinstance(source, MainWindow)
+            or hasattr(source, "saveGeometry")
+            else None
+        )
         for value in tuple(active_windows):
             close = getattr(value, "close", None)
             if callable(close):
                 close()
         active_windows.clear()
-        hub.show()
+        if presentation is not None:
+            settings_controller.apply_window_presentation(hub, presentation)
+        else:
+            hub.show()
         hub.raise_()
         hub.activateWindow()
 
     def open_workspace(workspace_id: str):
+        source = next(
+            (
+                value
+                for value in reversed(active_windows)
+                if getattr(value, "isVisible", lambda: False)()
+            ),
+            hub if hub.isVisible() else None,
+        )
+        presentation = (
+            settings_controller.capture_window_presentation(source)
+            if source is not None and hasattr(source, "saveGeometry")
+            else None
+        )
         if workspace_id == "scene_art_control":
             window = MainWindow()
         elif workspace_id == "artwork_study":
@@ -624,7 +654,11 @@ def main() -> int:
             window = ReviewControlWindow(review_center_store())
         else:
             return None
-        settings_controller.register_window(window, workspace_id)
+        settings_controller.register_window(
+            window,
+            workspace_id,
+            presentation=presentation,
+        )
         search_action = QAction("全局检索", window)
         search_action.setShortcut(QKeySequence("Ctrl+K"))
         search_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
@@ -708,9 +742,9 @@ def main() -> int:
                 if callable(refresh) and window.__class__.__name__ == "ReviewControlWindow":
                     refresh()
             message = (
-                f"已加入审阅中心：{added} 项新任务。"
+                f"已加入制作任务中心：{added} 项新任务。"
                 if added
-                else "该来源已在审阅中心中，不再重复建立。"
+                else "该来源已在制作任务中心中，不再重复建立。"
             )
             status = getattr(parent, "statusBar", None)
             if callable(status):
@@ -718,7 +752,7 @@ def main() -> int:
         except (OSError, ValueError) as exc:
             QMessageBox.warning(
                 parent if hasattr(parent, "winId") else hub,
-                "无法写入审阅中心",
+                "无法写入制作任务中心",
                 str(exc),
             )
 

@@ -194,7 +194,7 @@ class ArtworkMasterStudyReview:
     descriptor = ReviewerDescriptor(
         module_id=MODULE_ID,
         reviewer_id="artwork_master_study",
-        display_name="CG 主美作品深度研究",
+        display_name="作品视觉研究",
         version="1.2.0",
         supported_inputs=(
             "single_artwork_image",
@@ -246,7 +246,7 @@ class ArtworkMasterStudyReview:
             missing = sorted(set(STUDY_DIMENSIONS) - set(dimensions))
             unexpected = sorted(set(dimensions) - set(STUDY_DIMENSIONS))
             raise ValueError(
-                f"作品研究必须完整覆盖十二维；缺少 {missing}，未知 {unexpected}。"
+                f"作品研究必须完整覆盖十二项分析内容；缺少 {missing}，未知 {unexpected}。"
             )
         if current_locale() == "zh-CN":
             language_issues = non_simplified_chinese_paths(output)

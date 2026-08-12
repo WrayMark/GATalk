@@ -340,10 +340,6 @@ class AssetBreakdownWindow(QMainWindow):
         )
 
     def _build_actions(self) -> None:
-        self.home_action = QAction("工作台首页", self)
-        self.home_action.triggered.connect(
-            lambda _checked=False: self.workspace_home_requested.emit()
-        )
         self.new_action = QAction("新建资产项目…", self)
         self.new_action.setShortcut(QKeySequence.StandardKey.New)
         self.new_action.triggered.connect(self._new_project)
@@ -399,7 +395,6 @@ class AssetBreakdownWindow(QMainWindow):
         toolbar.setMovable(False)
         toolbar.addActions(
             [
-                self.home_action,
                 self.new_action,
                 self.open_action,
                 self.save_action,
@@ -637,7 +632,7 @@ class AssetBreakdownWindow(QMainWindow):
         self.asset_tree.setColumnWidth(4, 105)
         self.asset_tree.setMinimumHeight(280)
         layout.addWidget(self.asset_tree, 1)
-        self.asset_task_button = QPushButton("将所选资产加入审阅中心")
+        self.asset_task_button = QPushButton("将所选资产加入制作任务")
         self.asset_task_button.setEnabled(False)
         self.asset_task_button.clicked.connect(
             self._send_selected_assets_to_review_center

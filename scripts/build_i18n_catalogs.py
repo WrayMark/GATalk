@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = ROOT / "src" / "scenelens"
 OUTPUT_ROOT = SOURCE_ROOT / "i18n"
 TARGETS = ("zh-TW", "en", "ja", "fr", "de", "es", "ko")
+CURRENT_UI_TARGETS = ("zh-TW", "en", "ja", "fr")
 TRANSLATE_API = "https://translate.googleapis.com/translate_a/single"
 CHINESE_RE = re.compile(r"[\u3400-\u9fff]")
 PLACEHOLDER_RE = re.compile(r"\{[^{}]+\}|%\d|%[sdif]|<[^>]+>")
@@ -388,6 +389,229 @@ GLOSSARY: dict[str, dict[str, str]] = {
 }
 
 
+# Release-critical interface terminology is maintained by hand. Machine
+# translation remains a draft for low-frequency strings and never overrides
+# this reviewed product vocabulary.
+GLOSSARY["en"].update(
+    {
+        "←  工作台首页": "←  Workbench Home",
+        "返回工作台首页": "Return to Workbench Home",
+        "返回工作台首页（Ctrl+Shift+H）": "Return to Workbench Home (Ctrl+Shift+H)",
+        "制作任务与验收中心": "Production Tasks & Acceptance",
+        "进入制作任务与验收中心": "Open Production Tasks & Acceptance",
+        "GATalk — 制作任务与验收中心": "GATalk — Production Tasks & Acceptance",
+        "项目管理  ·  跨项目任务与版本验收": "Project Management  ·  Cross-project tasks and version acceptance",
+        "集中管理场景审阅、作品研究和资产拆分中已确认的制作任务，设置验收标准，并按版本记录复查结果。": "Manage confirmed production tasks from scene reviews, artwork studies, and asset breakdowns; define acceptance criteria and record results by version.",
+        "制作任务": "Production Tasks",
+        "制作任务中心": "Production Task Center",
+        "验收标准": "Acceptance Criteria",
+        "新建制作任务": "New Production Task",
+        "新建验收标准": "New Acceptance Criterion",
+        "记录验收结果": "Record Acceptance Result",
+        "作品视觉研究": "Visual Study",
+        "作品解读": "Artwork Interpretation",
+        "运行状态": "Activity",
+        "打开运行状态": "Open Activity",
+        "审阅与任务": "Reviews & Tasks",
+        "待处理审阅意见": "Pending Review Finding",
+        "已定位制作任务：": "Production task located:",
+        "默认显示最新一次完成的作品解读。": "Shows the latest completed artwork interpretation by default.",
+        "删除本次作品解读记录？个人笔记不会受影响。": "Delete this artwork interpretation? Personal notes will not be affected.",
+        "请先在作品解读表中选择一项研究内容。": "Select a study item in the artwork interpretation table first.",
+        "请重新执行作品解读。": "Run the artwork interpretation again.",
+        "分析框架": "Analysis Framework",
+        "视觉层级：梳理第一视觉焦点、次级焦点与视线停留区域。": "Visual hierarchy: identify the primary focus, secondary focus, and resting areas of the eye.",
+        "形式组织：分析明度、色彩、光线、形状与边缘对空间和情绪的作用。": "Formal organization: analyze how value, color, light, shape, and edges establish space and mood.",
+        "场景表达：识别叙事、尺度与世界观信息的承载方式。": "Scene expression: identify how narrative, scale, and worldbuilding information are conveyed.",
+        "设计取舍：说明有效选择、实现代价与适用边界。": "Design trade-offs: explain effective choices, implementation costs, and limits of use.",
+        "迁移原则：提炼可复用的方法，区分设计方法与表面风格。": "Transferable principles: extract reusable methods and distinguish design logic from surface style.",
+        "综合美术审阅": "Comprehensive Art Review",
+        "美术方向审阅": "Art Direction Review",
+        "场景灯光审阅": "Environment Lighting Review",
+        "审阅设置": "Review Settings",
+        "综合美术": "Comprehensive Art",
+        "美术方向": "Art Direction",
+        "安排依据：": "Rationale:",
+        "美术方向与场景灯光审阅": "Art direction and environment lighting reviews",
+        "视觉语言与场景表达": "Visual language and scene expression",
+        "资料平台  ·  跨工作台统一管理": "Reference Platform  ·  Shared across workbenches",
+        "项目管理  ·  跨项目任务与版本验收": "Project Management  ·  Cross-project tasks and version acceptance",
+        "深紫色": "Deep Violet",
+        "智谱 GLM Vision": "Zhipu GLM Vision",
+        "火山方舟 Doubao Vision": "Volcengine Ark · Doubao Vision",
+        "腾讯混元 Vision": "Tencent Hunyuan Vision",
+        "阿里云百炼 Qwen VL": "Alibaba Cloud Model Studio · Qwen VL",
+        "SiliconFlow Qwen VL": "SiliconFlow · Qwen VL",
+        "将当前研究维度加入制作任务": "Add Current Study Dimension to Production Tasks",
+        "将所选资产加入制作任务": "Add Selected Assets to Production Tasks",
+        "搜索项目、资料、研究结论、资产、任务和验收标准": "Search projects, references, study findings, assets, tasks, and acceptance criteria",
+        "跨项目搜索资料、研究结论、资产、任务和验收标准": "Search references, study findings, assets, tasks, and acceptance criteria across projects",
+    }
+)
+GLOSSARY["ja"].update(
+    {
+        "←  工作台首页": "←  ワークベンチ ホーム",
+        "返回工作台首页": "ワークベンチ ホームに戻る",
+        "返回工作台首页（Ctrl+Shift+H）": "ワークベンチ ホームに戻る（Ctrl+Shift+H）",
+        "制作任务与验收中心": "制作タスクと受入確認",
+        "进入制作任务与验收中心": "制作タスクと受入確認を開く",
+        "GATalk — 制作任务与验收中心": "GATalk — 制作タスクと受入確認",
+        "项目管理  ·  跨项目任务与版本验收": "プロジェクト管理  ·  横断タスクとバージョン受入確認",
+        "制作任务": "制作タスク",
+        "制作任务中心": "制作タスクセンター",
+        "验收标准": "受入基準",
+        "新建制作任务": "制作タスクを作成",
+        "新建验收标准": "受入基準を作成",
+        "记录验收结果": "受入結果を記録",
+        "作品视觉研究": "作品ビジュアル研究",
+        "作品解读": "作品解説",
+        "运行状态": "実行状況",
+        "打开运行状态": "実行状況を開く",
+        "审阅与任务": "レビューとタスク",
+        "待处理审阅意见": "未処理のレビュー指摘",
+        "已定位制作任务：": "制作タスクを表示：",
+        "默认显示最新一次完成的作品解读。": "既定では最新の作品解説を表示します。",
+        "删除本次作品解读记录？个人笔记不会受影响。": "この作品解説を削除しますか。個人メモは削除されません。",
+        "请先在作品解读表中选择一项研究内容。": "作品解説の一覧から研究項目を選択してください。",
+        "请重新执行作品解读。": "作品解説を再実行してください。",
+        "分析框架": "分析フレームワーク",
+        "视觉层级：梳理第一视觉焦点、次级焦点与视线停留区域。": "視覚階層：第一焦点、第二焦点、視線が留まる領域を整理します。",
+        "形式组织：分析明度、色彩、光线、形状与边缘对空间和情绪的作用。": "造形構成：明度、色彩、光、形、エッジが空間と感情に与える作用を分析します。",
+        "场景表达：识别叙事、尺度与世界观信息的承载方式。": "シーン表現：物語、スケール、世界観の情報がどのように伝わるかを確認します。",
+        "设计取舍：说明有效选择、实现代价与适用边界。": "設計判断：有効な選択、制作コスト、適用範囲を明確にします。",
+        "迁移原则：提炼可复用的方法，区分设计方法与表面风格。": "応用原則：再利用できる方法を抽出し、設計手法と表層的な作風を区別します。",
+        "综合美术审阅": "総合アートレビュー",
+        "美术方向审阅": "アートディレクションレビュー",
+        "场景灯光审阅": "シーンライティングレビュー",
+        "审阅设置": "レビュー設定",
+        "综合美术": "総合アート",
+        "美术方向": "アートディレクション",
+        "安排依据：": "実施理由：",
+        "美术方向与场景灯光审阅": "アートディレクションとシーンライティングのレビュー",
+        "视觉语言与场景表达": "ビジュアル言語とシーン表現",
+        "资料平台  ·  跨工作台统一管理": "資料プラットフォーム  ·  ワークベンチ横断管理",
+        "深紫色": "ディープバイオレット",
+        "智谱 GLM Vision": "Zhipu GLM Vision",
+        "火山方舟 Doubao Vision": "Volcengine Ark · Doubao Vision",
+        "腾讯混元 Vision": "Tencent Hunyuan Vision",
+        "阿里云百炼 Qwen VL": "Alibaba Cloud Model Studio · Qwen VL",
+        "SiliconFlow Qwen VL": "SiliconFlow · Qwen VL",
+        "将当前研究维度加入制作任务": "現在の研究項目を制作タスクに追加",
+        "将所选资产加入制作任务": "選択したアセットを制作タスクに追加",
+        "搜索项目、资料、研究结论、资产、任务和验收标准": "プロジェクト、資料、研究結果、アセット、タスク、受入基準を検索",
+        "跨项目搜索资料、研究结论、资产、任务和验收标准": "プロジェクトを横断して資料、研究結果、アセット、タスク、受入基準を検索",
+    }
+)
+GLOSSARY["fr"].update(
+    {
+        "←  工作台首页": "←  Accueil des espaces de travail",
+        "返回工作台首页": "Retour à l’accueil des espaces de travail",
+        "返回工作台首页（Ctrl+Shift+H）": "Retour à l’accueil des espaces de travail (Ctrl+Shift+H)",
+        "制作任务与验收中心": "Tâches de production et validation",
+        "进入制作任务与验收中心": "Ouvrir Tâches de production et validation",
+        "GATalk — 制作任务与验收中心": "GATalk — Tâches de production et validation",
+        "项目管理  ·  跨项目任务与版本验收": "Gestion de projet  ·  Tâches transversales et validation des versions",
+        "制作任务": "Tâches de production",
+        "制作任务中心": "Centre des tâches de production",
+        "验收标准": "Critères de validation",
+        "新建制作任务": "Nouvelle tâche de production",
+        "新建验收标准": "Nouveau critère de validation",
+        "记录验收结果": "Enregistrer le résultat de validation",
+        "作品视觉研究": "Étude visuelle de l’œuvre",
+        "作品解读": "Lecture de l’œuvre",
+        "运行状态": "Activité",
+        "打开运行状态": "Ouvrir l’activité",
+        "审阅与任务": "Revues et tâches",
+        "待处理审阅意见": "Observation à traiter",
+        "已定位制作任务：": "Tâche de production affichée :",
+        "默认显示最新一次完成的作品解读。": "La dernière lecture terminée est affichée par défaut.",
+        "删除本次作品解读记录？个人笔记不会受影响。": "Supprimer cette lecture de l’œuvre ? Les notes personnelles seront conservées.",
+        "请先在作品解读表中选择一项研究内容。": "Sélectionnez d’abord un axe dans le tableau de lecture de l’œuvre.",
+        "请重新执行作品解读。": "Relancez la lecture de l’œuvre.",
+        "分析框架": "Cadre d’analyse",
+        "视觉层级：梳理第一视觉焦点、次级焦点与视线停留区域。": "Hiérarchie visuelle : repérer le point focal principal, le point focal secondaire et les zones où le regard s’arrête.",
+        "形式组织：分析明度、色彩、光线、形状与边缘对空间和情绪的作用。": "Organisation formelle : analyser le rôle des valeurs, des couleurs, de la lumière, des formes et des contours dans l’espace et l’ambiance.",
+        "场景表达：识别叙事、尺度与世界观信息的承载方式。": "Expression de la scène : identifier comment sont transmis le récit, l’échelle et l’univers.",
+        "设计取舍：说明有效选择、实现代价与适用边界。": "Arbitrages de conception : préciser les choix efficaces, leur coût de réalisation et leurs limites.",
+        "迁移原则：提炼可复用的方法，区分设计方法与表面风格。": "Principes transférables : dégager les méthodes réutilisables et distinguer la logique de conception du style de surface.",
+        "综合美术审阅": "Revue artistique complète",
+        "美术方向审阅": "Revue de direction artistique",
+        "场景灯光审阅": "Revue de l’éclairage de scène",
+        "审阅设置": "Paramètres de revue",
+        "综合美术": "Analyse artistique complète",
+        "美术方向": "Direction artistique",
+        "安排依据：": "Justification :",
+        "美术方向与场景灯光审阅": "Revues de direction artistique et d’éclairage de scène",
+        "视觉语言与场景表达": "Langage visuel et expression de la scène",
+        "资料平台  ·  跨工作台统一管理": "Plateforme documentaire  ·  Gestion commune aux espaces de travail",
+        "深紫色": "Violet profond",
+        "智谱 GLM Vision": "Zhipu GLM Vision",
+        "火山方舟 Doubao Vision": "Volcengine Ark · Doubao Vision",
+        "腾讯混元 Vision": "Tencent Hunyuan Vision",
+        "阿里云百炼 Qwen VL": "Alibaba Cloud Model Studio · Qwen VL",
+        "SiliconFlow Qwen VL": "SiliconFlow · Qwen VL",
+        "将当前研究维度加入制作任务": "Ajouter l’axe d’étude actuel aux tâches de production",
+        "将所选资产加入制作任务": "Ajouter les assets sélectionnés aux tâches de production",
+        "搜索项目、资料、研究结论、资产、任务和验收标准": "Rechercher des projets, références, conclusions, assets, tâches et critères de validation",
+        "跨项目搜索资料、研究结论、资产、任务和验收标准": "Rechercher des références, conclusions, assets, tâches et critères de validation dans tous les projets",
+    }
+)
+GLOSSARY["zh-TW"].update(
+    {
+        "←  工作台首页": "←  工作台首頁",
+        "返回工作台首页": "返回工作台首頁",
+        "返回工作台首页（Ctrl+Shift+H）": "返回工作台首頁（Ctrl+Shift+H）",
+        "制作任务与验收中心": "製作工作與驗收中心",
+        "进入制作任务与验收中心": "進入製作工作與驗收中心",
+        "GATalk — 制作任务与验收中心": "GATalk — 製作工作與驗收中心",
+        "项目管理  ·  跨项目任务与版本验收": "專案管理  ·  跨專案工作與版本驗收",
+        "制作任务": "製作工作",
+        "制作任务中心": "製作工作中心",
+        "验收标准": "驗收標準",
+        "新建制作任务": "新增製作工作",
+        "新建验收标准": "新增驗收標準",
+        "记录验收结果": "記錄驗收結果",
+        "作品视觉研究": "作品視覺研究",
+        "作品解读": "作品解讀",
+        "运行状态": "執行狀態",
+        "打开运行状态": "開啟執行狀態",
+        "审阅与任务": "審閱與工作",
+        "待处理审阅意见": "待處理審閱意見",
+        "已定位制作任务：": "已定位製作工作：",
+        "默认显示最新一次完成的作品解读。": "預設顯示最新一次完成的作品解讀。",
+        "删除本次作品解读记录？个人笔记不会受影响。": "刪除本次作品解讀記錄？個人筆記不會受影響。",
+        "请先在作品解读表中选择一项研究内容。": "請先在作品解讀表中選擇一項研究內容。",
+        "请重新执行作品解读。": "請重新執行作品解讀。",
+        "分析框架": "分析架構",
+        "视觉层级：梳理第一视觉焦点、次级焦点与视线停留区域。": "視覺層級：整理第一視覺焦點、次要焦點與視線停留區域。",
+        "形式组织：分析明度、色彩、光线、形状与边缘对空间和情绪的作用。": "形式組織：分析明度、色彩、光線、形狀與邊緣對空間和情緒的作用。",
+        "场景表达：识别叙事、尺度与世界观信息的承载方式。": "場景表達：辨識敘事、尺度與世界觀資訊的承載方式。",
+        "设计取舍：说明有效选择、实现代价与适用边界。": "設計取捨：說明有效選擇、製作成本與適用邊界。",
+        "迁移原则：提炼可复用的方法，区分设计方法与表面风格。": "遷移原則：提煉可複用的方法，區分設計方法與表面風格。",
+        "综合美术审阅": "綜合美術審閱",
+        "美术方向审阅": "美術方向審閱",
+        "场景灯光审阅": "場景燈光審閱",
+        "审阅设置": "審閱設定",
+        "综合美术": "綜合美術",
+        "美术方向": "美術方向",
+        "安排依据：": "安排依據：",
+        "美术方向与场景灯光审阅": "美術方向與場景燈光審閱",
+        "视觉语言与场景表达": "視覺語言與場景表達",
+        "资料平台  ·  跨工作台统一管理": "資料平台  ·  跨工作台統一管理",
+        "深紫色": "深紫色",
+        "智谱 GLM Vision": "智譜 GLM Vision",
+        "火山方舟 Doubao Vision": "火山方舟 Doubao Vision",
+        "腾讯混元 Vision": "騰訊混元 Vision",
+        "阿里云百炼 Qwen VL": "阿里雲百煉 Qwen VL",
+        "SiliconFlow Qwen VL": "SiliconFlow Qwen VL",
+        "将当前研究维度加入制作任务": "將目前研究項目加入製作工作",
+        "将所选资产加入制作任务": "將所選資產加入製作工作",
+        "搜索项目、资料、研究结论、资产、任务和验收标准": "搜尋專案、資料、研究結論、資產、工作與驗收標準",
+        "跨项目搜索资料、研究结论、资产、任务和验收标准": "跨專案搜尋資料、研究結論、資產、工作與驗收標準",
+    }
+)
+
+
 def source_files() -> list[Path]:
     return sorted(
         list((SOURCE_ROOT / "ui").rglob("*.py"))
@@ -504,18 +728,25 @@ def main() -> int:
     targets = tuple(sys.argv[1:]) or TARGETS
     glossary_only = "--glossary-only" in targets
     targets = tuple(value for value in targets if value != "--glossary-only")
+    if glossary_only and not targets:
+        targets = CURRENT_UI_TARGETS
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     for locale in targets:
         if locale not in TARGETS:
             raise ValueError(f"Unsupported target locale: {locale}")
         if glossary_only:
             existing: dict[str, str] = {}
+            existing_payload: dict[str, object] = {}
             destination = OUTPUT_ROOT / f"{locale}.json"
             if destination.is_file():
-                payload = json.loads(destination.read_text(encoding="utf-8"))
+                existing_payload = json.loads(
+                    destination.read_text(encoding="utf-8")
+                )
                 existing = {
                     str(key): str(value)
-                    for key, value in dict(payload.get("strings", {})).items()
+                    for key, value in dict(
+                        existing_payload.get("strings", {})
+                    ).items()
                 }
             catalog = {
                 item: existing[item]
@@ -536,7 +767,11 @@ def main() -> int:
             "source_locale": "zh-CN",
             "catalog_version": 1,
             "strings": catalog,
-            "patterns": [],
+            "patterns": (
+                list(existing_payload.get("patterns", []))
+                if glossary_only
+                else []
+            ),
             "translation_stage": "reviewed_subset",
             "reviewed_count": sum(
                 item in GLOSSARY.get(locale, {}) for item in strings

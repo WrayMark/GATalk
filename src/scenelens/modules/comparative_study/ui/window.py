@@ -78,10 +78,6 @@ class ComparativeStudyWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         file_menu = self.menuBar().addMenu("文件")
-        home = QAction("工作台首页", self)
-        home.setShortcut(QKeySequence("Ctrl+Shift+H"))
-        home.triggered.connect(self.workspace_home_requested)
-        file_menu.addAction(home)
         new_action = QAction("新建对照研究…", self)
         new_action.setShortcut(QKeySequence.StandardKey.New)
         new_action.triggered.connect(self._new_study)

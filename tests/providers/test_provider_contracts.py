@@ -7,6 +7,7 @@ import pytest
 
 from scenelens.modules.visual_review.reviews.base import load_review_schema
 from scenelens.providers.adapters import (
+    AnthropicMessagesProvider,
     GeminiVisionProvider,
     OpenAICompatibleChatProvider,
     ResponsesVisionProvider,
@@ -85,7 +86,16 @@ def test_gemini_image_manifest_exposes_current_nano_banana_choices():
     assert "gemini-3.1-flash-lite-image" in choices
 
 
-@pytest.mark.parametrize("provider_id", ["aliyun_bailian", "siliconflow"])
+@pytest.mark.parametrize(
+    "provider_id",
+    [
+        "aliyun_bailian",
+        "siliconflow",
+        "zhipu_glm",
+        "volcengine_ark",
+        "tencent_hunyuan",
+    ],
+)
 def test_openai_chat_provider_contract_is_offline_and_configurable(provider_id):
     transport = RecordingJsonTransport(
         [
@@ -128,7 +138,10 @@ def test_openai_chat_provider_contract_is_offline_and_configurable(provider_id):
     assert wire.body["messages"][1]["content"][1]["image_url"][
         "url"
     ].startswith("data:image/png;base64,")
-    assert wire.body["response_format"] == {"type": "json_object"}
+    if provider.manifest.options["structured_output_mode"] == "json_object":
+        assert wire.body["response_format"] == {"type": "json_object"}
+    else:
+        assert "response_format" not in wire.body
     assert "JSON" in wire.body["messages"][0]["content"]
     assert "SCENELENS_OUTPUT_JSON_SCHEMA=" in wire.body["messages"][1][
         "content"
@@ -161,6 +174,87 @@ def test_responses_provider_contract_uses_strict_schema(provider_id):
     assert wire.body["store"] is False
     assert wire.body["text"]["format"]["schema"] == SCHEMA
     assert wire.body["text"]["format"]["strict"] is True
+
+
+def test_anthropic_contract_uses_messages_vision_and_native_schema():
+    transport = RecordingJsonTransport(
+        [
+            {
+                "id": "msg_test",
+                "model": "claude-sonnet-5",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps({"findings": []}),
+                    }
+                ],
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }
+        ]
+    )
+    provider = AnthropicMessagesProvider(
+        _manifest("anthropic_claude"),
+        transport,
+    )
+
+    response = provider.review(
+        _request(max_output_tokens=12000),
+        "test-secret",
+        CancellationToken(),
+    )
+
+    assert response.output == {"findings": []}
+    wire = transport.requests[0]
+    assert wire.url.endswith("/messages")
+    assert wire.headers["x-api-key"] == "test-secret"
+    assert wire.headers["anthropic-version"] == "2023-06-01"
+    assert wire.body["max_tokens"] == 12000
+    assert wire.body["output_config"]["format"]["schema"] == SCHEMA
+    image = wire.body["messages"][0]["content"][1]
+    assert image["type"] == "image"
+    assert image["source"]["type"] == "base64"
+    assert image["source"]["media_type"] == "image/png"
+    assert "temperature" not in wire.body
+
+
+def test_anthropic_retries_without_native_schema_on_unsupported_model():
+    class RejectNativeSchemaOnce(RecordingJsonTransport):
+        def send(self, request, cancellation):
+            self.requests.append(request)
+            if len(self.requests) == 1:
+                raise ProviderError(
+                    "unsupported output_config",
+                    code="http_400",
+                    technical_detail="output_config is not supported",
+                )
+            return {
+                "model": "claude-haiku-4-5",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps({"findings": []}),
+                    }
+                ],
+            }
+
+    transport = RejectNativeSchemaOnce([])
+    provider = AnthropicMessagesProvider(
+        _manifest("anthropic_claude"),
+        transport,
+    )
+
+    response = provider.review(
+        _request(),
+        "secret",
+        CancellationToken(),
+    )
+
+    assert response.output == {"findings": []}
+    assert "output_config" in transport.requests[0].body
+    assert "output_config" not in transport.requests[1].body
+    assert "SCENELENS_OUTPUT_JSON_SCHEMA=" in transport.requests[1].body[
+        "messages"
+    ][0]["content"][-1]["text"]
 
 
 def test_gemini_provider_contract_uses_inline_image_and_json_schema():
@@ -573,7 +667,16 @@ def test_default_registry_creation_is_offline_and_lists_image_edit_slots():
         for item in registry.for_capability(ProviderCapability.IMAGE_EDIT)
     }
 
-    assert vision_ids[:3] == ["mock", "aliyun_bailian", "siliconflow"]
+    assert vision_ids[:7] == [
+        "mock",
+        "aliyun_bailian",
+        "siliconflow",
+        "zhipu_glm",
+        "volcengine_ark",
+        "tencent_hunyuan",
+        "openai",
+    ]
+    assert "anthropic_claude" in vision_ids
     assert {
         "mock",
         "aliyun_wanxiang",

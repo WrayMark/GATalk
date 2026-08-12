@@ -98,10 +98,10 @@ class ReviewCenterStore:
             return store
         data = load_json(entry)
         if data.get("format") != FORMAT_ID:
-            raise ValueError("审阅中心数据格式无效。")
+            raise ValueError("制作任务中心数据格式无效。")
         version = int(data.get("format_version", 0))
         if version > FORMAT_VERSION:
-            raise ValueError("审阅中心由更高版本 GATalk 创建。")
+            raise ValueError("制作任务中心数据由更高版本 GATalk 创建。")
         store = cls(
             folder,
             ReviewCenterState.from_dict(data.get("state", {})),
@@ -121,7 +121,7 @@ class ReviewCenterStore:
 
     def save(self, state: ReviewCenterState | None = None) -> None:
         if self.read_only:
-            raise ValueError("审阅中心已被另一个 GATalk 进程打开，当前为只读。")
+            raise ValueError("制作任务中心已被另一个 GATalk 进程打开，当前为只读。")
         if state is not None:
             self.state = state
         self.state = replace(self.state, updated_at=utc_now())
@@ -167,8 +167,8 @@ class ReviewCenterStore:
             priority = "medium"
         task = ReviewTaskRecord(
             task_id=str(payload.get("task_id") or uuid.uuid4()),
-            title=str(payload.get("title", "未命名审阅任务")).strip()
-            or "未命名审阅任务",
+            title=str(payload.get("title", "未命名制作任务")).strip()
+            or "未命名制作任务",
             description=str(payload.get("description", "")).strip(),
             acceptance_criteria=str(
                 payload.get("acceptance_criteria", "")
@@ -203,7 +203,7 @@ class ReviewCenterStore:
 
     def update_task(self, task: ReviewTaskRecord) -> ReviewTaskRecord:
         if task.task_id not in {item.task_id for item in self.state.tasks}:
-            raise ValueError("审阅任务不存在。")
+            raise ValueError("制作任务不存在。")
         if task.status not in TASK_STATUSES:
             raise ValueError("任务状态无效。")
         if task.priority not in TASK_PRIORITIES:
@@ -290,7 +290,7 @@ class ReviewCenterStore:
         notes: str = "",
     ) -> TaskVerificationRecord:
         if task_id not in {item.task_id for item in self.state.tasks}:
-            raise ValueError("审阅任务不存在。")
+            raise ValueError("制作任务不存在。")
         if state not in VERIFICATION_STATES:
             raise ValueError("复查状态无效。")
         record = TaskVerificationRecord(
@@ -379,7 +379,7 @@ class ReviewCenterStore:
 
     def update_gate(self, gate: QualityGateRecord) -> QualityGateRecord:
         if gate.gate_id not in {item.gate_id for item in self.state.gates}:
-            raise ValueError("质量门禁不存在。")
+            raise ValueError("验收标准不存在。")
         if gate.state not in GATE_STATES:
             raise ValueError("门禁状态无效。")
         updated = replace(gate, updated_at=utc_now())
@@ -423,7 +423,7 @@ class ReviewCenterStore:
             None,
         )
         if gate is None:
-            raise ValueError("质量门禁不存在。")
+            raise ValueError("验收标准不存在。")
         if state not in GATE_STATES or state == "not_evaluated":
             raise ValueError("门禁复查状态无效。")
         now = utc_now()

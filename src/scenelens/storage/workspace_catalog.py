@@ -484,7 +484,7 @@ def _review_center_records(root: Path) -> list[WorkspaceSearchRecord]:
                     module_id="gatalk.review_control",
                     workspace_id="review_control",
                     project_id=project_id,
-                    project_title=str(item.get("source_project_title", "审阅中心")),
+                    project_title=str(item.get("source_project_title", "制作任务中心")),
                     project_root=str(item.get("source_project_path", root)),
                     entity_type=entity_type,
                     entity_id=entity_id,

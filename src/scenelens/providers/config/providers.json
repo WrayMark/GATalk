@@ -38,13 +38,58 @@
       "base_url": "https://api.siliconflow.cn/v1",
       "capabilities": ["vision_review", "structured_output"],
       "default_models": {
-        "vision_review": "Qwen/Qwen2-VL-72B-Instruct",
-        "structured_output": "Qwen/Qwen2-VL-72B-Instruct"
+        "vision_review": "Qwen/Qwen3-VL-32B-Instruct",
+        "structured_output": "Qwen/Qwen3-VL-32B-Instruct"
       },
       "credential_target": "GATalk/provider/siliconflow",
       "optional": true,
       "mainland_priority": 20,
       "options": {"structured_output_mode": "json_object"}
+    },
+    {
+      "provider_id": "zhipu_glm",
+      "display_name": "智谱 GLM Vision",
+      "api_style": "openai_chat",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "capabilities": ["vision_review", "structured_output"],
+      "default_models": {
+        "vision_review": "glm-5v-turbo",
+        "structured_output": "glm-5v-turbo"
+      },
+      "credential_target": "GATalk/provider/zhipu_glm",
+      "optional": true,
+      "mainland_priority": 30,
+      "options": {"structured_output_mode": "prompt_only"}
+    },
+    {
+      "provider_id": "volcengine_ark",
+      "display_name": "火山方舟 Doubao Vision",
+      "api_style": "openai_chat",
+      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "capabilities": ["vision_review", "structured_output"],
+      "default_models": {
+        "vision_review": "doubao-seed-2-0-lite-260215",
+        "structured_output": "doubao-seed-2-0-lite-260215"
+      },
+      "credential_target": "GATalk/provider/volcengine_ark",
+      "optional": true,
+      "mainland_priority": 40,
+      "options": {"structured_output_mode": "prompt_only"}
+    },
+    {
+      "provider_id": "tencent_hunyuan",
+      "display_name": "腾讯混元 Vision",
+      "api_style": "openai_chat",
+      "base_url": "https://api.hunyuan.cloud.tencent.com/v1",
+      "capabilities": ["vision_review", "structured_output"],
+      "default_models": {
+        "vision_review": "hunyuan-vision",
+        "structured_output": "hunyuan-vision"
+      },
+      "credential_target": "GATalk/provider/tencent_hunyuan",
+      "optional": true,
+      "mainland_priority": 50,
+      "options": {"structured_output_mode": "prompt_only"}
     },
     {
       "provider_id": "openai",
@@ -53,12 +98,50 @@
       "base_url": "https://api.openai.com/v1",
       "capabilities": ["vision_review", "structured_output"],
       "default_models": {
-        "vision_review": "gpt-5",
-        "structured_output": "gpt-5"
+        "vision_review": "gpt-5.6-terra",
+        "structured_output": "gpt-5.6-terra"
       },
       "credential_target": "GATalk/provider/openai",
       "optional": true,
-      "mainland_priority": 80
+      "mainland_priority": 80,
+      "options": {
+        "model_choices": {
+          "vision_review": [
+            {"id": "gpt-5.6-sol", "label": "GPT-5.6 Sol（最高能力）"},
+            {"id": "gpt-5.6-terra", "label": "GPT-5.6 Terra（均衡，推荐）"},
+            {"id": "gpt-5.6-luna", "label": "GPT-5.6 Luna（低成本）"}
+          ],
+          "structured_output": [
+            {"id": "gpt-5.6-sol", "label": "GPT-5.6 Sol（最高能力）"},
+            {"id": "gpt-5.6-terra", "label": "GPT-5.6 Terra（均衡，推荐）"},
+            {"id": "gpt-5.6-luna", "label": "GPT-5.6 Luna（低成本）"}
+          ]
+        }
+      }
+    },
+    {
+      "provider_id": "anthropic_claude",
+      "display_name": "Anthropic Claude",
+      "api_style": "anthropic_messages",
+      "base_url": "https://api.anthropic.com/v1",
+      "capabilities": ["vision_review", "structured_output"],
+      "default_models": {
+        "vision_review": "claude-sonnet-5",
+        "structured_output": "claude-sonnet-5"
+      },
+      "credential_target": "GATalk/provider/anthropic_claude",
+      "optional": true,
+      "mainland_priority": 85,
+      "options": {
+        "default_max_output_tokens": 16384,
+        "model_choices": {
+          "vision_review": [
+            {"id": "claude-opus-4-8", "label": "Claude Opus 4.8（最高能力）"},
+            {"id": "claude-sonnet-5", "label": "Claude Sonnet 5（均衡，推荐）"},
+            {"id": "claude-haiku-4-5", "label": "Claude Haiku 4.5（低成本）"}
+          ]
+        }
+      }
     },
     {
       "provider_id": "google_gemini",

@@ -20,7 +20,7 @@ def test_hub_presents_knowledge_as_platform_before_professional_workbenches(qtbo
     labels = [button.text() for button in hub.findChildren(QPushButton)]
 
     assert "进入参考资料与知识库" in labels
-    assert "进入审阅任务与质量门禁中心" in labels
+    assert "进入制作任务与验收中心" in labels
     assert "进入作品研究集合与对照研究" in labels
     assert "进入作品研究" in labels
 
@@ -40,7 +40,7 @@ def test_new_workspaces_can_be_constructed_offline(qtbot, tmp_path):
     assert "参考资料与知识库" in knowledge.windowTitle()
     assert "作品研究集合与对照研究" in comparison.windowTitle()
     assert comparison.provider_combo.count() > 0
-    assert "审阅任务与质量门禁中心" in review.windowTitle()
+    assert "制作任务与验收中心" in review.windowTitle()
 
 
 def test_review_control_accepts_cross_module_handoff(qtbot, tmp_path):

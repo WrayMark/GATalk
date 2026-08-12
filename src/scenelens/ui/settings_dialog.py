@@ -99,7 +99,7 @@ class GlobalSettingsDialog(QDialog):
 
         self.accent_combo = QComboBox()
         for label, value in (
-            ("主美紫", "violet"),
+            ("深紫色", "violet"),
             ("工作台蓝", "blue"),
             ("青绿色", "teal"),
             ("暖橙色", "orange"),

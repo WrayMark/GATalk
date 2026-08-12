@@ -125,3 +125,48 @@ def test_settings_only_exposes_languages_with_usable_catalog_coverage(qtbot):
 
     assert locales == {"system", "zh-CN", "zh-TW", "en", "ja", "fr"}
     assert "de" not in locales
+
+
+def test_professional_navigation_and_review_terms_are_curated_in_every_locale():
+    manager = configure_localization(QApplication.instance(), "zh-CN")
+    expected = {
+        "zh-TW": {
+            "←  工作台首页": "←  工作台首頁",
+            "制作任务与验收中心": "製作工作與驗收中心",
+            "综合美术审阅": "綜合美術審閱",
+            "作品解读": "作品解讀",
+            "运行状态": "執行狀態",
+            "分析框架": "分析架構",
+        },
+        "en": {
+            "←  工作台首页": "←  Workbench Home",
+            "制作任务与验收中心": "Production Tasks & Acceptance",
+            "综合美术审阅": "Comprehensive Art Review",
+            "作品解读": "Artwork Interpretation",
+            "运行状态": "Activity",
+            "分析框架": "Analysis Framework",
+        },
+        "ja": {
+            "←  工作台首页": "←  ワークベンチ ホーム",
+            "制作任务与验收中心": "制作タスクと受入確認",
+            "综合美术审阅": "総合アートレビュー",
+            "作品解读": "作品解説",
+            "运行状态": "実行状況",
+            "分析框架": "分析フレームワーク",
+        },
+        "fr": {
+            "←  工作台首页": "←  Accueil des espaces de travail",
+            "制作任务与验收中心": "Tâches de production et validation",
+            "综合美术审阅": "Revue artistique complète",
+            "作品解读": "Lecture de l’œuvre",
+            "运行状态": "Activité",
+            "分析框架": "Cadre d’analyse",
+        },
+    }
+    try:
+        for locale, values in expected.items():
+            manager.set_locale(locale)
+            for source, target in values.items():
+                assert manager.translate_text(source) == target
+    finally:
+        manager.set_locale("zh-CN")

@@ -48,7 +48,7 @@ MODULE_LABELS = {
     "scenelens.visual_review": "场景美术控制",
     "scenelens.artwork_study": "作品研究",
     "scenelens.asset_breakdown": "资产拆分",
-    "gatalk.review_control": "审阅中心",
+    "gatalk.review_control": "制作任务中心",
 }
 ENTITY_LABELS = {
     "review_finding": "审阅发现",
@@ -58,7 +58,7 @@ ENTITY_LABELS = {
     "dimension_study": "作品研究维度",
     "asset": "资产项",
     "asset_item": "资产项",
-    "workbench_task": "场景审阅任务",
+    "workbench_task": "场景制作任务",
     "manual": "手动任务",
 }
 STATUS_LABELS = {
@@ -98,7 +98,7 @@ class ReviewControlWindow(QMainWindow):
         self._store = store or ReviewCenterStore.open_default()
         self._current_task_id = ""
         self._current_gate_id = ""
-        self.setWindowTitle("GATalk — 审阅任务与质量门禁中心")
+        self.setWindowTitle("GATalk — 制作任务与验收中心")
         self.resize(1500, 900)
         self.setMinimumSize(1080, 700)
         self._build_ui()
@@ -108,16 +108,12 @@ class ReviewControlWindow(QMainWindow):
             for button in self.findChildren(QPushButton):
                 button.setEnabled(False)
             self.statusBar().showMessage(
-                "审阅中心已被另一个 GATalk 进程占用写权限；当前可查看和导出。"
+                "制作任务中心已被另一个 GATalk 进程占用写权限；当前可查看和导出。"
             )
 
     def _build_ui(self) -> None:
         file_menu = self.menuBar().addMenu("文件")
-        home = QAction("工作台首页", self)
-        home.setShortcut(QKeySequence("Ctrl+Shift+H"))
-        home.triggered.connect(self.workspace_home_requested)
-        file_menu.addAction(home)
-        export = QAction("导出审阅中心 JSON…", self)
+        export = QAction("导出任务与验收数据…", self)
         export.triggered.connect(self._export)
         file_menu.addAction(export)
         backup = QAction("立即备份", self)
@@ -129,7 +125,7 @@ class ReviewControlWindow(QMainWindow):
         outer.setContentsMargins(18, 14, 18, 14)
         outer.setSpacing(12)
         header = QHBoxLayout()
-        title = QLabel("审阅任务与质量门禁中心")
+        title = QLabel("制作任务与验收中心")
         title.setObjectName("heroTitle")
         header.addWidget(title)
         header.addStretch(1)
@@ -138,12 +134,12 @@ class ReviewControlWindow(QMainWindow):
         header.addWidget(self.summary)
         outer.addLayout(header)
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_tasks_tab(), "审阅任务")
-        self.tabs.addTab(self._build_gates_tab(), "质量门禁")
+        self.tabs.addTab(self._build_tasks_tab(), "制作任务")
+        self.tabs.addTab(self._build_gates_tab(), "验收标准")
         outer.addWidget(self.tabs, 1)
         self.setCentralWidget(root)
         self.statusBar().showMessage(
-            "任务和门禁保存在本机审阅中心；来源项目不会被反向自动修改。"
+            "制作任务和验收标准保存在本机；来源项目不会被自动改写。"
         )
 
     def _build_tasks_tab(self) -> QWidget:
@@ -180,7 +176,7 @@ class ReviewControlWindow(QMainWindow):
         self.task_tree.currentItemChanged.connect(self._show_task)
         left_layout.addWidget(self.task_tree, 1)
         task_actions = QHBoxLayout()
-        add = QPushButton("新建审阅任务")
+        add = QPushButton("新建制作任务")
         add.clicked.connect(self._new_task)
         task_actions.addWidget(add)
         start = QPushButton("批量开始")
@@ -299,7 +295,7 @@ class ReviewControlWindow(QMainWindow):
         self.gate_tree.setRootIsDecorated(False)
         self.gate_tree.currentItemChanged.connect(self._show_gate)
         left_layout.addWidget(self.gate_tree, 1)
-        add = QPushButton("新建质量门禁")
+        add = QPushButton("新建验收标准")
         add.clicked.connect(self._new_gate)
         left_layout.addWidget(add)
         splitter.addWidget(left)
@@ -477,7 +473,7 @@ class ReviewControlWindow(QMainWindow):
         task = self._store.add_task_from_handoff(
             {
                 "task_id": "",
-                "title": "新建审阅任务",
+                "title": "新建制作任务",
                 "source_module_id": "gatalk.review_control",
                 "source_entity_type": "manual",
                 "source_entity_id": str(id(self)) + str(len(self._store.state.tasks)),
@@ -624,7 +620,7 @@ class ReviewControlWindow(QMainWindow):
 
     def _new_gate(self) -> None:
         gate = self._store.add_gate(
-            name="新建质量门禁",
+            name="新建验收标准",
             dimension="综合",
             acceptance_criteria="请写明可复核的通过条件。",
             required=True,
@@ -684,7 +680,7 @@ class ReviewControlWindow(QMainWindow):
         gate = self._gate()
         if gate is None:
             return
-        value = VerificationDialog("评估质量门禁", True, self)
+        value = VerificationDialog("记录验收结果", True, self)
         if value.exec() != QDialog.DialogCode.Accepted:
             return
         self._store.evaluate_gate(
@@ -710,11 +706,11 @@ class ReviewControlWindow(QMainWindow):
 
     def _export(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
-            self, "导出审阅中心", "GATalk_审阅中心.json", "JSON (*.json)"
+            self, "导出任务与验收数据", "GATalk_制作任务与验收.json", "JSON (*.json)"
         )
         if path:
             self._store.export(path)
-            self.statusBar().showMessage("审阅中心已导出。", 4000)
+            self.statusBar().showMessage("任务与验收数据已导出。", 4000)
 
     def _backup(self) -> None:
         path = self._store.backup()

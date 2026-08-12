@@ -111,12 +111,12 @@ class WorkspaceHubWindow(QMainWindow):
             (
                 "01", "scene_art_control", "REVIEW", "场景美术控制",
                 "围绕制作目标、参考图与 UE 截图，完成证据化审阅、任务和版本复查。",
-                ("双图与成对区域对照", "主美、灯光专项审阅", "优化预演与版本闭环"),
+                ("双图与成对区域对照", "美术方向与场景灯光审阅", "优化预演与版本复查"),
             ),
             (
                 "02", "artwork_study", "STUDY", "作品研究",
                 "逐层研究一张原画、概念图或成品，理解视觉选择为何有效。",
-                ("单图形式证据", "主美十二维拆解", "学习笔记与综合报告"),
+                ("单图形式证据", "视觉语言与场景表达", "学习笔记与综合报告"),
             ),
             (
                 "03", "asset_breakdown", "ASSETS", "资产拆分工作台",
@@ -162,10 +162,10 @@ class WorkspaceHubWindow(QMainWindow):
         header.addLayout(brand_stack)
         header.addStretch(1)
         search = QPushButton("全局检索  Ctrl+K")
-        search.setToolTip("跨项目搜索资料、研究结论、资产、任务和质量门禁")
+        search.setToolTip("跨项目搜索资料、研究结论、资产、任务和验收标准")
         search.clicked.connect(self.global_search_requested)
         header.addWidget(search)
-        tasks = QPushButton("任务中心")
+        tasks = QPushButton("运行状态")
         tasks.setToolTip("查看 AI、分析、导出和打包任务的状态与失败原因")
         tasks.clicked.connect(self.task_center_requested)
         header.addWidget(tasks)
@@ -190,7 +190,7 @@ class WorkspaceHubWindow(QMainWindow):
         layout = QHBoxLayout(platform)
         layout.setContentsMargins(28, 24, 28, 24)
         copy = QVBoxLayout()
-        eyebrow = QLabel("平台层  ·  跨工作台资料基础设施")
+        eyebrow = QLabel("资料平台  ·  跨工作台统一管理")
         eyebrow.setProperty("role", "muted")
         copy.addWidget(eyebrow)
         title = QLabel("参考资料与知识库")
@@ -222,21 +222,21 @@ class WorkspaceHubWindow(QMainWindow):
         platform.setObjectName("heroPanel")
         layout = QVBoxLayout(platform)
         layout.setContentsMargins(28, 24, 28, 24)
-        eyebrow = QLabel("平台层  ·  跨项目审阅闭环")
+        eyebrow = QLabel("项目管理  ·  跨项目任务与版本验收")
         eyebrow.setProperty("role", "muted")
         layout.addWidget(eyebrow)
-        title = QLabel("审阅任务与质量门禁中心")
+        title = QLabel("制作任务与验收中心")
         title.setObjectName("heroTitle")
         layout.addWidget(title)
         description = QLabel(
-            "统一接收场景审阅、作品研究和资产拆分中由用户确认的任务，"
-            "记录验收条件，并按新版本复查是否改善或解决。"
+            "集中管理场景审阅、作品研究和资产拆分中已确认的制作任务，"
+            "设置验收标准，并按版本记录复查结果。"
         )
         description.setWordWrap(True)
         description.setProperty("role", "muted")
         layout.addWidget(description)
         layout.addStretch(1)
-        action = QPushButton("进入审阅任务与质量门禁中心")
+        action = QPushButton("进入制作任务与验收中心")
         action.setProperty("primary", True)
         action.clicked.connect(
             lambda: self.workspace_selected.emit("review_control")

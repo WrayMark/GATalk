@@ -27,8 +27,8 @@ ENTITY_LABELS = {
     "asset": "资产",
     "dimension_study": "研究维度",
     "comparison_work": "对照作品",
-    "review_task": "审阅任务",
-    "quality_gate": "质量门禁",
+    "review_task": "制作任务",
+    "quality_gate": "验收标准",
 }
 
 
@@ -46,7 +46,7 @@ class GlobalSearchDialog(QDialog):
         self.setWindowTitle("GATalk 全局检索")
         self.resize(1040, 680)
         layout = QVBoxLayout(self)
-        header = QLabel("搜索项目、资料、研究结论、资产、任务和质量门禁")
+        header = QLabel("搜索项目、资料、研究结论、资产、任务和验收标准")
         header.setObjectName("sectionTitle")
         layout.addWidget(header)
         note = QLabel(
@@ -139,5 +139,5 @@ def _workspace_label(workspace_id: str) -> str:
         "asset_breakdown": "资产拆分",
         "reference_knowledge": "参考资料库",
         "comparative_study": "对照研究",
-        "review_control": "审阅中心",
+        "review_control": "制作任务中心",
     }.get(workspace_id, workspace_id)

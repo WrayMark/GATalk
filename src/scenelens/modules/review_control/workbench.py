@@ -7,8 +7,8 @@ def register_review_control_workbench(registry: WorkbenchRegistry) -> None:
         WorkspaceDescriptor(
             module_id=MODULE_ID,
             workspace_id="review_control",
-            display_name="审阅任务与质量门禁中心",
-            version="0.14.0",
+            display_name="制作任务与验收中心",
+            version="0.18.0",
             level="platform",
             category="review-governance",
         )
