@@ -9,6 +9,10 @@ a = Analysis(
     binaries=[],
     datas=[
         (
+            str(project_root / 'src' / 'scenelens' / 'i18n' / '*.json'),
+            'scenelens/i18n',
+        ),
+        (
             str(
                 project_root
                 / 'src'

@@ -83,9 +83,14 @@ class RegionMetadataDialog(QDialog):
         layout.addWidget(buttons)
 
     def values(self) -> tuple[str, str, str]:
+        semantic_data = self.semantic_combo.currentData()
         return (
             self.name_edit.text().strip(),
-            self.semantic_combo.currentText().strip(),
+            str(semantic_data)
+            if semantic_data is not None
+            and self.semantic_combo.currentText()
+            == self.semantic_combo.itemText(self.semantic_combo.currentIndex())
+            else self.semantic_combo.currentText().strip(),
             "" if self.notes_edit is None else self.notes_edit.text().strip(),
         )
 

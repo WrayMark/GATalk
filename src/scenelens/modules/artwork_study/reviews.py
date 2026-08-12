@@ -9,6 +9,7 @@ from typing import Any, Mapping
 from scenelens.core.schema_validation import require_valid_json_schema
 from scenelens.core.workspaces import ReviewerDescriptor
 from scenelens.providers.contracts import ProviderImage, VisionReviewRequest
+from scenelens.core.locales import current_locale
 
 from . import MODULE_ID
 
@@ -247,9 +248,10 @@ class ArtworkMasterStudyReview:
             raise ValueError(
                 f"作品研究必须完整覆盖十二维；缺少 {missing}，未知 {unexpected}。"
             )
-        language_issues = non_simplified_chinese_paths(output)
-        if language_issues:
-            raise ArtworkStudyLanguageError(language_issues)
+        if current_locale() == "zh-CN":
+            language_issues = non_simplified_chinese_paths(output)
+            if language_issues:
+                raise ArtworkStudyLanguageError(language_issues)
         return dict(output)
 
     def create_language_normalization_request(

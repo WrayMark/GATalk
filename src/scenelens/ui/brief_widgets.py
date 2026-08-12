@@ -306,7 +306,13 @@ class BriefEditorDialog(QDialog):
             if isinstance(editor, QTextEdit):
                 result[spec.key] = editor.toPlainText().strip()
             elif isinstance(editor, QComboBox):
-                result[spec.key] = editor.currentText().strip()
+                data = editor.currentData()
+                result[spec.key] = (
+                    str(data)
+                    if data is not None
+                    and editor.currentText() == editor.itemText(editor.currentIndex())
+                    else editor.currentText().strip()
+                )
             elif isinstance(editor, MultiPresetEditor):
                 result[spec.key] = editor.value()
             elif isinstance(editor, QLineEdit):
@@ -327,11 +333,14 @@ class BriefEditorDialog(QDialog):
         if spec.editor == "preset_single" and spec.preset_key:
             editor = QComboBox()
             editor.setEditable(True)
-            editor.addItems(
-                option.label
-                for option in presets.field(spec.preset_key).options
-            )
-            editor.setCurrentText(_display_value(value))
+            for option in presets.field(spec.preset_key).options:
+                editor.addItem(option.label, option.label)
+            wanted = _display_value(value)
+            index = editor.findData(wanted)
+            if index >= 0:
+                editor.setCurrentIndex(index)
+            else:
+                editor.setEditText(wanted)
             return editor
         if spec.editor == "preset_multi" and spec.preset_key:
             return MultiPresetEditor(

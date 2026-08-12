@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from scenelens.ui.localization import tr
+
 
 class WorkspaceCard(QFrame):
     selected = Signal(str)
@@ -56,7 +58,13 @@ class WorkspaceCard(QFrame):
             label.setWordWrap(True)
             layout.addWidget(label)
         layout.addStretch(1)
-        button = QPushButton(f"进入{title}")
+        action_labels = {
+            "场景美术控制": "进入场景美术控制",
+            "作品研究": "进入作品研究",
+            "资产拆分工作台": "进入资产拆分工作台",
+            "作品研究集合与对照研究": "进入作品研究集合与对照研究",
+        }
+        button = QPushButton(action_labels.get(title, title))
         button.setProperty("primary", True)
         button.clicked.connect(lambda: self.selected.emit(self.workspace_id))
         layout.addWidget(button)

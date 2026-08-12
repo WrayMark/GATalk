@@ -14,6 +14,7 @@ from scenelens.storage.app_settings import AppSettings, AppSettingsStore
 from scenelens.ui.settings_dialog import GlobalSettingsDialog
 from scenelens.ui.theme import apply_appearance
 from scenelens.ui.command_palette import CommandEntry, CommandPaletteDialog
+from scenelens.ui.localization import configure_localization
 
 
 class GlobalSettingsController(QObject):
@@ -31,6 +32,9 @@ class GlobalSettingsController(QObject):
         self.app = app
         self.store = store or AppSettingsStore()
         self.settings = self.store.load()
+        self.localization = configure_localization(
+            self.app, self.settings.ui_language
+        )
         self._window_keys: dict[QMainWindow, str] = {}
         self.last_persistence_error = ""
         apply_appearance(self.app, self.settings)
@@ -194,6 +198,7 @@ class GlobalSettingsController(QObject):
     def apply_settings(self, settings: AppSettings) -> None:
         self.settings = settings
         self.store.save(self.settings)
+        self.localization.set_locale(self.settings.ui_language)
         apply_appearance(self.app, self.settings)
         self.settings_changed.emit(self.settings)
 

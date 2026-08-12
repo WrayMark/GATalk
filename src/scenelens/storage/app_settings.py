@@ -8,14 +8,23 @@ from typing import Any, Mapping
 from scenelens.storage.atomic import atomic_write_json, load_json
 
 
-SETTINGS_FORMAT_VERSION = 1
+SETTINGS_FORMAT_VERSION = 2
 THEME_MODES = {"system", "light", "dark"}
 ACCENT_IDS = {"violet", "blue", "teal", "orange"}
 DENSITY_MODES = {"compact", "comfortable", "spacious"}
+UI_LANGUAGES = {
+    "system",
+    "zh-CN",
+    "zh-TW",
+    "en",
+    "ja",
+    "fr",
+}
 
 
 @dataclass(frozen=True)
 class AppSettings:
+    ui_language: str = "zh-CN"
     theme_mode: str = "system"
     accent: str = "violet"
     font_size: int = 10
@@ -26,6 +35,8 @@ class AppSettings:
     )
 
     def __post_init__(self) -> None:
+        if self.ui_language not in UI_LANGUAGES:
+            raise ValueError("全局设置中的界面语言无效。")
         if self.theme_mode not in THEME_MODES:
             raise ValueError("全局设置中的主题模式无效。")
         if self.accent not in ACCENT_IDS:
@@ -55,6 +66,7 @@ class AppSettings:
                 "state": str(item.get("state", "")),
             }
         return cls(
+            ui_language=str(value.get("ui_language", "zh-CN")),
             theme_mode=str(value.get("theme_mode", "system")),
             accent=str(value.get("accent", "violet")),
             font_size=int(value.get("font_size", 10)),
@@ -108,11 +120,15 @@ class AppSettingsStore:
             version = int(value.get("format_version", 0))
             if version > SETTINGS_FORMAT_VERSION:
                 return AppSettings()
-            return AppSettings.from_dict(value)
-        except (OSError, TypeError, ValueError):
+            try:
+                return AppSettings.from_dict(value)
+            except ValueError:
+                repaired = dict(value)
+                repaired["ui_language"] = "zh-CN"
+                return AppSettings.from_dict(repaired)
+        except (OSError, TypeError):
             return AppSettings()
 
     def save(self, settings: AppSettings) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(self.path, settings.to_dict())
-

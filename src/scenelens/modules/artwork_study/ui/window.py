@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from scenelens.core.locales import current_locale
 
 from scenelens.analysis.artwork_study import (
     ArtworkLocalAnalysis,
@@ -158,8 +159,8 @@ class ArtworkDisclosureDialog(QDialog):
             fallback_notice.setProperty("tone", "warning")
             layout.addWidget(fallback_notice)
         language_notice = QLabel(
-            "作品研究固定输出简体中文。若模型首次返回英文或繁体中文，"
-            "最多追加 1 次不含图片的中文规范化请求，可能产生额外费用。"
+            "AI 研究结果使用当前界面语言。简体中文模式下若首次返回语言不符，"
+            "最多追加 1 次不含图片的文字规范化请求，可能产生额外费用。"
         )
         language_notice.setWordWrap(True)
         language_notice.setProperty("tone", "warning")
@@ -914,6 +915,9 @@ class ArtworkStudyWindow(QMainWindow):
         )
         response = execution_result.response
         language_normalized = False
+        if current_locale() != "zh-CN":
+            output = self._reviewer.validate_output(response.output)
+            return response, output, language_normalized, execution_result
         try:
             output = self._reviewer.validate_output(response.output)
         except ArtworkStudyLanguageError:
@@ -952,7 +956,7 @@ class ArtworkStudyWindow(QMainWindow):
                 "reviewer_id": self._reviewer.descriptor.reviewer_id,
                 "reviewer_version": self._reviewer.descriptor.version,
                 "image_sha256": self._state.image_sha256,
-                "language": "zh-CN",
+                "language": current_locale(),
                 "language_normalized": bool(value["language_normalized"]),
                 "completed_at": completed_at,
             }
@@ -976,7 +980,7 @@ class ArtworkStudyWindow(QMainWindow):
         language_note = (
             "；已自动规范为简体中文"
             if value["language_normalized"]
-            else "；简体中文"
+            else f"；{current_locale()}"
         )
         fallback_note = (
             f"；原模型 {value['requested_model_id']} 容量不足，"

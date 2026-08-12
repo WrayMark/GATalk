@@ -17,6 +17,17 @@ from PySide6.QtWidgets import (
 )
 
 from scenelens.storage.app_settings import AppSettings
+from scenelens.core.locales import (
+    NATIVE_PREVIEW_LABELS,
+    SUPPORTED_LANGUAGES,
+    SYSTEM_LANGUAGE_LABELS,
+    current_locale,
+)
+from scenelens.ui.localization import (
+    localization_manager,
+    resolve_requested_locale,
+    tr,
+)
 
 
 class GlobalSettingsDialog(QDialog):
@@ -28,8 +39,8 @@ class GlobalSettingsDialog(QDialog):
         self._base_settings = settings
         self.setWindowTitle("GATalk — 全局设置")
         self.setModal(True)
-        self.resize(570, 530)
-        self.setMinimumWidth(520)
+        self.resize(680, 650)
+        self.setMinimumSize(620, 590)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 20, 22, 20)
@@ -48,6 +59,38 @@ class GlobalSettingsDialog(QDialog):
         form = QFormLayout()
         form.setHorizontalSpacing(20)
         form.setVerticalSpacing(12)
+        self.language_combo = QComboBox()
+        self.language_combo.setProperty("gatalkSkipItemTranslation", True)
+        self.language_combo.addItem(
+            SYSTEM_LANGUAGE_LABELS.get(
+                current_locale(),
+                SYSTEM_LANGUAGE_LABELS["zh-CN"],
+            ),
+            "system",
+        )
+        for language in SUPPORTED_LANGUAGES:
+            suffix = (
+                ""
+                if language.release_stage == "source"
+                else f" · {NATIVE_PREVIEW_LABELS[language.locale]}"
+            )
+            self.language_combo.addItem(
+                language.native_name + suffix,
+                language.locale,
+            )
+        form.addRow("界面语言", self.language_combo)
+        language_note = QLabel("保存后立即应用，并在以后启动时保持。")
+        language_note.setProperty("role", "muted")
+        language_note.setWordWrap(True)
+        form.addRow("", language_note)
+        self.language_quality_note = QLabel()
+        self.language_quality_note.setProperty("tone", "warning")
+        self.language_quality_note.setWordWrap(True)
+        self.language_quality_note.setMinimumHeight(72)
+        form.addRow("翻译状态", self.language_quality_note)
+        self.language_combo.currentIndexChanged.connect(
+            self._update_language_quality
+        )
         self.theme_combo = QComboBox()
         self.theme_combo.addItem("跟随 Windows", "system")
         self.theme_combo.addItem("浅色", "light")
@@ -79,6 +122,14 @@ class GlobalSettingsDialog(QDialog):
         self.density_combo.addItem("舒适", "comfortable")
         self.density_combo.addItem("宽松", "spacious")
         form.addRow("控件密度", self.density_combo)
+        for combo in (
+            self.language_combo,
+            self.theme_combo,
+            self.accent_combo,
+            self.font_combo,
+            self.density_combo,
+        ):
+            combo.setMinimumHeight(34)
         layout.addLayout(form)
 
         self.remember_layout_check = QCheckBox(
@@ -143,10 +194,12 @@ class GlobalSettingsDialog(QDialog):
         ).clicked.connect(self._restore_defaults)
         layout.addWidget(buttons)
         self._load(settings)
+        self._update_language_quality()
 
     def current_settings(self) -> AppSettings:
         return replace(
             self._base_settings,
+            ui_language=str(self.language_combo.currentData()),
             theme_mode=str(self.theme_combo.currentData()),
             accent=str(self.accent_combo.currentData()),
             font_size=int(self.font_combo.currentData()),
@@ -158,6 +211,7 @@ class GlobalSettingsDialog(QDialog):
 
     def _load(self, settings: AppSettings) -> None:
         for combo, value in (
+            (self.language_combo, settings.ui_language),
             (self.theme_combo, settings.theme_mode),
             (self.accent_combo, settings.accent),
             (self.font_combo, settings.font_size),
@@ -189,3 +243,46 @@ class GlobalSettingsDialog(QDialog):
         self.clear_layouts_requested.emit()
         self.clear_layout_button.setText("已清除保存的布局")
         self.clear_layout_button.setEnabled(False)
+
+    def _update_language_quality(self) -> None:
+        locale = str(self.language_combo.currentData() or "system")
+        resolved_locale = resolve_requested_locale(locale)
+        if resolved_locale == "zh-CN":
+            self.language_quality_note.setText("简体中文为完整基准语言。")
+            return
+        manager = localization_manager()
+        stage = "preview"
+        reviewed = 0
+        if manager is not None and manager.locale == resolved_locale:
+            translated = manager.translated_count
+            total = manager.total_count
+            reviewed = manager.reviewed_count
+            stage = manager.translation_stage
+        else:
+            translated = 0
+            total = 0
+            try:
+                from importlib.resources import files
+                import json
+                payload = json.loads(
+                    files("scenelens.i18n")
+                    .joinpath(f"{resolved_locale}.json")
+                    .read_text(encoding="utf-8")
+                )
+                translated = int(payload.get("translated_count", 0))
+                total = int(payload.get("total_count", 0))
+                reviewed = int(payload.get("reviewed_count", 0))
+                stage = str(payload.get("translation_stage", "preview"))
+            except (FileNotFoundError, OSError, ValueError, TypeError):
+                pass
+        if stage == "machine_draft":
+            self.language_quality_note.setText(
+                f"{tr('预览语言包')}：{translated}/{total or '—'}；"
+                f"{tr('已校核核心术语')} {reviewed}。"
+                f"{tr('翻译初稿，正式发布前需母语审校。')}"
+            )
+        else:
+            self.language_quality_note.setText(
+                f"{tr('预览语言包')}：{translated}/{total or '—'}；"
+                f"{tr('未覆盖内容回退为简体中文。')}"
+            )

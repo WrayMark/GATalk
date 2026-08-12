@@ -2,7 +2,7 @@
 
 状态：M1A 已复核
 初始日期：2026-07-18
-最近复核：2026-08-08
+最近复核：2026-08-12
 
 本文件用于工程跟踪，不替代正式法律意见。正式对外发行前必须核对最终打包
 产物、传递依赖、许可证文本和通知义务。
@@ -58,6 +58,17 @@ Grounded SAM 2、Florence-2 与 Qwen2.5-VL 仅用于技术路线调研，当前�
 
 0.16.0 未新增运行依赖。双图分布、审阅历史、灯光 Schema 和统一导航均为项目
 内部实现，没有复制第三方界面代码、模型权重或提示词。
+
+0.17.0 未新增运行依赖。运行时本地化使用 PySide6 的 `QTranslator` 和随包 JSON
+目录。开发期使用 Argos Translate（MIT）与 OpenCC Python Reimplemented
+（Apache-2.0）在本机生成翻译初稿；工具、语言模型和权重不进入 Git、运行依赖或
+Windows 安装包。生成目录仍需母语审校，不因工具许可证记录而视为已完成法律或
+语言质量审查。
+
+本次构建期机器初稿使用的 Argos 中文到英文及英文到法文 OPUS-MT 模型 README
+标注原始模型为 CC-BY 4.0；英文到日文模型列出 OPUS、CCAligned、WikiMatrix、
+OpenSubtitles、Wiktionary/Wiktextract 与 Stanza 来源。模型文件不分发；若以后分发
+模型或把自动翻译作为产品功能，必须单独复核数据与模型归属、署名和通知义务。
 
 ## Qt LGPL 待办
 

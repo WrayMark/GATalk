@@ -10,6 +10,7 @@ from scenelens.core.workspaces import ReviewerDescriptor
 from scenelens.modules.artwork_study.reviews import non_simplified_chinese_paths
 from scenelens.modules.comparative_study import MODULE_ID
 from scenelens.providers.contracts import ProviderImage, VisionReviewRequest
+from scenelens.core.locales import current_locale
 
 
 def load_comparative_study_schema() -> Mapping[str, Any]:
@@ -107,9 +108,10 @@ class ComparativeArtworkReview:
 
     def validate_output(self, output: Mapping[str, Any]) -> dict[str, Any]:
         require_valid_json_schema(output, self.descriptor.output_schema)
-        issues = non_simplified_chinese_paths(output)
-        if issues:
-            raise ValueError("AI 对照研究未完整使用简体中文，请更换模型后重试。")
+        if current_locale() == "zh-CN":
+            issues = non_simplified_chinese_paths(output)
+            if issues:
+                raise ValueError("AI 对照研究未完整使用简体中文，请更换模型后重试。")
         return dict(output)
 
 

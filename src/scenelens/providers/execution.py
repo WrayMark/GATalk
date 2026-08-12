@@ -26,6 +26,7 @@ from scenelens.providers.contracts import (
     VisionReviewProvider,
     VisionReviewRequest,
 )
+from scenelens.core.locales import current_locale, output_language_instruction
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,7 @@ class ProviderExecutionService:
         retry_policy: RetryPolicy | None = None,
     ) -> ProviderResponse:
         policy = retry_policy or RetryPolicy()
+        request = _with_output_language(request)
         if policy.max_attempts < 1:
             raise ValueError("max_attempts must be at least one.")
         manifest = getattr(provider, "manifest", None)
@@ -325,6 +327,7 @@ class ProviderExecutionService:
         retry_policy: RetryPolicy | None = None,
     ) -> ProviderResponse:
         policy = retry_policy or RetryPolicy()
+        request = _with_output_language(request)
         if policy.max_attempts < 1:
             raise ValueError("max_attempts must be at least one.")
         manifest = getattr(provider, "manifest", None)
@@ -514,3 +517,24 @@ def _request_module_id(payload: object) -> str:
         if "project" in payload or "shot" in payload:
             return "scenelens.visual_review"
     return "gatalk.ai"
+
+
+def _with_output_language(
+    request: VisionReviewRequest | StructuredOutputRequest,
+) -> VisionReviewRequest | StructuredOutputRequest:
+    # Keep the execution wrapper tolerant of provider-contract test doubles and
+    # third-party adapters that intentionally pass an opaque request object.
+    if not hasattr(request, "payload") or not hasattr(
+        request, "system_instruction"
+    ):
+        return request
+    locale = current_locale()
+    payload = dict(request.payload)
+    payload["output_language"] = locale
+    return replace(
+        request,
+        payload=payload,
+        system_instruction=(
+            request.system_instruction + output_language_instruction(locale)
+        ),
+    )

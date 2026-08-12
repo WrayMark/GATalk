@@ -297,7 +297,7 @@ def write_diagnostic_report(
             "format": "gatalk.diagnostic_report",
             "format_version": 2,
             "created_at": utc_now(),
-            "application": {"name": "GATalk", "version": "0.16.0"},
+            "application": {"name": "GATalk", "version": "0.17.0"},
             "environment": {
                 "system": platform.system(),
                 "release": platform.release(),

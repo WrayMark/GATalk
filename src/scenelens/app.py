@@ -19,6 +19,7 @@ from scenelens.storage.session_guard import ApplicationSessionGuard
 from scenelens.ui.diagnostics_dialog import DiagnosticsDialog
 from scenelens.ui.global_search import GlobalSearchDialog
 from scenelens.ui.task_center import TaskCenterDialog
+from scenelens.ui.localization import configure_localization
 
 
 def _configure_application(
@@ -40,6 +41,8 @@ def _configure_application(
         app,
         settings or AppSettingsStore().load(),
     )
+    resolved_settings = settings or AppSettingsStore().load()
+    configure_localization(app, resolved_settings.ui_language)
     return app
 
 
