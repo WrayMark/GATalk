@@ -1,78 +1,112 @@
-# GATalk Quick User Guide
+# GATalk Illustrated Quick Guide
 
-Applies to version `0.18.0` (unified navigation and visual AI providers)  
-Updated: 2026-08-12
+Version: `0.18.0`; updated: 2026-08-12
 
-This English guide covers the common workflow and the changes in this release. The Simplified
-Chinese guide remains the complete reference while English UI copy is in preview review.
+This guide covers the common workflow in short steps. Button names follow the English UI.
 
-## 1. Start and navigation
+## 1. Start
 
-- Release build: run `GATalk/GATalk.exe` from the current candidate folder.
-- Development build: run `start_dev.cmd`.
-- Imported images remain read-only. GATalk never uploads an image automatically.
-- Every professional workbench has exactly one **Workbench Home** button in the upper-left.
-- Global Search, Activity, and Global Settings remain in the same navigation row. Module-specific
-  import and analysis commands appear in the row below.
-- Moving between Home and a workbench preserves the current normal, maximized, or full-screen state.
-- Press `Ctrl+Shift+H` to return Home, `Ctrl+K` for Global Search, and `Ctrl+,` for Settings.
+Purpose: open a platform or professional workbench from one home screen.
 
-## 2. Main workbenches
+1. Run `GATalk/GATalk.exe`; developers can run `start_dev.cmd`.
+2. Select a workbench. Recent projects appear below.
+3. Press `Ctrl+Shift+H` in any workbench to return Home.
 
-- **Scene Art Control** compares a reference image with UE screenshots, stores versions, runs
-  evidence-based reviews, and tracks revisions.
-- **Artwork Study** examines one concept image or finished artwork for learning.
-- **Asset Breakdown** converts scene art into editable asset plans, prompts, and concept boards.
-- **Comparative Study** studies two to six artworks under the same research question.
-- **References & Knowledge Base** stores reusable images, articles, notes, excerpts, and links.
-- **Production Tasks & Acceptance** collects user-confirmed tasks and version acceptance criteria.
+![Workbench Home keeps platforms, professional workbenches, and recent projects together.](docs/images/user-guide-0.18.0/01-workspace-hub.png)
 
-## 3. Visual AI reviews
+Result: GATalk preserves the current window size and maximized state. Imported images remain read-only, and nothing is uploaded automatically.
 
-1. Open the review or study panel and select a provider.
-2. Keep the default model or enter a model ID available to your account.
-3. Save the API key to Windows Credential Manager.
-4. Select **Review send manifest**, inspect the images and fields, then explicitly confirm.
-5. Review visual evidence, measurement evidence, uncertainty, and conflicts before creating tasks.
+## 2. Global Settings
 
-Supported visual review providers are Alibaba Cloud Model Studio, SiliconFlow, Zhipu GLM,
-Volcengine Ark, Tencent Hunyuan, OpenAI, Anthropic Claude, Google Gemini, and xAI Grok.
-Availability, region, model permission, quota, and cost depend on the provider account.
+1. Press `Ctrl+,`, or choose **Settings > Global Settings**.
+2. Select language, theme, font size, and UI density.
+3. Choose **Apply** to preview and **OK** to save.
 
-Image generation remains available through Wanxiang, Gemini / Nano Banana, OpenAI GPT Image,
-and Grok Imagine. A provider is only shown where it declares the required capability.
+![Global Settings manages language, appearance, density, and common behavior.](docs/images/user-guide-0.18.0/02-global-settings.png)
 
-The **Offline Mock** checks request, UI, storage, and error-handling flows. It is not a local vision
-model, does not make semantic judgments, needs no GPU, and consumes no API quota.
+Saved settings remain active on the next launch. Language changes never rewrite project names, notes, or earlier AI results.
 
-## 4. Language and storage
+Shortcuts: `Ctrl+K` Search; `Ctrl+Z` Undo; `Ctrl+Shift+Z` Redo; `Esc` exit the current tool.
 
-1. Open **Settings > Global Settings** or press `Ctrl+,`.
-2. Choose Follow System, Simplified Chinese, Traditional Chinese, English, Japanese, or French.
-3. Apply the setting. It remains active across restarts.
+## 3. References & Knowledge Base
 
-Changing the UI language does not translate or rewrite project names, notes, imported documents,
-or previous AI results. API keys are not written to project files, SQLite, JSON, logs, or Git.
+Purpose: store reusable images, articles, links, and project notes.
 
-## 5. Common error meanings
+1. Create or open a library.
+2. Create collections and import files, links, or notes.
+3. Add author, source, tags, and research notes, then save.
+4. Create a crop, translate selected text, or reference the item from a project.
 
-- `http_400`: request, model, or structured-output incompatibility. Restore the provider default
-  model and check the provider documentation.
-- `http_401`: invalid, expired, or wrong-provider API key.
-- `http_403`: missing model access, service activation, workspace, or region permission.
-- `http_404`: retired model ID or wrong endpoint.
-- `http_413`: request image is too large; reduce the send resolution.
-- `http_429`: quota or rate limit reached.
-- `http_503` or `connection_closed`: temporary provider or network failure. GATalk performs bounded
-  retries; repeated failures require a later retry or a network check.
+![The library places collections on the left, items in the middle, and source details on the right.](docs/images/user-guide-0.18.0/03-knowledge-base.png)
 
-GATalk never silently sends the same image to a different provider. Error dialogs redact credentials;
-do not share screenshots containing an API key.
+Web links are stored but never fetched automatically. Translation and online analysis require explicit confirmation.
 
-## 6. Current validation limits
+## 4. Artwork Study
 
-- Automated tests are fully offline and do not consume provider quota.
-- New provider adapters have offline request-contract coverage. Each real account still requires one
-  manual visual review to confirm region, model entitlement, quota, and live response behavior.
-- Traditional Chinese, English, Japanese, and French UI packs remain previews pending native-speaker
-  review and high-DPI truncation testing.
+Purpose: study composition, value, colour, light, space, and visual storytelling in one artwork.
+
+1. Create a study and import an image.
+2. Enter the research goal and known context; leave uncertain facts blank.
+3. Inspect **Local Evidence**, then explicitly start **Expert Analysis**.
+4. Record your own conclusions in **Learning Notes**.
+
+![Artwork Study keeps the goal on the left, artwork in the centre, and evidence and notes on the right.](docs/images/user-guide-0.18.0/05-artwork-study.png)
+
+Local measurements and AI interpretation are stored separately.
+
+## 5. Comparative Study
+
+Purpose: compare two to six artworks under one research question.
+
+1. Create a study and import the artworks.
+2. Select axes such as composition, value, or colour organisation.
+3. Compare the images side by side and record shared patterns and key differences.
+
+![Comparative Study keeps images, research axes, and findings in one view.](docs/images/user-guide-0.18.0/04-comparative-study.png)
+
+## 6. Asset Breakdown
+
+Purpose: turn complex concept art into an editable asset plan, generation prompts, and asset boards.
+
+1. Create a project and import the main artwork and optional references.
+2. Complete scene understanding, then select breakdown depth and production goal.
+3. Correct asset names, hierarchy, categories, and source regions.
+4. Generate only selected assets, or prepare prompts for an external image tool.
+5. Export the asset list, images, or board.
+
+![Asset Breakdown links source regions to an editable production hierarchy.](docs/images/user-guide-0.18.0/06-asset-breakdown.png)
+
+Visible evidence, AI inference, and generated completion are labelled separately. Generated images are concept aids, not production-ready models.
+
+## 7. Scene Art Control
+
+Purpose: compare production intent, reference art, and the current UE screenshot.
+
+1. Create a project and complete **Production Intent**.
+2. Create a Shot; import a reference and the current Version.
+3. Compare the canvases and inspect palette, value, and paired-region evidence.
+4. Review the send manifest before starting an AI review.
+5. Convert confirmed findings into tasks and verify them against a new Version.
+
+![Scene Art Control combines project navigation, two canvases, and evidence analysis.](docs/images/user-guide-0.18.0/07-visual-review.png)
+
+Projects restore the active Shot, Version, view, parameters, and analysis history.
+
+## 8. Production Tasks & Acceptance
+
+1. Confirm a finding in its source workbench and create a task.
+2. Filter tasks by project, stage, priority, or status.
+3. Add acceptance criteria and record Passed, Failed, or Insufficient Evidence on a new version.
+
+![Production Tasks & Acceptance keeps tasks, sources, criteria, and gates together.](docs/images/user-guide-0.18.0/08-review-control.png)
+
+The centre stores cross-project indexes and acceptance records; it never rewrites source projects.
+
+## 9. AI and safety
+
+1. Select a provider and model. API keys are stored only in Windows Credential Manager.
+2. Inspect images, fields, resolution, and expected calls before sending.
+3. For `401/403`, check credentials and access; for `404`, check the model ID; for `429`, wait for quota; for `503`, retry later.
+4. Offline Mock validates workflow and structure only. It is not a local vision model.
+
+Without an API key, projects, measurements, regions, tasks, reports, and offline review packages remain available. Every network request requires a user action.

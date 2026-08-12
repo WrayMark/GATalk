@@ -5,9 +5,11 @@ from pathlib import Path
 import re
 
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
+from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -160,6 +162,26 @@ def add_heading(document: Document, text: str, level: int = 1) -> None:
         )
 
 
+def add_figure(document: Document, source: Path, caption: str) -> None:
+    if not source.is_file():
+        raise FileNotFoundError(f"使用手册插图不存在：{source}")
+    with Image.open(source) as image:
+        aspect_ratio = image.width / max(1, image.height)
+    width = Inches(4.7 if aspect_ratio < 1.3 else 6.35)
+    paragraph = document.add_paragraph()
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.paragraph_format.space_before = Pt(4)
+    paragraph.paragraph_format.space_after = Pt(3)
+    paragraph.paragraph_format.keep_with_next = True
+    inline = paragraph.add_run().add_picture(str(source), width=width)
+    inline._inline.docPr.set("descr", caption)
+    label = document.add_paragraph()
+    label.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    label.paragraph_format.space_before = Pt(0)
+    label.paragraph_format.space_after = Pt(10)
+    set_font(label.add_run(caption), size=9, color=MUTED)
+
+
 def build() -> None:
     document = Document()
     section = document.sections[0]
@@ -178,7 +200,7 @@ def build() -> None:
     title.paragraph_format.space_before = Pt(0)
     title.paragraph_format.space_after = Pt(4)
     set_font(
-        title.add_run("GATalk 简明使用手册"),
+        title.add_run("GATalk 简明图文使用手册"),
         size=22,
         bold=True,
         color=DARK_BLUE,
@@ -590,7 +612,7 @@ def build() -> None:
     ):
         add_list_item(document, text, bullet_id)
 
-    document.core_properties.title = "GATalk 简明使用手册"
+    document.core_properties.title = "GATalk 简明图文使用手册"
     document.core_properties.subject = "GATalk 当前功能与操作"
     document.core_properties.author = "GATalk"
     document.core_properties.keywords = "GATalk, 使用手册, 游戏场景美术"
@@ -620,7 +642,7 @@ def build_from_markdown() -> None:
     title.paragraph_format.space_before = Pt(0)
     title.paragraph_format.space_after = Pt(4)
     set_font(
-        title.add_run("GATalk 简明使用手册"),
+        title.add_run("GATalk 简明图文使用手册"),
         size=22,
         bold=True,
         color=DARK_BLUE,
@@ -661,6 +683,7 @@ def build_from_markdown() -> None:
     for raw in lines:
         line = raw.strip()
         heading = re.match(r"^(#{2,4})\s+(.+)$", line)
+        figure = re.match(r"^!\[(.*?)\]\((.+?)\)$", line)
         bullet = re.match(r"^-\s+(.+)$", line)
         numbered = re.match(r"^\d+\.\s+(.+)$", line)
         if heading:
@@ -672,6 +695,14 @@ def build_from_markdown() -> None:
                 _plain_markdown(heading.group(2)),
                 min(3, len(heading.group(1)) - 1),
             )
+        elif figure:
+            flush_list()
+            flush_paragraph()
+            number_id = None
+            image_path = Path(figure.group(2))
+            if not image_path.is_absolute():
+                image_path = ROOT / image_path
+            add_figure(document, image_path, _plain_markdown(figure.group(1)))
         elif bullet:
             flush_list()
             flush_paragraph()
@@ -694,7 +725,7 @@ def build_from_markdown() -> None:
     flush_list()
     flush_paragraph()
 
-    document.core_properties.title = "GATalk 简明使用手册"
+    document.core_properties.title = "GATalk 简明图文使用手册"
     document.core_properties.subject = "GATalk 当前功能与操作"
     document.core_properties.author = "GATalk"
     document.core_properties.keywords = "GATalk, 使用手册, 游戏场景美术"
