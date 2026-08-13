@@ -1,121 +1,116 @@
 # GATalk
 
-GATalk 是 Windows 本地游戏美术工作台。启动后可选择：
+GATalk 是一款面向游戏环境美术与场景制作的桌面工具，将参考图分析、视觉对比、作品研究、场景审阅和资产拆分整合到统一工作流中，帮助创作者更清晰地理解画面、整理制作依据，并将分析结果转化为可执行的美术任务。
 
-- **参考资料与知识库**：位于专业工作台之上的资料平台，管理来源、集合、标签、
-  搜索、译文、局部摘录、跨项目引用和研究交接。
-- **审阅任务与质量门禁中心**：统一接收三个专业工作台的确认任务，保存验收
-  条件，并按新版本记录改善、解决或证据不足。
+> 当前状态：`0.18.1 Beta 1`。项目仍处于公开测试阶段，界面、项目格式和 AI
+> 供应商兼容性可能继续调整。请在重要项目中保留独立备份。
 
-- **场景美术控制**：参考图、UE 截图、证据化审阅、任务、优化预演和版本复查。
-- **作品研究**：对一张原画、概念图或优秀场景作品进行本地证据观察、CG 主美
-  十二维拆解和个人学习记录。
-- **资产拆分工作台**：先理解复杂场景，再按用户选择的层级整理可复用资产
-  套件、原图证据、制作优先级、独立概念图和分页展示板。
-- **作品研究集合与对照研究**：对 2 至 6 件作品执行同轴本地测量与 AI 专家研究。
+[English](README_EN.md) · [简明图文手册](USER_GUIDE.md) · [路线图](docs/PUBLIC_ROADMAP.md) · [参与贡献](CONTRIBUTING.md) · [安全说明](SECURITY.md)
 
-原图始终只读。没有 API Key 时，本地测量、项目/研究保存和离线 Mock 流程仍可
-使用；真实网络发送只在用户查看清单并确认后发生。
+![GATalk 工作台首页](docs/images/user-guide-0.18.0/01-workspace-hub.png)
 
-GATalk 是一款面向游戏场景美术、UE 地编和环境艺术作品的 Windows
-本地游戏场景美术控制工作台。它将制作目标、参考图、当前截图、证据测量、
-AI 专项审阅、修改任务、优化预演、新版本复查和质量门禁串成可追踪的工作流。
+## 适用对象
 
-M0.5、M1A、M1B.1 和 M1B.2 已通过真实项目人工验收并冻结。当前 `0.16.0`
-新增双图色彩分布证据、深入灯光审片、AI 审阅历史和统一工作台导航；原有工作台
-继续保留。
+GATalk 主要面向游戏环境美术、场景制作、UE 地编、概念设计与相关学习者。它适合
+整理视觉证据和制作决策，不替代主美判断、版权审查或 UE 工程内性能分析。
 
-## 环境要求
+## 已实现功能
 
-- Windows 10/11 x64
-- Python 3.11 x64
-- 首次安装依赖时需要网络连接
+- **场景美术控制**：制作意图、参考图与截图对比、色板与明度证据、配对区域、
+  专项审阅、任务和版本复查。
+- **作品研究**：对单张原画、概念图或场景作品进行本地测量、结构化解读和学习记录。
+- **作品研究集合与对照研究**：并置 2–6 件作品，按同一研究问题比较构图、明度、
+  色彩、灯光与空间关系。
+- **资产拆分工作台**：场景理解、可校正资产清单、拆分层级、自动资产板和生成提示语。
+- **参考资料与知识库**：管理图片、文章链接、标签、局部摘录、笔记和跨项目引用。
+- **制作任务与验收中心**：汇总已确认结论，记录验收条件、版本复查和质量门禁。
+- **多语言与外观**：简体中文基准界面，以及繁中、英语、日语、法语预览；深色、
+  浅色和跟随系统主题。
 
-## 一键启动
+## 当前限制
 
-双击根目录下的 `start_dev.cmd`。脚本会：
+- 仅提供 Windows x64 测试版；未签名，首次启动可能出现 Windows SmartScreen 提示。
+- 简体中文是基准语言；其他语言仍需母语审校。
+- OpenAI、Gemini、Claude、Qwen 等真实 AI 调用需要用户自己的账号、API Key、额度和
+  所在地区可用性；供应商模型与接口可能在软件发布后变化。
+- 离线 Mock 只验证流程与结构，不是本地视觉模型，也不会给出真实图像语义判断。
+- AI 结果可能出错；证据、推断与生成补全会分开记录，但最终结论仍需用户核对。
+- 暂不包含生产可用 3D 生成、UE 工程扫描、视频分析、本地大型模型或 CUDA 流程。
 
-1. 检查 Python 3.11 x64；
-2. 在项目目录创建 `.venv`；
-3. 安装锁定的开发依赖；
-4. 启动 GATalk。
+## 数据与隐私
 
-命令行启动方式：
+- 项目和导入资料默认保存在用户选择的本地目录；原始图片只读，不会被覆盖。
+- 软件不会后台上传图片，也不包含遥测或自动更新服务。
+- 每次联网发送必须由用户主动触发，并在发送前显示数据清单。
+- API Key 可保存到 Windows Credential Manager，不写入项目、SQLite、JSON 或日志。
+- 导出给外部 AI 前可移除 EXIF、ICC、本地路径等元数据并限制图片尺寸。
+
+详见 [SECURITY.md](SECURITY.md) 与 [隐私和联网边界](docs/PRIVACY.md)。
+
+## 获取 Windows 测试版
+
+1. 在 [Releases](https://github.com/WrayMark/GATalk/releases) 下载最新的
+   `GATalk-*-windows-x64.zip`。
+2. 将压缩包完整解压到可写目录，不要只从压缩包内直接运行。
+3. 启动 `GATalk/GATalk.exe`。
+4. 第一次使用先阅读包内的 `GATalk_使用手册.docx` 或本仓库的
+   [USER_GUIDE.md](USER_GUIDE.md)。
+
+发布包是 PyInstaller `onedir`，目标电脑不需要预装 Python。当前测试版未进行代码
+签名；如果 Windows 显示保护提示，请先核对 Release 页面公布的 SHA-256。
+
+## 从源码运行
+
+要求：Windows 10/11 x64、Python 3.11 x64、Git。首次安装依赖需要联网。
 
 ```powershell
+git clone https://github.com/WrayMark/GATalk.git
+cd GATalk
 .\start_dev.cmd
 ```
 
-## 使用
+脚本会在仓库内创建 `.venv`、安装固定版本依赖并启动应用。API Key 不应写入 `.env`
+或源码；请在应用内存入 Windows Credential Manager。
 
-请阅读 [USER_GUIDE.md](USER_GUIDE.md)。它随每次用户可见更新同步维护。
+手动安装：
 
-场景控制：新建项目 → 填写制作意图 → 新建 Shot → 导入参考图与当前截图 →
-查看证据 → AI 审阅 → 任务 → 新 Version 复查。
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m scenelens
+```
 
-作品研究：新建研究 → 导入一张作品 → 查看本地证据 → AI 十二维拆解 →
-个人学习笔记 → 保存。
-
-资产拆分：新建项目或从作品研究交接 → 导入原画与补充参考 → 理解场景并
-选择拆分方案 → 使用可校正拆分、全自动资产板或提示语 → 保存、分页生成或
-复制结果。
-
-资料与对照：新建资料库 → 导入或记录来源 → 建立集合和标签 → 多选 2 至 6 张
-图片 → 建立对照研究 → 本地测量 → 可选 AI 专家对照 → 保存研究结论。
-
-审阅闭环：在专业工作台选择结论 → 加入审阅中心 → 补充验收条件 → 更新任务
-状态 → 导入或指定新版本 → 记录复查证据 → 评估质量门禁。
-
-## 测试
+## 测试与构建
 
 ```powershell
 .\scripts\test.ps1
-```
-
-## 构建 Windows Alpha
-
-```powershell
 .\build_alpha.cmd
+.\scripts\windows-acceptance.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_release_bundle.ps1
 ```
 
-输出目录为 `dist/GATalk/`。这是 PyInstaller `onedir` 目录，不需要目标
-电脑预装 Python。
+构建输出位于 `dist/GATalk/`。公开 Release 还需运行安全审计、第三方通知收集和发布包
+校验，步骤见 [发布检查表](docs/RELEASE_CHECKLIST.md)。
 
-`pyproject.toml` 固定直接依赖；`requirements-lock.txt` 保存本轮已验证环境的
-完整版本快照。
+## 项目结构
 
-## 文档
+```text
+src/scenelens/       应用外壳、共享核心和业务模块
+tests/               离线单元、存储、UI 与契约测试
+docs/                架构、调研、验证与公共文档
+scripts/             开发、测试、打包、截图和审计脚本
+```
 
-- [GATalk_使用手册.docx](GATalk_使用手册.docx)：纯文字简明 Word 使用手册
-- [PROJECT_BRIEF.md](PROJECT_BRIEF.md)：产品目标与范围
-- [DECISIONS.md](DECISIONS.md)：已接受的产品与技术决策
-- [ROADMAP.md](ROADMAP.md)：开发阶段与验收标准
-- [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)：依赖与许可证记录
-- [AGENTS.md](AGENTS.md)：持续开发规则
-- [M0.5_VALIDATION.md](M0.5_VALIDATION.md)：技术验证结果
-- [M1A_VALIDATION.md](M1A_VALIDATION.md)：M1A 工程验证与人工试用步骤
-- [M1B.2_VALIDATION.md](M1B.2_VALIDATION.md)：M1B.2 自动验证与人工试用步骤
-- [docs/M1_DATA_MODEL.md](docs/M1_DATA_MODEL.md)：M1 数据结构与迁移方案
-- [docs/M2_DATA_MODEL.md](docs/M2_DATA_MODEL.md)：M2 共享核心与 schema v5
-- [docs/M2_PROVIDER_ARCHITECTURE.md](docs/M2_PROVIDER_ARCHITECTURE.md)：
-  Provider 接口、完成度和未验证项
-- [docs/KNOWLEDGE_PLATFORM_RESEARCH_2026-08-08.md](docs/KNOWLEDGE_PLATFORM_RESEARCH_2026-08-08.md)：
-  资料平台与对照研究调研
-- [docs/KNOWLEDGE_COMPARISON_ARCHITECTURE.md](docs/KNOWLEDGE_COMPARISON_ARCHITECTURE.md)：
-  平台层、数据模型和模块交接
-- [docs/KNOWLEDGE_REVIEW_CONTROL_RESEARCH_2026-08-08.md](docs/KNOWLEDGE_REVIEW_CONTROL_RESEARCH_2026-08-08.md)：
-  资料摘录、翻译、项目引用和审阅追踪调研
-- [docs/REVIEW_CONTROL_ARCHITECTURE.md](docs/REVIEW_CONTROL_ARCHITECTURE.md)：
-  审阅任务、版本复查、质量门禁和模块边界
-- [docs/PROVIDER_COMPATIBILITY_AUDIT_2026-07-19.md](docs/PROVIDER_COMPATIBILITY_AUDIT_2026-07-19.md)：
-  AI 接口兼容修复、错误含义和人工联网验证项
-- [docs/COMPETITOR_REVIEW_M2.md](docs/COMPETITOR_REVIEW_M2.md)：M2 竞品审查
-- [docs/M4_DEEP_REVIEW_ARCHITECTURE.md](docs/M4_DEEP_REVIEW_ARCHITECTURE.md)：
-  八维审阅、证据校验与构图辅助边界
-- [docs/ASSET_BREAKDOWN_RESEARCH_2026-07-30.md](docs/ASSET_BREAKDOWN_RESEARCH_2026-07-30.md)：
-  资产识别、分割、补全、视图重建和商业工具调研
-- [docs/ASSET_BREAKDOWN_ARCHITECTURE.md](docs/ASSET_BREAKDOWN_ARCHITECTURE.md)：
-  资产拆分模块、数据模型、Provider 与真实性边界
-- [M6_ASSET_BREAKDOWN_VALIDATION.md](M6_ASSET_BREAKDOWN_VALIDATION.md)：
-  自动验证、限制和人工试用步骤
-- [docs/M1B2_REGION_DATA_MODEL.md](docs/M1B2_REGION_DATA_MODEL.md)：区域 schema 与 Version 语义
+`scenelens` 是项目早期名称，现保留为 Python 包名、模块 ID 与旧项目兼容标识；产品、
+可执行程序和公开项目统一使用 **GATalk**。兼容层会继续读取旧的 SceneLens 项目和凭据
+名称，文档不会把它作为对外产品名。
+
+## 参与与许可
+
+提交问题前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题不要建立公开 Issue，
+请按 [SECURITY.md](SECURITY.md) 使用 GitHub 私密漏洞报告。
+
+GATalk 源码采用 [MIT License](LICENSE)。Windows 二进制包含按各自许可证分发的
+第三方组件，尤其是 LGPLv3 的 Qt for Python；完整声明与对应源码说明见
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) 和发行包内的
+`THIRD_PARTY_NOTICES.txt`。

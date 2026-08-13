@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/WrayMark/GATalk/security/advisories/new
+    about: Report vulnerabilities and privacy defects privately.
+  - name: Usage guide
+    url: https://github.com/WrayMark/GATalk/blob/master/USER_GUIDE_EN.md
+    about: Read the concise illustrated guide before filing a usage issue.

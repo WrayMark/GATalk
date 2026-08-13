@@ -1,4 +1,4 @@
-# M0.5 verified environment snapshot (Python 3.11 x64, 2026-07-18).
+# GATalk 0.18.1 Beta 1 verified environment (Python 3.11 x64, 2026-08-14).
 # pyproject.toml remains the authoritative direct-dependency declaration.
 altgraph==0.17.5
 colorama==0.4.6
@@ -13,8 +13,6 @@ pluggy==1.6.0
 Pygments==2.20.0
 pyinstaller==6.21.0
 pyinstaller-hooks-contrib==2026.6
-PySide6==6.11.1
-PySide6_Addons==6.11.1
 PySide6_Essentials==6.11.1
 pytest==9.1.1
 pytest-qt==4.5.0

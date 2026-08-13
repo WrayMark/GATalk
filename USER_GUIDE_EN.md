@@ -1,6 +1,6 @@
 # GATalk Illustrated Quick Guide
 
-Version: `0.18.0`; updated: 2026-08-12
+Version: `0.18.1 Beta 1`; updated: 2026-08-14
 
 This guide covers the common workflow in short steps. Button names follow the English UI.
 
@@ -8,13 +8,16 @@ This guide covers the common workflow in short steps. Button names follow the En
 
 Purpose: open a platform or professional workbench from one home screen.
 
-1. Run `GATalk/GATalk.exe`; developers can run `start_dev.cmd`.
-2. Select a workbench. Recent projects appear below.
-3. Press `Ctrl+Shift+H` in any workbench to return Home.
+1. Download the Windows x64 beta from GitHub Releases and extract the complete archive.
+2. Run `GATalk/GATalk.exe`; developers can run `start_dev.cmd`.
+3. Select a workbench. Recent projects appear below.
+4. Press `Ctrl+Shift+H` in any workbench to return Home.
 
 ![Workbench Home keeps platforms, professional workbenches, and recent projects together.](docs/images/user-guide-0.18.0/01-workspace-hub.png)
 
 Result: GATalk preserves the current window size and maximized state. Imported images remain read-only, and nothing is uploaded automatically.
+
+The beta is not code-signed. If Windows displays a protection warning, verify the archive SHA-256 on the Release page before continuing.
 
 ## 2. Global Settings
 
@@ -110,3 +113,13 @@ The centre stores cross-project indexes and acceptance records; it never rewrite
 4. Offline Mock validates workflow and structure only. It is not a local vision model.
 
 Without an API key, projects, measurements, regions, tasks, reports, and offline review packages remain available. Every network request requires a user action.
+
+## 10. Report an issue
+
+Purpose: provide a reproducible report without publishing private or commercial data.
+
+1. Confirm the defect in the latest GitHub beta and provide the version, Windows release, display scaling, and reproduction steps.
+2. Use a synthetic or redistributable image. Remove API keys, private paths, accounts, and project secrets.
+3. Use a GitHub Issue for ordinary defects. Use private vulnerability reporting for credential exposure, unsafe file access, or another security defect.
+
+Result: maintainers receive a minimal reproduction, while public records remain safe to redistribute.

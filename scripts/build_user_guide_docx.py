@@ -209,8 +209,8 @@ def build() -> None:
     metadata.paragraph_format.space_after = Pt(14)
     set_font(
         metadata.add_run(
-            "适用版本：0.18.0（统一导航与视觉供应商扩展）"
-            "　更新日期：2026-08-12"
+            "适用版本：0.18.1 Beta 1（首个公开测试版）"
+            "　更新日期：2026-08-14"
         ),
         size=9.5,
         color=MUTED,
@@ -223,13 +223,18 @@ def build() -> None:
     add_heading(document, "1. 启动")
     add_list_item(
         document,
-        "试用版：打开本次候选目录中的 GATalk/GATalk.exe，不要继续使用旧候选。",
+        "从 GitHub Releases 下载 Windows x64 测试版，完整解压后运行 GATalk/GATalk.exe。",
         bullet_id,
     )
     add_list_item(document, "开发版：双击 start_dev.cmd。", bullet_id)
     add_list_item(
         document,
         "原始图片始终只读；GATalk 不会自动联网或上传图片。",
+        bullet_id,
+    )
+    add_list_item(
+        document,
+        "当前测试版未签名；Windows 显示保护提示时，先核对 Release 页面公布的 SHA-256。",
         bullet_id,
     )
 

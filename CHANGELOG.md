@@ -2,8 +2,21 @@
 
 ## Unreleased
 
-- 使用手册改为简明图文结构；首页、全局设置和六个主要工作台均使用当前版本的
-  无隐私测试截图，并增加可重复的截图、Word 生成和逐页检查流程。
+### 0.18.1 Beta 1 首次公开测试版
+
+- 统一仓库、可执行程序和公开文档名称为 GATalk；解释 `scenelens` 仅作为早期包名、
+  模块 ID 和旧项目兼容标识。
+- 新增中英文公开 README、MIT License、贡献和安全说明、Issue/PR 模板、公共路线图、
+  隐私边界、发布检查表和 Windows 离线 CI。
+- 对当前文件与完整 Git 历史执行凭据、私人路径、构建产物、Word/图片元数据和素材
+  来源审计；未改写历史提交或标签。
+- 将运行依赖从 PySide6 元包收紧为 PySide6 Essentials，避免安装和打包未使用的
+  Addons；发行包附 Python、Qt、PySide6、OpenCV、NumPy 等完整第三方许可证。
+- Release 同时提供 PySide6、Qt Base 与 Qt SVG 6.11.1 对应源码和 SHA-256，满足
+  Qt/PySide6 LGPL 二进制分发说明。
+- 使用手册改为简明图文结构，并增加 GitHub 测试版安装与安全问题报告步骤。
+- 完整离线测试 291 项通过；Windows `onedir` 240.2 MiB，1.0、1.25 与 1.5
+  缩放打包烟测均正常退出；9 页 Word 使用手册完成逐页渲染检查。
 
 ### 0.18.0 统一导航与视觉供应商扩展
 

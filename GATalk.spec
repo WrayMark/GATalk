@@ -112,7 +112,15 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['matplotlib', 'pytest', 'scipy'],
+    excludes=[
+        'matplotlib',
+        'pytest',
+        'scipy',
+        'PySide6.QtPdf',
+        'PySide6.QtQml',
+        'PySide6.QtQuick',
+        'PySide6.QtVirtualKeyboard',
+    ],
     noarchive=False,
     optimize=0,
 )

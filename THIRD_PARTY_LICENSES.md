@@ -1,81 +1,58 @@
 # 第三方依赖与许可证
 
-状态：M1A 已复核
-初始日期：2026-07-18
-最近复核：2026-08-12
+状态：`0.18.1 Beta 1` 公开发布审计；复核日期：2026-08-14。
 
-本文件用于工程跟踪，不替代正式法律意见。正式对外发行前必须核对最终打包
-产物、传递依赖、许可证文本和通知义务。
-
-M1A 使用 Python 3.11 标准库 `sqlite3` 和 `hashlib` 实现项目存储与哈希，
-没有新增第三方运行依赖，也没有变更下列固定版本。
-
-0.15.0 的全局检索、恢复点、任务依赖、生产交接和视觉资料板继续仅使用现有
-Python、Qt、SQLite、Pillow 与标准库能力，没有新增第三方依赖。
+本文记录 GATalk 直接依赖与公开二进制分发边界，不构成法律意见。实际 Release
+随附机器生成的 `THIRD_PARTY_NOTICES.txt`、`licenses/` 和 `QT_SOURCE_OFFER.md`。
 
 ## 运行依赖
 
-| 依赖 | 固定版本 | 用途 | 许可证 | 商业化与分发注意 |
+| 组件 | 固定版本 | 用途 | 许可证 | 发布处理 |
 |---|---:|---|---|---|
-| Python | 3.11.x x64 | 运行时 | PSF License | PyInstaller 会随包分发解释器组件 |
-| PySide6 / Qt for Python | 6.11.1 | Windows UI | LGPLv3/GPLv3 或商业许可 | 当前采用社区版；保留动态库、许可证和替换能力；对外发行前复审 |
-| Pillow | 12.3.0 | 解码、EXIF、ICC | HPND | 允许商业使用；需保留许可通知 |
-| NumPy | 2.3.5 | 数组与数值计算 | BSD-3-Clause | 允许商业使用；记录二进制依赖通知 |
-| opencv-python-headless | 4.13.0.92 | 滤镜、直方图、聚类 | Apache-2.0 | 允许商业使用；最终包附许可证与 NOTICE（如适用） |
-| Colour Science | 0.4.7 | Oklab 与色彩转换 | BSD-3-Clause | 允许商业使用；其传递依赖也需记录 |
+| Python | 3.11.x x64 | 解释器与标准库 | PSF License | 许可证随包提供 |
+| PySide6 Essentials / Shiboken6 | 6.11.1 | Qt Widgets 桌面 UI | LGPL-3.0-only 或 GPL/商业许可 | 采用 LGPL；动态 DLL、完整许可文本和精确对应源码随 Release 提供 |
+| Qt Base / Qt SVG | 6.11.1 | Core、Gui、Widgets、Network、OpenGL、SVG 与平台/图片插件 | LGPL-3.0-only 及各组件第三方许可 | 仅收集实际所需模块；许可目录、通知和源码归档随 Release 提供 |
+| Pillow | 12.3.0 | 解码、EXIF、ICC、缩略图 | MIT-CMU 及随 wheel 组件许可 | 完整 wheel 许可文本随包提供 |
+| NumPy | 2.3.5 | 数组与数值计算 | BSD-3-Clause；wheel 含 OpenBLAS、LAPACK 与 GCC Runtime Exception 等 | 使用 wheel 的完整 `LICENSE.txt`，不自行摘录 |
+| opencv-python-headless | 4.13.0.92 | 滤镜、直方图、聚类、GrabCut | Apache-2.0；wheel 含第三方编解码器通知 | `LICENSE.txt` 与 `LICENSE-3RD-PARTY.txt` 随包提供 |
+| Colour Science | 0.4.7 | Oklab 与色彩转换 | BSD-3-Clause | 许可证随包提供 |
+| typing_extensions | 4.16.0 | 兼容类型定义 | PSF-2.0 | 许可证随包提供 |
 
-## 开发与打包依赖
+## 开发与构建依赖
 
-| 依赖 | 固定版本 | 用途 | 许可证 | 注意 |
+| 组件 | 固定版本 | 用途 | 许可证 | 发布处理 |
 |---|---:|---|---|---|
-| pytest | 9.1.1 | 单元测试 | MIT | 不进入正式运行时 |
-| pytest-qt | 4.5.0 | Qt 测试 | MIT | 不进入正式运行时 |
-| PyInstaller | 6.21.0 | Windows `onedir` | GPL-2.0-or-later + Bootloader Exception | 例外允许分发构建程序；若修改 bootloader 需重新审查 |
+| pytest | 9.1.1 | 自动化测试 | MIT | 不作为运行时模块打包 |
+| pytest-qt | 4.5.0 | Qt UI 测试 | MIT | 不作为运行时模块打包 |
+| PyInstaller | 6.21.0 | Windows `onedir` | GPL-2.0-or-later + Bootloader Exception | Bootloader 进入发行包；完整构建许可随包提供，未修改 bootloader |
+| pyinstaller-hooks-contrib | 2026.6 | 构建钩子 | GPL/Apache 等混合，按文件标注 | 只在构建期使用，不把钩子源码作为应用运行模块发布 |
 
-## 明确不采用或暂缓
+## Qt LGPL 发布方式
 
-- Color Thief Python：长期不活跃，RGB/MMCQ 不符合 Oklab 路线。
-- scikit-image：M0.5 无具体必要算法，不加入初始运行依赖。
-- Depth Anything V2：模型权重、PyTorch 和商业许可证风险，推迟。
-- SAM 2：Windows/CUDA 打包复杂，推迟。
-- Grounding DINO：Apache-2.0；开放词汇检测有价值，但会引入 PyTorch、
-  模型权重和新的打包边界，0.7.0 不集成、不复制代码。
-- Florence-2 base：模型页标注 MIT；仍需 Transformers/PyTorch 和权重，
-  0.7.0 不集成。
-- LaMa：Apache-2.0；旧 PyTorch/CUDA 环境和外部权重不进入当前安装包。
-- Zero123++：代码 Apache-2.0，但模型权重 CC-BY-NC 4.0，不作为未来商业
-  默认能力。
-- TripoSR：代码与权重 MIT；约 6 GB VRAM 的 3D 路线仅作为未来候选，本版
-  不集成。
-- Tauri、Electron、Web 服务框架：不符合当前单栈目标。
+- GATalk 自有源码使用 MIT；Qt for Python 与 Qt 保持其 LGPL-3.0-only 许可证。
+- PyInstaller 使用 `onedir`，Qt 以独立 DLL 分发；不静态链接、不修改 Qt DLL、
+  不禁止用户调试或替换这些库。
+- `GATalk.spec` 只保留 Core、Gui、Widgets、Network、OpenGL、SVG 及实际平台、图片、
+  TLS 插件；不发布未使用的 QML、Quick、PDF 或虚拟键盘组件。
+- Release 同时提供精确版本的 `pyside-setup`、`qtbase`、`qtsvg` 对应源码归档和
+  SHA-256，避免仅依赖上游链接。
+- 所有 Qt/PySide 与内含第三方许可证文本保存在仓库 `licenses/` 并进入二进制包。
 
-M6 资产拆分只复用已锁定的 OpenCV GrabCut 和 Pillow，没有复制调研仓库代码、
-提示词或模型权重，也没有新增运行依赖。
+## 未随程序分发的研究候选
 
-0.8.0 未新增运行依赖，也未复制外部仓库代码、模型权重或提示词。SAM 2、
-Grounded SAM 2、Florence-2 与 Qwen2.5-VL 仅用于技术路线调研，当前安装包
-未包含它们。Nano Banana 是远程服务产品名，不是随程序分发的第三方库。
+Grounding DINO、SAM 2、Florence-2、LaMa、Zero123++、TripoSR、Argos Translate、
+OpenCC 与翻译模型只出现在调研或开发记录中；其代码、模型权重和数据集不进入 Git、
+运行依赖或 Windows 发行包。研究文档中的外部链接不表示 GATalk 重新分发相关内容。
 
-0.16.0 未新增运行依赖。双图分布、审阅历史、灯光 Schema 和统一导航均为项目
-内部实现，没有复制第三方界面代码、模型权重或提示词。
+M2 竞品审查仅记录公开页面和产品分类。未复制无明确许可证的 Pro 版代码或长提示词；
+也未复用灯光版代码。若未来实际复用，必须在合并前记录来源文件、提交、许可证、
+版权声明和修改范围。
 
-0.17.0 未新增运行依赖。运行时本地化使用 PySide6 的 `QTranslator` 和随包 JSON
-目录。开发期使用 Argos Translate（MIT）与 OpenCC Python Reimplemented
-（Apache-2.0）在本机生成翻译初稿；工具、语言模型和权重不进入 Git、运行依赖或
-Windows 安装包。生成目录仍需母语审校，不因工具许可证记录而视为已完成法律或
-语言质量审查。
+## 生成与复核
 
-本次构建期机器初稿使用的 Argos 中文到英文及英文到法文 OPUS-MT 模型 README
-标注原始模型为 CC-BY 4.0；英文到日文模型列出 OPUS、CCAligned、WikiMatrix、
-OpenSubtitles、Wiktionary/Wiktextract 与 Stanza 来源。模型文件不分发；若以后分发
-模型或把自动翻译作为产品功能，必须单独复核数据与模型归属、署名和通知义务。
+```powershell
+.\.venv\Scripts\python.exe .\scripts\collect_third_party_notices.py
+```
 
-## Qt LGPL 待办
-
-正式发布前至少完成：
-
-- 核对实际打包的 Qt 模块和各自许可证。
-- 随发行包提供相应 LGPL/GPL 文本和版权通知。
-- 确保 Qt 动态链接和用户替换库的实际可行性。
-- 不移除 Qt 许可声明。
-- 根据商业计划决定继续 LGPL 合规或采购 Qt 商业许可。
+每次升级运行时依赖后必须重新生成通知、核对实际打包二进制，并重新取得精确版本的
+对应源码。正式商业发行、安装器或代码签名前仍建议进行独立法律审查。

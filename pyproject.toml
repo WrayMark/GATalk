@@ -4,17 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gatalk"
-version = "0.18.0"
-description = "Local-first game art analysis and production workbench."
+version = "0.18.1b1"
+description = "A visual analysis and production toolkit for game environment artists."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11,<3.12"
 dependencies = [
-    "PySide6==6.11.1",
+    "PySide6-Essentials==6.11.1",
     "Pillow==12.3.0",
     "numpy==2.3.5",
     "opencv-python-headless==4.13.0.92",
     "colour-science==0.4.7",
 ]
+
+[project.urls]
+Homepage = "https://github.com/WrayMark/GATalk"
+Documentation = "https://github.com/WrayMark/GATalk#readme"
+Issues = "https://github.com/WrayMark/GATalk/issues"
 
 [project.optional-dependencies]
 dev = [

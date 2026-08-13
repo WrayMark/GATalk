@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose a focused improvement to an existing workflow
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Production problem
+      description: Describe the task that is difficult today, not only the desired control.
+    validations:
+      required: true
+  - type: dropdown
+    id: workbench
+    attributes:
+      label: Workbench
+      options:
+        - Scene Art Control
+        - Artwork Study
+        - Comparative Study
+        - Asset Breakdown
+        - References & Knowledge Base
+        - Production Tasks & Acceptance
+        - Application shell or settings
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Evidence, references, or constraints
+      description: Do not attach copyrighted material unless you have permission to redistribute it.
