@@ -86,7 +86,8 @@ def test_mock_concept_preview_is_saved_without_creating_version(
         window._project_store.list_versions(window._active_shot_id)
         == versions_before
     )
-    assert "真实 Version 未发生变化" in window.statusBar().currentMessage()
+    assert window._last_concept_preview is not None
+    assert window._last_concept_preview.id == previews[0].id
 
     monkeypatch.setattr(
         QMessageBox,
