@@ -15,6 +15,8 @@
 - Release 同时提供 PySide6、Qt Base 与 Qt SVG 6.11.1 对应源码和 SHA-256，满足
   Qt/PySide6 LGPL 二进制分发说明。
 - 使用手册改为简明图文结构，并增加 GitHub 测试版安装与安全问题报告步骤。
+- 将普通用户 Windows 下载入口移至中英文 README 顶部，并明确区分可执行发布包与
+  GitHub 自动生成的源码压缩包。
 - 完整离线测试 295 项通过；Windows `onedir` 240.2 MiB，1.0、1.25 与 1.5
   缩放打包烟测均正常退出；9 页 Word 使用手册完成逐页渲染检查。
 

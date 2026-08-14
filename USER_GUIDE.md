@@ -8,7 +8,8 @@
 
 用途：从首页进入资料平台或专业工作台。
 
-1. 从 GitHub Releases 下载 Windows x64 测试版并完整解压。
+1. 从 GitHub Releases 下载名称含 `windows-x64` 的测试版并完整解压。不要使用
+   **Code → Download ZIP**；该入口下载的是源码，不包含可运行的 EXE。
 2. 运行 `GATalk/GATalk.exe`；开发者可运行 `start_dev.cmd`。
 3. 在首页选择工作台。最近使用的项目会显示在下方。
 4. 在任一工作台按 `Ctrl+Shift+H` 返回首页。

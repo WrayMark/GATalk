@@ -7,6 +7,17 @@ GATalk 是一款面向游戏环境美术与场景制作的桌面工具，将参�
 
 [English](README_EN.md) · [简明图文手册](USER_GUIDE.md) · [路线图](docs/PUBLIC_ROADMAP.md) · [参与贡献](CONTRIBUTING.md) · [安全说明](SECURITY.md)
 
+## 普通用户下载（Windows x64）
+
+**[下载 GATalk 0.18.1 Beta 1 Windows 测试版](https://github.com/WrayMark/GATalk/releases/download/v0.18.1-beta.1/GATalk-0.18.1-beta.1-windows-x64.zip)**
+
+> GitHub 的绿色 **Code → Download ZIP** 下载的是源代码，不包含可运行的 EXE。
+> 普通用户应下载上面的 Windows 发布包。
+
+完整解压后运行 `GATalk/GATalk.exe`。目标电脑不需要预装 Python。程序尚未签名；
+首次启动前可在 [Release 页面](https://github.com/WrayMark/GATalk/releases/tag/v0.18.1-beta.1)
+核对 SHA-256 和已知限制。
+
 ![GATalk 工作台首页](docs/images/user-guide-0.18.0/01-workspace-hub.png)
 
 ## 适用对象
@@ -46,18 +57,6 @@ GATalk 主要面向游戏环境美术、场景制作、UE 地编、概念设计�
 - 导出给外部 AI 前可移除 EXIF、ICC、本地路径等元数据并限制图片尺寸。
 
 详见 [SECURITY.md](SECURITY.md) 与 [隐私和联网边界](docs/PRIVACY.md)。
-
-## 获取 Windows 测试版
-
-1. 在 [Releases](https://github.com/WrayMark/GATalk/releases) 下载最新的
-   `GATalk-*-windows-x64.zip`。
-2. 将压缩包完整解压到可写目录，不要只从压缩包内直接运行。
-3. 启动 `GATalk/GATalk.exe`。
-4. 第一次使用先阅读包内的 `GATalk_使用手册.docx` 或本仓库的
-   [USER_GUIDE.md](USER_GUIDE.md)。
-
-发布包是 PyInstaller `onedir`，目标电脑不需要预装 Python。当前测试版未进行代码
-签名；如果 Windows 显示保护提示，请先核对 Release 页面公布的 SHA-256。
 
 ## 从源码运行
 

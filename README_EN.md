@@ -8,6 +8,18 @@ GATalk is a desktop toolkit for game environment art and scene production. It br
 
 [中文](README.md) · [Illustrated guide](USER_GUIDE_EN.md) · [Roadmap](docs/PUBLIC_ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
+## Download for Windows x64
+
+**[Download GATalk 0.18.1 Beta 1 for Windows](https://github.com/WrayMark/GATalk/releases/download/v0.18.1-beta.1/GATalk-0.18.1-beta.1-windows-x64.zip)**
+
+> GitHub's green **Code → Download ZIP** button downloads the source code. It does
+> not contain a runnable EXE. Regular users should download the Windows package above.
+
+Extract the complete archive, then run `GATalk/GATalk.exe`. Python is not required
+on the target computer. The beta is unsigned; check the SHA-256 and known limitations
+on the [Release page](https://github.com/WrayMark/GATalk/releases/tag/v0.18.1-beta.1)
+before first launch.
+
 ![GATalk workbench home](docs/images/user-guide-0.18.0/01-workspace-hub.png)
 
 ## Intended users
@@ -62,19 +74,6 @@ review, or performance analysis inside an Unreal project.
 - External-AI exports can remove metadata and local paths and reduce image size.
 
 See [SECURITY.md](SECURITY.md) and [Privacy and network boundaries](docs/PRIVACY.md).
-
-## Download the Windows beta
-
-1. Download the latest `GATalk-*-windows-x64.zip` from
-   [Releases](https://github.com/WrayMark/GATalk/releases).
-2. Extract the complete archive to a writable folder.
-3. Run `GATalk/GATalk.exe`.
-4. Read `GATalk_使用手册.docx` in the package or
-   [USER_GUIDE_EN.md](USER_GUIDE_EN.md).
-
-The release is a PyInstaller `onedir` build and does not require Python on the
-target computer. It is not code-signed. Verify the SHA-256 published with the
-release before bypassing a SmartScreen warning.
 
 ## Run from source
 

@@ -3,6 +3,10 @@
 这是 GATalk 的首个公开测试版。项目仍在调整界面、项目格式和 AI 供应商兼容性，
 重要项目请保留独立备份。
 
+> 普通用户请在下方 **Assets** 中下载
+> `GATalk-0.18.1-beta.1-windows-x64.zip`。GitHub 自动提供的
+> `Source code (zip)` 和 `Source code (tar.gz)` 仅包含源码，没有可运行的 EXE。
+
 ## 主要功能
 
 - 场景美术控制：参考图与 UE 截图对比、证据测量、区域分析、AI 专项审阅与版本复查。
@@ -33,6 +37,9 @@
 This is the first public beta of GATalk. It includes visual comparison and scene
 review, single-artwork and comparative study, asset breakdown, a reference
 library, and cross-project production tasks. The Windows build is unsigned.
+Regular users should download `GATalk-0.18.1-beta.1-windows-x64.zip` under
+**Assets**. GitHub's automatically generated source archives do not contain a
+runnable EXE.
 Please verify `SHA256SUMS.txt`, extract the full archive, and run
 `GATalk/GATalk.exe`.
 

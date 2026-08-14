@@ -9,6 +9,7 @@ This guide covers the common workflow in short steps. Button names follow the En
 Purpose: open a platform or professional workbench from one home screen.
 
 1. Download the Windows x64 beta from GitHub Releases and extract the complete archive.
+   Do not use **Code → Download ZIP**; that button downloads source code without a runnable EXE.
 2. Run `GATalk/GATalk.exe`; developers can run `start_dev.cmd`.
 3. Select a workbench. Recent projects appear below.
 4. Press `Ctrl+Shift+H` in any workbench to return Home.
