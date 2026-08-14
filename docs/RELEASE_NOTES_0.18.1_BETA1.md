@@ -16,7 +16,7 @@
 下载 `GATalk-0.18.1-beta.1-windows-x64.zip`，完整解压后运行
 `GATalk/GATalk.exe`。程序未签名，首次启动前请核对 `SHA256SUMS.txt`。
 
-本次构建通过 291 项离线自动化测试，以及 100%、125% 和 150% Windows 缩放烟测。
+本次构建通过 295 项离线自动化测试，以及 100%、125% 和 150% Windows 缩放烟测。
 尚未完成无 Python 独立设备验收、代码签名、各 AI 供应商真实账号全覆盖测试和非简中
 语言母语审校。
 
@@ -36,7 +36,7 @@ library, and cross-project production tasks. The Windows build is unsigned.
 Please verify `SHA256SUMS.txt`, extract the full archive, and run
 `GATalk/GATalk.exe`.
 
-The build passed 291 offline automated tests and packaged smoke tests at 100%,
+The build passed 295 offline automated tests and packaged smoke tests at 100%,
 125%, and 150% Windows scaling. Clean-PC validation, comprehensive live-provider
 testing, code signing, and native-language review outside Simplified Chinese are
 still pending. GATalk has no telemetry or automatic background upload; network

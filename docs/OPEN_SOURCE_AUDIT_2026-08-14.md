@@ -11,6 +11,14 @@
 未发现进入仓库的第三方模型、字体或无权再分发图片。历史 Word 与 PNG 元数据只包含
 GATalk/SceneLens 产品名、生成时间和 DPI，不包含本机用户名或私人路径。
 
+首次公开推送前又执行了一次独立复核：全部待发布提交与唯一历史 blob、当前受跟踪
+文件、Windows 发布包和三份 Qt 对应源码归档均已检查。针对已知本机用户名、私人邮箱
+标记和聊天账号的定向扫描无命中；未发现手机号或中国身份证号候选。
+
+仓库中有两个有意保留的公开身份标识：文档链接使用 GitHub 账号 `WrayMark`，提交和
+标签作者为非个人地址 `Codex <codex@local>`。前者是公开仓库归属的一部分，后者不关联
+私人邮箱。没有真实姓名、私人邮箱或本机 Windows 账号进入提交元数据。
+
 审计发现并已修正两个公开发布风险：
 
 1. 旧构建使用 `PySide6` 元包，导致未使用的 Addons、QML、Quick、PDF 和虚拟键盘
@@ -21,6 +29,8 @@ GATalk/SceneLens 产品名、生成时间和 DPI，不包含本机用户名或�
 ## 凭据与隐私
 
 - 当前树和所有 Git blob 扫描 Google、OpenAI、GitHub、AWS、私钥等常见格式。
+- 发布审计脚本现在逐个读取所有可达历史 blob，并检查 DOCX 内部 XML、图片 EXIF/文本
+  元数据、提交元数据和项目数据库、配置、日志、私钥等禁止跟踪文件名。
 - `sk-never-log-this` 与 `sk-abcdefghijk` 是脱敏测试夹具，不是有效凭据。
 - 扫描 Windows/macOS/Linux 用户目录形式；未发现具体本机绝对路径。
 - 检查 `.docx` 的 core/app 属性和全部受跟踪 PNG/JPEG/WebP 元数据；无私人标识。
@@ -33,6 +43,20 @@ GATalk/SceneLens 产品名、生成时间和 DPI，不包含本机用户名或�
 .\.venv\Scripts\python.exe .\scripts\audit_public_release.py
 ```
 
+发布人在本机复核时可临时提供不写入仓库的私人标记：
+
+```powershell
+$env:GATALK_PRIVATE_MARKERS="本机用户名;私人邮箱;聊天账号"
+.\.venv\Scripts\python.exe .\scripts\audit_public_release.py
+```
+
+另使用 Gitleaks 8.18.4 扫描完整历史。该二进制来自官方 Release，Windows x64 zip 的
+SHA-256 为 `9ba442ca7dda19885a2e569f43a127289feeb2b5fb0dfa251dafd277f4a0ba91`；
+扫描前以测试令牌做阳性对照，确认规则实际生效，随后全部待发布提交无报警。候选版本
+8.29.1 在本机阳性对照中未报警，因此未将其“无泄漏”结果作为证据；这类校验可避免
+秘密扫描器自身的静默失效。上游也记录过相同类别的新版回归：
+https://github.com/gitleaks/gitleaks/issues/2170 。
+
 模式扫描无法证明所有未知格式的秘密都不存在；每个 Release 前仍需人工检查 diff、
 GitHub Actions 日志和上传附件。
 
@@ -40,9 +64,13 @@ GitHub Actions 日志和上传附件。
 
 - Git 跟踪文件中没有 `project.db`、用户 `project.json`、日志、缓存、虚拟环境、
   `dist/`、`build/` 或本地配置。
+- `git ls-files --others --exclude-standard` 结果为 0；本地测试、旧构建、发布候选和
+  虚拟环境全部处于忽略范围。它们不会被普通 `git add` 或源码归档带入公开仓库。
 - 仓库本机存在的 `.venv`、`.artifacts`、`.qa`、旧构建和临时 Word 文件均被忽略，
   不进入提交或 Release 源码归档。
 - `.gitignore` 已增加凭据文件、环境文件、项目目录、IDE、缓存和发布压缩包规则。
+- GitHub Actions 使用只读仓库权限、不保留检出凭据；`checkout` 与 `setup-python` 固定
+  到经官方签名版本对应的完整提交哈希，且安全审计使用完整历史而不是浅克隆。
 
 ## 图片、字体、模型与第三方素材
 
@@ -79,10 +107,16 @@ GitHub Actions 日志和上传附件。
 
 ## 发布候选验证
 
-- 离线自动化测试：291 项通过。
+- 离线自动化测试：295 项通过。
 - Windows `onedir`：285 个文件，解压后约 240.2 MiB。
 - 打包烟测：100%、125% 与 150% 缩放均以退出码 0 完成。
 - Release zip 已在独立目录解压，并再次执行 `GATalk.exe --smoke-test`，退出码 0。
 - 发布包扫描未发现本机用户名、工作区路径、邮箱、聊天账号或已知凭据模式。Qt
-  二进制中出现的短字符串 `AKIA` 是随机机器码片段，不满足 AWS Access Key 的完整格式。
+  二进制中出现的短字符串 `AKIA` 和 `Mawe` 是随机机器码/字符表片段，不满足凭据或
+  本机用户名语境；Qt 官方二进制还保留了上游构建机的通用 Windows 用户目录片段，
+  该路径不属于 GATalk 开发机或用户数据。
+- Gitleaks 对发布包的 3 条报警均来自 OpenCV 自带 `cv2/gapi/__init__.py` 中的
+  `CV_UINT64`、`CV_POINT2F` 和 `CV_POINT3F` 类型映射，已人工判定为误报。
+- Release zip 无路径穿越条目、无加密隐藏条目、无日志、项目数据库、私人配置或密钥
+  文件；SHA-256 与 `SHA256SUMS.txt` 一致。
 - Word 手册已渲染为 9 页 PNG 并逐页检查，无裁切、重叠、私人路径或 API Key。
