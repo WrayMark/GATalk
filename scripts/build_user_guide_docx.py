@@ -19,7 +19,20 @@ OUTPUT = Path(
         str(ROOT / "GATalk_使用手册.docx"),
     )
 )
-SOURCE = ROOT / "USER_GUIDE.md"
+SOURCE = Path(
+    os.environ.get(
+        "GATALK_USER_GUIDE_SOURCE",
+        str(ROOT / "USER_GUIDE.md"),
+    )
+)
+GUIDE_TITLE = os.environ.get(
+    "GATALK_USER_GUIDE_TITLE",
+    (
+        "GATalk Illustrated Quick Guide"
+        if SOURCE.name == "USER_GUIDE_EN.md"
+        else "GATalk 简明图文使用手册"
+    ),
+)
 
 BLUE = RGBColor(46, 116, 181)
 DARK_BLUE = RGBColor(31, 77, 120)
@@ -200,7 +213,7 @@ def build() -> None:
     title.paragraph_format.space_before = Pt(0)
     title.paragraph_format.space_after = Pt(4)
     set_font(
-        title.add_run("GATalk 简明图文使用手册"),
+        title.add_run(GUIDE_TITLE),
         size=22,
         bold=True,
         color=DARK_BLUE,
@@ -647,14 +660,19 @@ def build_from_markdown() -> None:
     title.paragraph_format.space_before = Pt(0)
     title.paragraph_format.space_after = Pt(4)
     set_font(
-        title.add_run("GATalk 简明图文使用手册"),
+        title.add_run(GUIDE_TITLE),
         size=22,
         bold=True,
         color=DARK_BLUE,
     )
     footer = section.footer.paragraphs[0]
     footer.alignment = 2
-    set_font(footer.add_run("GATalk 使用手册  ·  "), size=8.5, color=MUTED)
+    footer_label = (
+        "GATalk User Guide  ·  "
+        if SOURCE.name == "USER_GUIDE_EN.md"
+        else "GATalk 使用手册  ·  "
+    )
+    set_font(footer.add_run(footer_label), size=8.5, color=MUTED)
     field = OxmlElement("w:fldSimple")
     field.set(qn("w:instr"), "PAGE")
     footer._p.append(field)
@@ -730,10 +748,18 @@ def build_from_markdown() -> None:
     flush_list()
     flush_paragraph()
 
-    document.core_properties.title = "GATalk 简明图文使用手册"
-    document.core_properties.subject = "GATalk 当前功能与操作"
+    document.core_properties.title = GUIDE_TITLE
+    document.core_properties.subject = (
+        "GATalk features and operation"
+        if SOURCE.name == "USER_GUIDE_EN.md"
+        else "GATalk 当前功能与操作"
+    )
     document.core_properties.author = "GATalk"
-    document.core_properties.keywords = "GATalk, 使用手册, 游戏场景美术"
+    document.core_properties.keywords = (
+        "GATalk, user guide, game environment art"
+        if SOURCE.name == "USER_GUIDE_EN.md"
+        else "GATalk, 使用手册, 游戏场景美术"
+    )
     document.save(OUTPUT)
 
 

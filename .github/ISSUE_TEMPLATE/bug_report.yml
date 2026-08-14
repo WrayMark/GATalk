@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: GATalk version
-      placeholder: 0.18.1 Beta 1
+      placeholder: 0.18.1 Beta 2
     validations:
       required: true
   - type: input

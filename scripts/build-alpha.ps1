@@ -33,15 +33,29 @@ $distRoot = Join-Path $projectRoot "dist\GATalk"
 Copy-Item -LiteralPath (Join-Path $projectRoot "LICENSE") -Destination $distRoot -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot "THIRD_PARTY_NOTICES.txt") -Destination $distRoot -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot "QT_SOURCE_OFFER.md") -Destination $distRoot -Force
-$manual = Get-ChildItem -LiteralPath $projectRoot -Filter "GATalk_*.docx" -File |
-    Where-Object { $_.Name -notlike "~$*" } |
-    Sort-Object Length -Descending |
-    Select-Object -First 1
-if ($null -eq $manual) {
+$manuals = Get-ChildItem -LiteralPath $projectRoot -Filter "GATalk_*.docx" -File |
+    Where-Object { $_.Name -notlike "~$*" }
+if ($manuals.Count -eq 0) {
     throw "GATalk user-guide DOCX was not found."
 }
-Copy-Item -LiteralPath $manual.FullName -Destination $distRoot -Force
-Copy-Item -LiteralPath (Join-Path $projectRoot "USER_GUIDE_EN.md") -Destination $distRoot -Force
+foreach ($manual in $manuals) {
+    Copy-Item -LiteralPath $manual.FullName -Destination $distRoot -Force
+}
+$guideFiles = @("USER_GUIDE.md", "USER_GUIDE_EN.md")
+foreach ($guideFile in $guideFiles) {
+    Copy-Item -LiteralPath (Join-Path $projectRoot $guideFile) -Destination $distRoot -Force
+}
+$guideImageDirectories = @("user-guide-0.18.0", "user-guide-0.18.0-en")
+foreach ($guideImageDirectory in $guideImageDirectories) {
+    $guideImages = Join-Path $projectRoot ("docs\images\" + $guideImageDirectory)
+    if (-not (Test-Path -LiteralPath $guideImages)) {
+        throw "User-guide screenshots were not found: $guideImageDirectory"
+    }
+    $guideImageDestination = Join-Path $distRoot ("docs\images\" + $guideImageDirectory)
+    New-Item -ItemType Directory -Force -Path $guideImageDestination | Out-Null
+    Copy-Item -Path (Join-Path $guideImages "*") `
+        -Destination $guideImageDestination -Force
+}
 Copy-Item -LiteralPath (Join-Path $projectRoot "licenses") -Destination $distRoot -Recurse -Force
 
 Write-Host "Build complete: $(Join-Path $projectRoot 'dist\GATalk\GATalk.exe')"

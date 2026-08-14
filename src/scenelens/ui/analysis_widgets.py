@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from scenelens.analysis.models import ImageMeasurements, PaletteColour
 from scenelens.imaging.loader import LoadedImage
+from scenelens.ui.localization import tr
 
 
 class HistogramWidget(QWidget):
@@ -49,7 +50,7 @@ class HistogramWidget(QWidget):
             painter.setPen(
                 palette.color(QPalette.ColorRole.PlaceholderText)
             )
-            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "等待分析")
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, tr("等待分析"))
             return
 
         peak = max(self._values)
@@ -72,12 +73,12 @@ class HistogramWidget(QWidget):
         painter.drawText(
             QRectF(rect.left(), rect.bottom() + 2.0, rect.width(), 14.0),
             Qt.AlignmentFlag.AlignLeft,
-            "暗",
+            tr("暗"),
         )
         painter.drawText(
             QRectF(rect.left(), rect.bottom() + 2.0, rect.width(), 14.0),
             Qt.AlignmentFlag.AlignRight,
-            "亮",
+            tr("亮"),
         )
 
 
@@ -111,7 +112,9 @@ class PaletteWidget(QWidget):
             painter.setPen(
                 palette.color(QPalette.ColorRole.PlaceholderText)
             )
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "等待分析")
+            painter.drawText(
+                self.rect(), Qt.AlignmentFlag.AlignCenter, tr("等待分析")
+            )
             return
 
         metrics = QFontMetrics(self.font())

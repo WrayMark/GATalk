@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
+    QPlainTextEdit,
     QTableWidget,
     QTableWidgetItem,
     QWidget,
@@ -55,6 +56,8 @@ def test_language_switch_translates_existing_widgets_and_can_restore_source(qtbo
     manager = configure_localization(QApplication.instance(), "zh-CN")
     window = QWidget()
     label = QLabel("全局设置", window)
+    plain_text = QPlainTextEdit(window)
+    plain_text.setPlaceholderText("等待双图分析")
     table = QTableWidget(0, 1, window)
     table.setHorizontalHeaderItem(0, QTableWidgetItem("参考图"))
     qtbot.addWidget(window)
@@ -62,11 +65,13 @@ def test_language_switch_translates_existing_widgets_and_can_restore_source(qtbo
     manager.set_locale("en")
     manager.translate_tree(window)
     assert label.text() == "Settings"
+    assert plain_text.placeholderText() == "Waiting for paired analysis"
     assert table.horizontalHeaderItem(0).text() == "Reference"
 
     manager.set_locale("zh-CN")
     manager.translate_tree(window)
     assert label.text() == "全局设置"
+    assert plain_text.placeholderText() == "等待双图分析"
     assert table.horizontalHeaderItem(0).text() == "参考图"
 
 

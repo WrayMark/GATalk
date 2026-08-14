@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
+    QPlainTextEdit,
     QTabWidget,
     QTableWidget,
     QTextEdit,
@@ -199,7 +200,7 @@ class LocalizationManager(QObject):
             self._apply(obj, "actionText", obj.text(), obj.setText)
             self._apply(obj, "actionTip", obj.toolTip(), obj.setToolTip)
             self._apply(obj, "actionStatus", obj.statusTip(), obj.setStatusTip)
-        if isinstance(obj, (QLineEdit, QTextEdit)):
+        if isinstance(obj, (QLineEdit, QTextEdit, QPlainTextEdit)):
             self._apply(
                 obj,
                 "placeholder",

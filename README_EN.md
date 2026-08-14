@@ -1,8 +1,10 @@
 # GATalk
 
+**Interface languages:** Simplified Chinese (reference UI); English, Traditional Chinese, Japanese, and French (preview).
+
 GATalk is a desktop toolkit for game environment art and scene production. It brings reference-image analysis, visual comparison, artwork study, scene review, and asset breakdown into one workflow, helping artists understand images more clearly, organize production evidence, and turn analysis into actionable art tasks.
 
-> Status: `0.18.1 Beta 1`. This is a public beta. The interface, project formats,
+> Status: `0.18.1 Beta 2`. This is a public beta. The interface, project formats,
 > and AI-provider compatibility may continue to change. Keep separate backups of
 > important projects.
 
@@ -10,17 +12,17 @@ GATalk is a desktop toolkit for game environment art and scene production. It br
 
 ## Download for Windows x64
 
-**[Download GATalk 0.18.1 Beta 1 for Windows](https://github.com/WrayMark/GATalk/releases/download/v0.18.1-beta.1/GATalk-0.18.1-beta.1-windows-x64.zip)**
+**[Download GATalk 0.18.1 Beta 2 for Windows](https://github.com/WrayMark/GATalk/releases/download/v0.18.1-beta.2/GATalk-0.18.1-beta.2-windows-x64.zip)**
 
 > GitHub's green **Code → Download ZIP** button downloads the source code. It does
 > not contain a runnable EXE. Regular users should download the Windows package above.
 
 Extract the complete archive, then run `GATalk/GATalk.exe`. Python is not required
 on the target computer. The beta is unsigned; check the SHA-256 and known limitations
-on the [Release page](https://github.com/WrayMark/GATalk/releases/tag/v0.18.1-beta.1)
+on the [Release page](https://github.com/WrayMark/GATalk/releases/tag/v0.18.1-beta.2)
 before first launch.
 
-![GATalk workbench home](docs/images/user-guide-0.18.0/01-workspace-hub.png)
+![GATalk workbench home](docs/images/user-guide-0.18.0-en/01-workspace-hub.png)
 
 ## Intended users
 

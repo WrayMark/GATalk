@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gatalk"
-version = "0.18.1b1"
+version = "0.18.1b2"
 description = "A visual analysis and production toolkit for game environment artists."
 readme = "README.md"
 license = "MIT"

@@ -1,21 +1,23 @@
 # GATalk
 
+**界面语言：** 简体中文（基准界面）；English、繁體中文、日本語、Français（预览）。
+
 GATalk 是一款面向游戏环境美术与场景制作的桌面工具，将参考图分析、视觉对比、作品研究、场景审阅和资产拆分整合到统一工作流中，帮助创作者更清晰地理解画面、整理制作依据，并将分析结果转化为可执行的美术任务。
 
-> 当前状态：`0.18.1 Beta 1`。项目仍处于公开测试阶段，界面、项目格式和 AI
+> 当前状态：`0.18.1 Beta 2`。项目仍处于公开测试阶段，界面、项目格式和 AI
 > 供应商兼容性可能继续调整。请在重要项目中保留独立备份。
 
 [English](README_EN.md) · [简明图文手册](USER_GUIDE.md) · [路线图](docs/PUBLIC_ROADMAP.md) · [参与贡献](CONTRIBUTING.md) · [安全说明](SECURITY.md)
 
 ## 普通用户下载（Windows x64）
 
-**[下载 GATalk 0.18.1 Beta 1 Windows 测试版](https://github.com/WrayMark/GATalk/releases/download/v0.18.1-beta.1/GATalk-0.18.1-beta.1-windows-x64.zip)**
+**[下载 GATalk 0.18.1 Beta 2 Windows 测试版](https://github.com/WrayMark/GATalk/releases/download/v0.18.1-beta.2/GATalk-0.18.1-beta.2-windows-x64.zip)**
 
 > GitHub 的绿色 **Code → Download ZIP** 下载的是源代码，不包含可运行的 EXE。
 > 普通用户应下载上面的 Windows 发布包。
 
 完整解压后运行 `GATalk/GATalk.exe`。目标电脑不需要预装 Python。程序尚未签名；
-首次启动前可在 [Release 页面](https://github.com/WrayMark/GATalk/releases/tag/v0.18.1-beta.1)
+首次启动前可在 [Release 页面](https://github.com/WrayMark/GATalk/releases/tag/v0.18.1-beta.2)
 核对 SHA-256 和已知限制。
 
 ![GATalk 工作台首页](docs/images/user-guide-0.18.0/01-workspace-hub.png)

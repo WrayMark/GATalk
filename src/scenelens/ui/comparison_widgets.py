@@ -24,6 +24,7 @@ from scenelens.analysis.models import (
     PaletteColour,
     SharedPaletteResult,
 )
+from scenelens.ui.localization import tr
 
 
 class ComparisonDistributionWidget(QWidget):
@@ -65,7 +66,9 @@ class ComparisonDistributionWidget(QWidget):
         painter.drawRect(plot)
         if not self._reference and not self._current:
             painter.setPen(colours.color(QPalette.ColorRole.PlaceholderText))
-            painter.drawText(plot, Qt.AlignmentFlag.AlignCenter, "等待双图分析")
+            painter.drawText(
+                plot, Qt.AlignmentFlag.AlignCenter, tr("等待双图分析")
+            )
             return
         peak = max((*self._reference, *self._current, 0.0))
         if peak > 0.0:

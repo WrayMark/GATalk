@@ -3,9 +3,9 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $releaseDir = Join-Path $root "release"
 $distDir = Join-Path $root "dist\GATalk"
-$archive = Join-Path $releaseDir "GATalk-0.18.1-beta.1-windows-x64.zip"
+$archive = Join-Path $releaseDir "GATalk-0.18.1-beta.2-windows-x64.zip"
 $checksums = Join-Path $releaseDir "SHA256SUMS.txt"
-$manifest = Join-Path $releaseDir "GATalk-0.18.1-beta.1-manifest.json"
+$manifest = Join-Path $releaseDir "GATalk-0.18.1-beta.2-manifest.json"
 $sourceDir = Join-Path $root ".artifacts\third-party-source"
 
 if (-not (Test-Path -LiteralPath (Join-Path $distDir "GATalk.exe"))) {
@@ -41,8 +41,8 @@ $hashRows = foreach ($asset in $assets) {
 $distFiles = Get-ChildItem -LiteralPath $distDir -Recurse -File
 $manifestObject = [ordered]@{
     product = "GATalk"
-    version = "0.18.1b1"
-    release_tag = "v0.18.1-beta.1"
+    version = "0.18.1b2"
+    release_tag = "v0.18.1-beta.2"
     platform = "windows-x64"
     package_format = "PyInstaller onedir"
     unsigned = $true
@@ -55,7 +55,7 @@ $manifestObject = [ordered]@{
         file_count = $distFiles.Count
     }
     tests = [ordered]@{
-        offline_automated = 291
+        offline_automated = 295
         packaged_scale_smoke = @("100%", "125%", "150%")
     }
     corresponding_sources = $assets[1..3] | ForEach-Object {

@@ -1,6 +1,8 @@
 # GATalk Illustrated Quick Guide
 
-Version: `0.18.1 Beta 1`; updated: 2026-08-14
+Version: `0.18.1 Beta 2`; updated: 2026-08-14
+
+Interface languages: Simplified Chinese is the reference UI. English, Traditional Chinese, Japanese, and French are currently previews. This guide uses the English UI throughout.
 
 This guide covers the common workflow in short steps. Button names follow the English UI.
 
@@ -14,7 +16,7 @@ Purpose: open a platform or professional workbench from one home screen.
 3. Select a workbench. Recent projects appear below.
 4. Press `Ctrl+Shift+H` in any workbench to return Home.
 
-![Workbench Home keeps platforms, professional workbenches, and recent projects together.](docs/images/user-guide-0.18.0/01-workspace-hub.png)
+![Workbench Home keeps platforms, professional workbenches, and recent projects together.](docs/images/user-guide-0.18.0-en/01-workspace-hub.png)
 
 Result: GATalk preserves the current window size and maximized state. Imported images remain read-only, and nothing is uploaded automatically.
 
@@ -26,7 +28,7 @@ The beta is not code-signed. If Windows displays a protection warning, verify th
 2. Select language, theme, font size, and UI density.
 3. Choose **Apply** to preview and **OK** to save.
 
-![Global Settings manages language, appearance, density, and common behavior.](docs/images/user-guide-0.18.0/02-global-settings.png)
+![Global Settings manages language, appearance, density, and common behavior.](docs/images/user-guide-0.18.0-en/02-global-settings.png)
 
 Saved settings remain active on the next launch. Language changes never rewrite project names, notes, or earlier AI results.
 
@@ -41,7 +43,7 @@ Purpose: store reusable images, articles, links, and project notes.
 3. Add author, source, tags, and research notes, then save.
 4. Create a crop, translate selected text, or reference the item from a project.
 
-![The library places collections on the left, items in the middle, and source details on the right.](docs/images/user-guide-0.18.0/03-knowledge-base.png)
+![The library places collections on the left, items in the middle, and source details on the right.](docs/images/user-guide-0.18.0-en/03-knowledge-base.png)
 
 Web links are stored but never fetched automatically. Translation and online analysis require explicit confirmation.
 
@@ -54,7 +56,7 @@ Purpose: study composition, value, colour, light, space, and visual storytelling
 3. Inspect **Local Evidence**, then explicitly start **Expert Analysis**.
 4. Record your own conclusions in **Learning Notes**.
 
-![Artwork Study keeps the goal on the left, artwork in the centre, and evidence and notes on the right.](docs/images/user-guide-0.18.0/05-artwork-study.png)
+![Artwork Study keeps the goal on the left, artwork in the centre, and evidence and notes on the right.](docs/images/user-guide-0.18.0-en/05-artwork-study.png)
 
 Local measurements and AI interpretation are stored separately.
 
@@ -66,7 +68,7 @@ Purpose: compare two to six artworks under one research question.
 2. Select axes such as composition, value, or colour organisation.
 3. Compare the images side by side and record shared patterns and key differences.
 
-![Comparative Study keeps images, research axes, and findings in one view.](docs/images/user-guide-0.18.0/04-comparative-study.png)
+![Comparative Study keeps images, research axes, and findings in one view.](docs/images/user-guide-0.18.0-en/04-comparative-study.png)
 
 ## 6. Asset Breakdown
 
@@ -78,7 +80,7 @@ Purpose: turn complex concept art into an editable asset plan, generation prompt
 4. Generate only selected assets, or prepare prompts for an external image tool.
 5. Export the asset list, images, or board.
 
-![Asset Breakdown links source regions to an editable production hierarchy.](docs/images/user-guide-0.18.0/06-asset-breakdown.png)
+![Asset Breakdown links source regions to an editable production hierarchy.](docs/images/user-guide-0.18.0-en/06-asset-breakdown.png)
 
 Visible evidence, AI inference, and generated completion are labelled separately. Generated images are concept aids, not production-ready models.
 
@@ -92,7 +94,7 @@ Purpose: compare production intent, reference art, and the current UE screenshot
 4. Review the send manifest before starting an AI review.
 5. Convert confirmed findings into tasks and verify them against a new Version.
 
-![Scene Art Control combines project navigation, two canvases, and evidence analysis.](docs/images/user-guide-0.18.0/07-visual-review.png)
+![Scene Art Control combines project navigation, two canvases, and evidence analysis.](docs/images/user-guide-0.18.0-en/07-visual-review.png)
 
 Projects restore the active Shot, Version, view, parameters, and analysis history.
 
@@ -102,7 +104,7 @@ Projects restore the active Shot, Version, view, parameters, and analysis histor
 2. Filter tasks by project, stage, priority, or status.
 3. Add acceptance criteria and record Passed, Failed, or Insufficient Evidence on a new version.
 
-![Production Tasks & Acceptance keeps tasks, sources, criteria, and gates together.](docs/images/user-guide-0.18.0/08-review-control.png)
+![Production Tasks & Acceptance keeps tasks, sources, criteria, and gates together.](docs/images/user-guide-0.18.0-en/08-review-control.png)
 
 The centre stores cross-project indexes and acceptance records; it never rewrites source projects.
 
