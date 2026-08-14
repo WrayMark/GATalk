@@ -26,7 +26,7 @@ Issues = "https://github.com/WrayMark/GATalk/issues"
 dev = [
     "pytest==9.1.1",
     "pytest-qt==4.5.0",
-    "PyInstaller==6.21.0",
+    "PyInstaller==6.22.0",
 ]
 
 [project.scripts]
