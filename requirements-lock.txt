@@ -6,7 +6,7 @@ colour-science==0.4.7
 iniconfig==2.3.0
 numpy==2.3.5
 opencv-python-headless==4.13.0.92
-packaging==26.2
+packaging==26.3
 pefile==2024.8.26
 pillow==12.3.0
 pluggy==1.6.0
