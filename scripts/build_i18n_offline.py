@@ -47,7 +47,12 @@ def _extract_model(archive: Path, name: str) -> Path:
     shutil.rmtree(temporary, ignore_errors=True)
     temporary.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive) as package:
-        package.extractall(temporary)
+        target = temporary.resolve()
+        for member in package.namelist():
+            member_path = (target / member).resolve()
+            if target not in member_path.parents and member_path != target:
+                raise ValueError(f"Unsafe path in archive: {member}")
+            package.extract(member, temporary)
     children = [item for item in temporary.iterdir() if item.is_dir()]
     if len(children) != 1:
         raise RuntimeError(f"Unexpected model package layout: {archive.name}")
